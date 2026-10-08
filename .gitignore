@@ -1,0 +1,17 @@
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+.kotlin/
+
+# Firebase 설정 파일 (프로젝트별 키 포함 - 커밋하지 않음)
+app/google-services.json
+
+# 서명 키
+*.jks
+*.keystore
