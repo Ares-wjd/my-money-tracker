@@ -14,6 +14,10 @@ if (file("google-services.json").exists()) {
     logger.warn("app/google-services.json 이 없습니다. README 의 Firebase 설정 방법을 참고하세요.")
 }
 
+// GitHub Actions 에서는 Secret 으로 받은 고정 서명 키로 서명한다.
+// (빌드마다 키가 같아야 Firebase 에 등록한 SHA-1 과 맞아서 Google 로그인이 된다.)
+val sharedKeystorePath: String? = System.getenv("SIGNING_KEYSTORE_PATH")
+
 android {
     namespace = "com.mymoneytracker.app"
     compileSdk = 35
@@ -22,11 +26,27 @@ android {
         applicationId = "com.mymoneytracker.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        sharedKeystorePath?.let { path ->
+            create("shared") {
+                storeFile = file(path)
+                storePassword = System.getenv("SIGNING_KEYSTORE_PASSWORD")
+                keyAlias = "mymoneytracker"
+                keyPassword = System.getenv("SIGNING_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (sharedKeystorePath != null) {
+                signingConfig = signingConfigs.getByName("shared")
+            }
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(

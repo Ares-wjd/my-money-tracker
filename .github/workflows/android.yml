@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -18,20 +20,48 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # 저장소 Secret 에 GOOGLE_SERVICES_JSON(파일 내용)을 등록하면 Firebase 가 연결된 APK 가 만들어진다.
+      # Secret GOOGLE_SERVICES_JSON: Firebase 콘솔에서 받은 google-services.json 파일 내용
       - name: Restore google-services.json
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         if: env.GOOGLE_SERVICES_JSON != ''
         run: echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
 
+      # Secret SIGNING_KEYSTORE_BASE64 / SIGNING_KEYSTORE_PASSWORD: 고정 서명 키 (base64) 와 비밀번호
+      - name: Restore signing keystore
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        if: env.SIGNING_KEYSTORE_BASE64 != ''
+        run: |
+          echo "$SIGNING_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing.jks"
+          echo "SIGNING_KEYSTORE_PATH=$RUNNER_TEMP/signing.jks" >> "$GITHUB_ENV"
+
       - name: Unit tests
         run: ./gradlew test
 
       - name: Build debug APK
+        env:
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
         run: ./gradlew assembleDebug
 
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      # 서명 키와 Firebase 설정이 모두 있을 때만, 폰에서 바로 받을 수 있게 "dev-latest" 릴리스로 올린다.
+      - name: Publish to dev-latest release
+        if: github.event_name == 'push' && env.SIGNING_KEYSTORE_PATH != '' && hashFiles('app/google-services.json') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk my-money-tracker.apk
+          gh release delete dev-latest --cleanup-tag --yes || true
+          gh release create dev-latest my-money-tracker.apk \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "개발 버전 (빌드 #$GITHUB_RUN_NUMBER)" \
+            --notes "브랜치: $GITHUB_REF_NAME
+          커밋: $GITHUB_SHA
+
+          폰에서 my-money-tracker.apk 를 눌러 설치하세요."

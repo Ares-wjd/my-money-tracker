@@ -53,9 +53,23 @@ firestore.rules            Firestore 보안 규칙 (본인 데이터만 접근 �
 4. **Authentication → 로그인 방법 → Google** 사용 설정
 5. **Firestore Database** 생성 후 **규칙** 탭에 `firestore.rules` 내용 붙여넣기
 
-## 빌드 / 설치
+## 폰에 설치하기
 
-Android Studio 로 프로젝트를 열고 실행하거나, 명령줄에서:
+GitHub Actions 가 push 할 때마다 테스트와 디버그 APK 빌드를 실행한다.
+아래 Secret 3개가 등록되어 있으면 APK 를 **dev-latest 릴리스**로 올리므로, 폰에서 바로 받아 설치할 수 있다.
+
+- 설치 링크: https://github.com/Ares-wjd/my-money-tracker/releases/tag/dev-latest
+
+| Secret 이름 | 내용 |
+| --- | --- |
+| `GOOGLE_SERVICES_JSON` | `google-services.json` 파일 내용 전체 |
+| `SIGNING_KEYSTORE_BASE64` | 고정 서명 키(.jks)를 base64 로 인코딩한 값 |
+| `SIGNING_KEYSTORE_PASSWORD` | 서명 키 비밀번호 (별칭은 `mymoneytracker`) |
+
+서명 키는 빌드마다 같아야 한다. 이 키의 SHA-1 을 Firebase 프로젝트 설정 → 내 앱 에 등록해야 Google 로그인이 된다.
+서명 키 파일은 저장소에 올리지 않고 따로 보관한다.
+
+### 직접 빌드할 때 (Android Studio)
 
 ```
 ./gradlew assembleDebug      # app/build/outputs/apk/debug/app-debug.apk 생성
@@ -63,6 +77,4 @@ Android Studio 로 프로젝트를 열고 실행하거나, 명령줄에서:
 ./gradlew test               # 단위 테스트
 ```
 
-GitHub Actions 가 push 할 때마다 테스트와 디버그 APK 빌드를 실행하고, APK 를 artifact 로 올린다.
-저장소 Secret `GOOGLE_SERVICES_JSON` 에 파일 내용을 등록하면 Firebase 가 연결된 APK 가 만들어진다.
-(이 경우 CI 빌드의 디버그 서명 SHA-1 도 Firebase 에 등록해야 Google 로그인이 된다.)
+이 경우 PC 의 디버그 키로 서명되므로, 그 키의 SHA-1(`./gradlew signingReport`)도 Firebase 에 추가로 등록해야 한다.
