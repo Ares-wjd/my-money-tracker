@@ -4,6 +4,8 @@ on:
   push:
     branches: [ "**" ]
   pull_request:
+  # GitHub Actions 화면에서 "Run workflow" 로 직접 다시 빌드할 수 있게 한다.
+  workflow_dispatch:
 
 jobs:
   build:
@@ -51,7 +53,7 @@ jobs:
 
       # 서명 키와 Firebase 설정이 모두 있을 때만, 폰에서 바로 받을 수 있게 "dev-latest" 릴리스로 올린다.
       - name: Publish to dev-latest release
-        if: github.event_name == 'push' && env.SIGNING_KEYSTORE_PATH != '' && hashFiles('app/google-services.json') != ''
+        if: github.event_name != 'pull_request' && env.SIGNING_KEYSTORE_PATH != '' && hashFiles('app/google-services.json') != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
