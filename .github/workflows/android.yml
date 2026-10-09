@@ -7,6 +7,11 @@ on:
   # GitHub Actions 화면에서 "Run workflow" 로 직접 다시 빌드할 수 있게 한다.
   workflow_dispatch:
 
+# 빌드가 동시에 돌면서 dev-latest 릴리스를 서로 지우고 만들지 않도록 한 번에 하나씩 실행한다.
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest

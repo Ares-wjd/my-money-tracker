@@ -124,7 +124,7 @@ class MarketDataRepository(
                     if (holding.market == Market.KR) {
                         var chunkEnd = rangeTo
                         while (!chunkEnd.isBefore(rangeFrom)) {
-                            val chunkStart = maxOf(rangeFrom, chunkEnd.minusDays(140))
+                            val chunkStart = maxOf(rangeFrom, chunkEnd.minusDays(130)) // 한 번에 최대 100 영업일
                             kis.domesticDaily(holding.code, chunkStart, chunkEnd).forEach { closes[it.date.toString()] = it.close }
                             chunkEnd = chunkStart.minusDays(1)
                         }
