@@ -25,9 +25,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.common.AccountNumberField
+import com.mymoneytracker.app.ui.common.ChipSelector
 import com.mymoneytracker.app.ui.common.ConfirmDialog
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.TextInput
+import com.mymoneytracker.core.model.AccountKind
 import com.mymoneytracker.core.model.InvestmentAccount
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,6 +81,8 @@ private fun AccountForm(
     onDelete: (() -> Unit)?,
 ) {
     var name by rememberSaveable { mutableStateOf(initial?.name.orEmpty()) }
+    var kind by rememberSaveable { mutableStateOf(initial?.kind ?: AccountKind.GENERAL) }
+    var number by rememberSaveable { mutableStateOf(initial?.number.orEmpty()) }
     var memo by rememberSaveable { mutableStateOf(initial?.memo.orEmpty()) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
@@ -86,6 +91,8 @@ private fun AccountForm(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         TextInput("계좌 이름 (예: 한투 국내, 연금저축)", name, { name = it }, maxLength = 40)
+        ChipSelector("계좌 종류", AccountKind.entries, kind, { it.label }, { kind = it })
+        AccountNumberField(number) { number = it }
         TextInput("메모 (선택)", memo, { memo = it }, singleLine = false, maxLength = 200)
         Button(
             onClick = {
@@ -93,6 +100,8 @@ private fun AccountForm(
                     InvestmentAccount(
                         id = initial?.id.orEmpty(),
                         name = name.trim(),
+                        kind = kind,
+                        number = number.trim(),
                         memo = memo.trim(),
                         createdAt = initial?.createdAt ?: 0L,
                     ),

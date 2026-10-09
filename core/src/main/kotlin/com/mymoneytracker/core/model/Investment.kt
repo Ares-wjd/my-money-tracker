@@ -23,10 +23,23 @@ enum class AssetType(val label: String) {
     BOND("채권"),
 }
 
+/** 투자 계좌 종류. */
+enum class AccountKind(val label: String) {
+    GENERAL("일반(위탁)"),
+    ISA("ISA"),
+    PENSION("연금저축"),
+    IRP("IRP"),
+    DC("퇴직연금(DC)"),
+    OTHER("기타"),
+}
+
 /** 투자 계좌 (예: 한투 국내, 연금저축). */
 data class InvestmentAccount(
     val id: String = "",
     val name: String,
+    val kind: AccountKind = AccountKind.GENERAL,
+    /** 계좌번호 (표시용, 숫자와 - 만). */
+    val number: String = "",
     val memo: String = "",
     val createdAt: Long = 0L,
 )

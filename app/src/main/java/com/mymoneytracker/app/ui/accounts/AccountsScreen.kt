@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioViewModel
 import com.mymoneytracker.app.ui.common.ListRow
+import com.mymoneytracker.app.ui.common.accountDescription
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.PlaceholderContent
 import com.mymoneytracker.app.ui.common.profitColor
@@ -59,7 +60,8 @@ fun AccountsScreen(
                 items(current.accounts, key = { it.account.id }) { account ->
                     ListRow(
                         title = account.account.name,
-                        subtitle = "투자금 ${MoneyFormat.won(account.investedKrw)} · 종목 ${account.holdings.count { it.position.quantity > 0 }}개",
+                        subtitle = accountDescription(account.account.kind.label, account.account.number) +
+                            "\n투자금 ${MoneyFormat.won(account.investedKrw)} · 종목 ${account.holdings.count { it.position.quantity > 0 }}개",
                         value = MoneyFormat.won(account.valueKrw),
                         subValue = "${MoneyFormat.signedWon(account.profitKrw)} (${MoneyFormat.percent(account.returnRate)})",
                         subValueColor = profitColor(account.profitKrw),

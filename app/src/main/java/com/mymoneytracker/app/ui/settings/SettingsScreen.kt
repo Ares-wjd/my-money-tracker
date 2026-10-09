@@ -234,7 +234,21 @@ private fun KisLinkCard(
         if (accounts.isEmpty()) {
             WarningText("먼저 계좌 탭에서 이 한투 계좌에 해당하는 앱 계좌를 만드세요.")
         } else {
-            ChipSelector("불러온 기록을 저장할 앱 계좌", accounts.map { it.id }, linkedId, { id -> accounts.firstOrNull { it.id == id }?.name.orEmpty() }, { linkedId = it })
+            ChipSelector(
+                "불러온 기록을 저장할 앱 계좌",
+                accounts.map { it.id },
+                linkedId,
+                { id -> accounts.firstOrNull { it.id == id }?.name.orEmpty() },
+                { id ->
+                    linkedId = id
+                    // 앱 계좌에 적어 둔 계좌번호가 있으면 앞 8자리를 채워 준다.
+                    val digits = accounts.firstOrNull { it.id == id }?.number?.filter { it.isDigit() }.orEmpty()
+                    if (accountNo.isBlank() && digits.length >= 8) {
+                        accountNo = digits.take(8)
+                        if (digits.length >= 10) product = digits.substring(8, 10)
+                    }
+                },
+            )
         }
         DateField("불러오기 시작일", LocalDate.ofEpochDay(startDay), { startDay = it.toEpochDay() })
         TextButton(

@@ -4,6 +4,7 @@ import com.mymoneytracker.core.goals.GoalCalculator
 import com.mymoneytracker.core.model.GoalType
 import com.mymoneytracker.core.model.SavingsAccount
 import com.mymoneytracker.core.model.SavingsGoal
+import com.mymoneytracker.core.model.SavingsSubAccount
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -41,13 +42,17 @@ class GoalCalculatorTest {
 
     @Test
     fun allocatesNearestGoalFirst() {
-        val account = SavingsAccount(id = "a", name = "IT기기금", balance = 500_000.0, annualRate = 0.035)
+        val account = SavingsAccount(
+            id = "a", name = "IT기기금", annualRate = 0.035,
+            subAccounts = listOf(SavingsSubAccount("CMA", balance = 300_000.0), SavingsSubAccount("채권", balance = 200_000.0)),
+        )
         val laptop = SavingsGoal(id = "l", accountId = "a", name = "노트북", amount = 10_000_000.0,
             dueDate = LocalDate.of(2028, 10, 8), createdAt = 1)
         val phone = SavingsGoal(id = "p", accountId = "a", name = "휴대폰", type = GoalType.RECURRING,
             amount = 2_000_000.0, dueDate = LocalDate.of(2025, 4, 8), intervalMonths = 24, createdAt = 2)
         val summary = GoalCalculator.summarize(account, listOf(laptop, phone), today)
 
+        assertEquals(500_000.0, account.balance, 1e-9)
         assertEquals(listOf("p", "l"), summary.goals.map { it.goal.id })
         val p = summary.goals[0]
         val l = summary.goals[1]
@@ -62,7 +67,7 @@ class GoalCalculatorTest {
 
     @Test
     fun overdueOneTimeGoalNeedsRemainingNow() {
-        val account = SavingsAccount(id = "a", name = "지출", balance = 100.0)
+        val account = SavingsAccount(id = "a", name = "지출", subAccounts = listOf(SavingsSubAccount("CMA", balance = 100.0)))
         val goal = SavingsGoal(accountId = "a", name = "여행", amount = 300.0, dueDate = today.minusDays(1))
         val g = GoalCalculator.summarize(account, listOf(goal), today).goals.single()
         assertTrue(g.overdue)

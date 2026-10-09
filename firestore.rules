@@ -46,8 +46,10 @@ service cloud.firestore {
       match /accounts/{id} {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid)
-          && onlyKeys(['name', 'memo', 'createdAt'])
+          && onlyKeys(['name', 'kind', 'number', 'memo', 'createdAt'])
           && str(data().name, 100)
+          && (!('kind' in data()) || data().kind in ['GENERAL', 'ISA', 'PENSION', 'IRP', 'DC', 'OTHER'])
+          && optStr(data().get('number', null), 40)
           && str(data().memo, 500)
           && num(data().createdAt);
       }
@@ -118,8 +120,9 @@ service cloud.firestore {
       match /savingsAccounts/{id} {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid)
-          && onlyKeys(['name', 'balance', 'balanceDate', 'annualRate', 'memo', 'createdAt'])
+          && onlyKeys(['name', 'subAccounts', 'balance', 'balanceDate', 'annualRate', 'memo', 'createdAt'])
           && str(data().name, 100)
+          && (!('subAccounts' in data()) || (data().subAccounts is list && data().subAccounts.size() <= 20))
           && num(data().balance)
           && optDate(data().get('balanceDate', null))
           && num(data().annualRate)

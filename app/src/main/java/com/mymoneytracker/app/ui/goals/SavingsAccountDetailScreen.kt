@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -29,6 +31,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,6 +48,7 @@ import com.mymoneytracker.core.goals.GoalProgress
 import com.mymoneytracker.core.goals.SavingsSummary
 import com.mymoneytracker.core.model.GoalType
 import com.mymoneytracker.core.model.SavingsAccount
+import com.mymoneytracker.core.model.SavingsSubAccount
 import java.time.LocalDate
 import kotlin.math.roundToLong
 
@@ -90,8 +94,8 @@ fun SavingsAccountDetailScreen(
                 BalanceDialog(
                     account = summary.account,
                     onDismiss = { editBalance = false },
-                    onSave = { balance, date ->
-                        viewModel.saveAccount(summary.account.copy(balance = balance, balanceDate = date))
+                    onSave = { subAccounts, date ->
+                        viewModel.saveAccount(summary.account.copy(subAccounts = subAccounts, balanceDate = date))
                         editBalance = false
                     },
                 )
@@ -125,6 +129,12 @@ private fun SavingsDetailContent(
                     "통장 잔액",
                     MoneyFormat.won(account.balance) + (account.balanceDate?.let { " (${formatDate(it)})" } ?: ""),
                 )
+                account.subAccounts.forEach { sub ->
+                    LabeledValue(
+                        "  · " + listOf(sub.name, sub.number).filter { it.isNotBlank() }.joinToString(" "),
+                        MoneyFormat.won(sub.balance),
+                    )
+                }
                 LabeledValue("기대수익률", "연 ${MoneyFormat.decimal(account.annualRate * 100, 2)}%")
                 LabeledValue("목표 합계", MoneyFormat.won(summary.totalGoalAmount))
                 if (summary.unallocated > 0) LabeledValue("배분 후 남는 잔액", MoneyFormat.won(summary.unallocated))
@@ -190,26 +200,40 @@ private fun GoalCard(progress: GoalProgress, onClick: () -> Unit) {
 private fun BalanceDialog(
     account: SavingsAccount,
     onDismiss: () -> Unit,
-    onSave: (Double, LocalDate) -> Unit,
+    onSave: (List<SavingsSubAccount>, LocalDate) -> Unit,
 ) {
-    var balanceText by rememberSaveable { mutableStateOf(account.balance.roundToLong().toString()) }
+    val rows = rememberSaveable(saver = subAccountRowsSaver) {
+        account.subAccounts.map(SubAccountRow::from).toMutableStateList()
+    }
     var day by rememberSaveable { mutableLongStateOf(LocalDate.now().toEpochDay()) }
-    val balance = MoneyFormat.parseDecimal(balanceText)
+    val valid = rows.all { it.balance.isBlank() || (MoneyFormat.parseDecimal(it.balance) ?: -1.0) >= 0 }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("현재 잔액 입력") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("CMA·채권 등을 합친 현재 금액을 입력하세요.", style = MaterialTheme.typography.bodySmall)
-                NumberField("잔액 (원)", balanceText, { balanceText = it }, allowDecimal = false, preview = { MoneyFormat.won(it) })
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("계좌별 현재 금액을 입력하세요.", style = MaterialTheme.typography.bodySmall)
+                rows.forEachIndexed { index, row ->
+                    NumberField(
+                        listOf(row.name, row.number).filter { it.isNotBlank() }.joinToString(" ") + " (원)",
+                        row.balance,
+                        { rows[index] = row.copy(balance = it) },
+                        allowDecimal = false,
+                        preview = { MoneyFormat.won(it) },
+                    )
+                }
+                LabeledValue("합계", MoneyFormat.won(rows.sumOf { MoneyFormat.parseDecimal(it.balance) ?: 0.0 }), bold = true)
                 DateField("기준일", LocalDate.ofEpochDay(day), { day = it.toEpochDay() })
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { balance?.let { onSave(it, LocalDate.ofEpochDay(day)) } },
-                enabled = balance != null && balance >= 0,
+                onClick = { onSave(rows.mapIndexed { i, row -> row.toSubAccount(i) }, LocalDate.ofEpochDay(day)) },
+                enabled = valid,
             ) { Text("저장") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },

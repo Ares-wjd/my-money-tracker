@@ -8,6 +8,7 @@ import com.google.firebase.firestore.Query
 import com.mymoneytracker.core.model.GoalType
 import com.mymoneytracker.core.model.SavingsAccount
 import com.mymoneytracker.core.model.SavingsGoal
+import com.mymoneytracker.core.model.SavingsSubAccount
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -37,6 +38,10 @@ class SavingsRepository(
         doc.set(
             mapOf(
                 "name" to account.name,
+                "subAccounts" to account.subAccounts.map {
+                    mapOf("name" to it.name, "number" to it.number, "balance" to it.balance)
+                },
+                // 예전 버전·조회 편의를 위해 합계도 함께 저장한다.
                 "balance" to account.balance,
                 "balanceDate" to account.balanceDate?.toString(),
                 "annualRate" to account.annualRate,
@@ -94,10 +99,20 @@ class SavingsRepository(
 
     private fun DocumentSnapshot.toAccount(): SavingsAccount? {
         val name = getString("name") ?: return null
+        val subAccounts = (get("subAccounts") as? List<*>)?.mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            SavingsSubAccount(
+                name = map["name"] as? String ?: "",
+                number = map["number"] as? String ?: "",
+                balance = (map["balance"] as? Number)?.toDouble() ?: 0.0,
+            )
+        }
+            // 예전 버전에서 만든 통장: 잔액 하나를 계좌 하나로 옮긴다.
+            ?: listOf(SavingsSubAccount(name = "기본 계좌", balance = getDouble("balance") ?: 0.0))
         return SavingsAccount(
             id = id,
             name = name,
-            balance = getDouble("balance") ?: 0.0,
+            subAccounts = subAccounts,
             balanceDate = getString("balanceDate")?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
             annualRate = getDouble("annualRate") ?: 0.0,
             memo = getString("memo").orEmpty(),

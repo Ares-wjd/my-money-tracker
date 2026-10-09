@@ -44,6 +44,7 @@ import com.mymoneytracker.app.ui.common.ListRow
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.WarningText
+import com.mymoneytracker.app.ui.common.accountDescription
 import com.mymoneytracker.app.ui.common.formatDate
 import com.mymoneytracker.app.ui.common.profitColor
 import com.mymoneytracker.app.ui.records.recordAmountText
@@ -162,6 +163,14 @@ private fun AccountDetailContent(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        item {
+            Text(
+                listOf(accountDescription(summary.account.kind.label, summary.account.number), summary.account.memo)
+                    .filter { it.isNotBlank() }.joinToString("\n"),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         item {
             SectionCard(highlighted = true) {
                 Text("평가금", style = MaterialTheme.typography.labelLarge)

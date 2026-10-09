@@ -317,3 +317,20 @@ fun ListRow(
         }
     }
 }
+
+/** 계좌번호 입력창 (숫자와 - 만). */
+@Composable
+fun AccountNumberField(value: String, modifier: Modifier = Modifier, label: String = "계좌번호 (선택)", onValueChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { input -> onValueChange(input.filter { it.isDigit() || it == '-' }.take(30)) },
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+        modifier = modifier.fillMaxWidth(),
+    )
+}
+
+/** 계좌 종류·번호를 한 줄로: "ISA · 123-45-6789" */
+fun accountDescription(kindLabel: String, number: String): String =
+    listOf(kindLabel, number).filter { it.isNotBlank() }.joinToString(" · ")

@@ -6,6 +6,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import com.mymoneytracker.core.model.AccountKind
 import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.Holding
@@ -67,6 +68,8 @@ class PortfolioRepository(
         val doc = if (account.id.isEmpty()) accountsCol.document() else accountsCol.document(account.id)
         val data = mapOf(
             "name" to account.name,
+            "kind" to account.kind.name,
+            "number" to account.number,
             "memo" to account.memo,
             F_CREATED_AT to if (account.createdAt > 0) account.createdAt else System.currentTimeMillis(),
         )
@@ -165,6 +168,8 @@ class PortfolioRepository(
         return InvestmentAccount(
             id = id,
             name = name,
+            kind = enumOf(getString("kind"), AccountKind.GENERAL),
+            number = getString("number").orEmpty(),
             memo = getString("memo").orEmpty(),
             createdAt = getLong(F_CREATED_AT) ?: 0L,
         )
