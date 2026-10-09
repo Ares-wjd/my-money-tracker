@@ -63,7 +63,8 @@ jobs:
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "개발 버전 (빌드 #$GITHUB_RUN_NUMBER)" \
-            --notes "브랜치: $GITHUB_REF_NAME
+            --notes "versionCode: $GITHUB_RUN_NUMBER
+          브랜치: $GITHUB_REF_NAME
           커밋: $GITHUB_SHA
 
           폰에서 my-money-tracker.apk 를 눌러 설치하세요."
