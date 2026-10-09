@@ -210,8 +210,8 @@ private fun KisLinkCard(
     SectionCard(title = "한투 연결 계좌 자동 불러오기") {
         Text(
             "KIS Developers 에 연결한 계좌의 체결 내역·잔고를 불러와, 고른 앱 계좌의 기록으로 저장합니다. " +
-                "처음 불러올 때는 시작일 이전부터 갖고 있던 종목을 '초기 보유'로 채우고, 원화 예수금을 한투 값에 맞춥니다. " +
-                "입출금(투자금)과 배당은 직접 입력하세요.",
+                "처음 불러올 때는 시작일 이전부터 갖고 있던 종목을 '초기 보유'로 채웁니다. " +
+                "입금·출금(투자금)과 배당은 직접 입력하세요. 한투 예수금과의 차이는 계좌 화면에서 확인할 수 있습니다.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

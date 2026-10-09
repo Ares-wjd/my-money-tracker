@@ -2,7 +2,6 @@ package com.mymoneytracker.app.data
 
 import com.mymoneytracker.core.market.MarketKeys
 import com.mymoneytracker.core.model.AssetType
-import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Market
@@ -11,14 +10,18 @@ import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import java.time.LocalDate
 import kotlin.math.abs
-import kotlin.math.roundToLong
 
 data class KisSyncResult(
     val importedTrades: Int,
     val createdHoldings: Int,
     val initialPositions: Int,
     val quantityAdjustments: Int,
-    val cashAdjusted: Double?,
+    /** 한투 원화 예수금 (D+2). */
+    val brokerCashKrw: Double?,
+    /** 한투 달러 예수금. */
+    val brokerCashUsd: Double?,
+    /** 예전 버전이 자동으로 만든 예수금 조정 중 지운 개수. */
+    val removedCashAdjustments: Int,
     val warnings: List<String>,
 )
 
@@ -28,7 +31,7 @@ data class KisSyncResult(
  * - 체결 내역 → 매수·매도 기록 (문서 ID 를 주문번호로 정해 중복 저장을 막는다)
  * - 처음 연결할 때는 시작일 이전부터 갖고 있던 수량을 "초기 보유" 기록으로 채운다
  * - 이후에는 잔고 수량과 비교해 미니스탁(소수점)처럼 체결 내역에 안 잡히는 매매를 "수량 맞춤" 으로 채운다
- * - 원화(D+2)·달러 예수금을 한투 값에 맞춰 "예수금 조정" 기록을 만든다 (예탁금 이용료 등)
+ * - 입금·출금(투자금)은 사용자가 직접 입력한다. 예수금은 자동으로 맞추지 않고 한투 값만 돌려준다.
  */
 class KisSyncService(
     private val kis: KisClient,
@@ -173,42 +176,20 @@ class KisSyncService(
 
         newRecords.forEach { repository.saveRecord(it) }
 
-        // 예수금 맞추기: 원화는 D+2 예수금, 달러는 외화예수금 기준 (같은 날 다시 불러오면 그날의 조정 기록을 덮어쓴다)
-        var cashAdjusted: Double? = null
-        val cashTargets = listOfNotNull(
-            domesticBalance.settledCash?.let { Currency.KRW to it },
-            overseasBalance?.usdCash?.let { Currency.USD to it },
-        )
-        for ((currency, realCash) in cashTargets) {
-            val adjustId = "kis_cash_${currency.name.lowercase()}_${todayKey}_${account.id}".sanitizeId()
-            val legacyId = "kis_cash_${todayKey}_${account.id}".sanitizeId()
-            val allRecords = (records + newRecords).filter { it.id != adjustId && it.id != legacyId }
-            val summary = PortfolioCalculator.summarize(listOf(account), accountHoldings, allRecords, usdKrw = null)
-            val diff = realCash - summary.accounts.single().cash[currency]
-            val threshold = if (currency == Currency.KRW) 1.0 else 0.01
-            if (kotlin.math.abs(diff) < threshold) continue
-            repository.saveRecord(
-                Record(
-                    id = adjustId,
-                    accountId = account.id,
-                    type = RecordType.CASH_ADJUST,
-                    date = today,
-                    currency = currency,
-                    amount = if (currency == Currency.KRW) diff.roundToLong().toDouble() else Math.round(diff * 100) / 100.0,
-                    externalId = "KIS:cash",
-                    memo = "한투 예수금 자동 맞춤 (예탁금 이용료·수수료·세금 등)",
-                    createdAt = System.currentTimeMillis(),
-                ),
-            )
-            if (currency == Currency.KRW) cashAdjusted = diff
-        }
+        // 예수금은 자동으로 맞추지 않는다. 기록 안 된 입출금이 "수익" 으로 섞이지 않도록,
+        // 한투 예수금만 돌려주고 차이는 화면에서 보여준다 (입출금은 사용자가 직접 입력).
+        // 예전 버전이 자동으로 만든 예수금 조정 기록은 지운다.
+        val legacyCashAdjustments = records.filter { it.accountId == account.id && it.externalId == "KIS:cash" }
+        legacyCashAdjustments.forEach { repository.deleteRecord(it.id) }
 
         return KisSyncResult(
             importedTrades = newRecords.count { it.externalId?.startsWith("KIS:") == true && it.externalId !in setOf("KIS:init", "KIS:adjust") },
             createdHoldings = createdHoldings,
             initialPositions = initialPositions,
             quantityAdjustments = quantityAdjustments,
-            cashAdjusted = cashAdjusted,
+            brokerCashKrw = domesticBalance.settledCash,
+            brokerCashUsd = overseasBalance?.usdCash,
+            removedCashAdjustments = legacyCashAdjustments.size,
             warnings = warnings,
         )
     }

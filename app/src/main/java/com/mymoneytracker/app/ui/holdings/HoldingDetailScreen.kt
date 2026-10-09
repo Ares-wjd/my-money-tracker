@@ -62,6 +62,7 @@ fun HoldingDetailScreen(
     onOpenRecord: (String) -> Unit,
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
+    val apiStatus by viewModel.apiStatus.collectAsStateWithLifecycle()
     val current = data
     val holding = current?.holding(holdingId)
     val valuation = holding?.let { h ->
@@ -89,6 +90,7 @@ fun HoldingDetailScreen(
                 data = current,
                 valuation = valuation,
                 padding = padding,
+                linked = apiStatus.linkedAccountId == holding.accountId,
                 onEditPrice = { editPrice = true },
                 onAddRecord = onAddRecord,
                 onOpenRecord = onOpenRecord,
@@ -112,6 +114,7 @@ private fun HoldingDetailContent(
     data: PortfolioData,
     valuation: HoldingValuation,
     padding: PaddingValues,
+    linked: Boolean,
     onEditPrice: () -> Unit,
     onAddRecord: (RecordType) -> Unit,
     onOpenRecord: (String) -> Unit,
@@ -175,9 +178,18 @@ private fun HoldingDetailContent(
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { onAddRecord(RecordType.BUY) }, modifier = Modifier.weight(1f)) { Text("매수") }
-                OutlinedButton(onClick = { onAddRecord(RecordType.SELL) }, modifier = Modifier.weight(1f)) { Text("매도") }
+                if (!linked) {
+                    OutlinedButton(onClick = { onAddRecord(RecordType.BUY) }, modifier = Modifier.weight(1f)) { Text("매수") }
+                    OutlinedButton(onClick = { onAddRecord(RecordType.SELL) }, modifier = Modifier.weight(1f)) { Text("매도") }
+                }
                 OutlinedButton(onClick = { onAddRecord(RecordType.DIVIDEND) }, modifier = Modifier.weight(1f)) { Text("배당") }
+            }
+            if (linked) {
+                Text(
+                    "한투 연결 계좌의 종목이라 매수·매도는 한투에서 불러옵니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
         item { Text("기록", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }

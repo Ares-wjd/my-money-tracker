@@ -37,8 +37,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mymoneytracker.app.ui.ApiStatus
 import com.mymoneytracker.app.ui.PortfolioData
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.common.ConfirmDialog
 import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.ListRow
 import com.mymoneytracker.app.ui.common.LoadingBox
@@ -107,7 +109,9 @@ fun AccountDetailScreen(
                     text = { Text("기록 추가") },
                 )
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    addableTypes.forEach { type ->
+                    // 한투 연결 계좌는 매수·매도를 불러오므로 직접 추가하지 않는다 (중복 방지).
+                    val linkedHere = apiStatus.linkedAccountId == accountId
+                    addableTypes.filter { !linkedHere || (it != RecordType.BUY && it != RecordType.SELL) }.forEach { type ->
                         DropdownMenuItem(
                             text = { Text(type.label) },
                             onClick = {
@@ -128,8 +132,10 @@ fun AccountDetailScreen(
                 summary = summary,
                 padding = padding,
                 linked = apiStatus.linkedAccountId == accountId,
+                apiStatus = apiStatus,
                 syncing = syncing,
                 onSync = { viewModel.syncKisAccount() },
+                onRecordCashDifference = { currency, diff -> viewModel.recordCashDifference(accountId, currency, diff) },
                 onOpenSettings = onOpenSettings,
                 onAddHolding = onAddHolding,
                 onOpenHolding = onOpenHolding,
@@ -146,8 +152,10 @@ private fun AccountDetailContent(
     summary: AccountSummary,
     padding: PaddingValues,
     linked: Boolean,
+    apiStatus: ApiStatus,
     syncing: Boolean,
     onSync: () -> Unit,
+    onRecordCashDifference: (Currency, Double) -> Unit,
     onOpenSettings: () -> Unit,
     onAddHolding: () -> Unit,
     onOpenHolding: (String) -> Unit,
@@ -198,18 +206,14 @@ private fun AccountDetailContent(
 
         if (linked) {
             item {
-                SectionCard(title = "한투 연결 계좌") {
-                    Text(
-                        "매수·매도 체결과 원화 예수금을 한투에서 불러옵니다. 입출금과 배당은 직접 입력하세요.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(onClick = onSync, enabled = !syncing) { Text("한투에서 불러오기") }
-                        if (syncing) CircularProgressIndicator(Modifier.padding(start = 12.dp).size(20.dp), strokeWidth = 2.dp)
-                        TextButton(onClick = onOpenSettings) { Text("연결 설정") }
-                    }
-                }
+                LinkedAccountCard(
+                    summary = summary,
+                    apiStatus = apiStatus,
+                    syncing = syncing,
+                    onSync = onSync,
+                    onOpenSettings = onOpenSettings,
+                    onRecordCashDifference = onRecordCashDifference,
+                )
             }
         }
 
@@ -278,5 +282,73 @@ private fun AccountDetailContent(
             )
             HorizontalDivider()
         }
+    }
+}
+
+/** 한투 연결 계좌: 매매는 불러오고, 입출금은 직접 입력. 한투 예수금과 앱 계산 예수금의 차이를 보여준다. */
+@Composable
+private fun LinkedAccountCard(
+    summary: AccountSummary,
+    apiStatus: ApiStatus,
+    syncing: Boolean,
+    onSync: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onRecordCashDifference: (Currency, Double) -> Unit,
+) {
+    var confirm by rememberSaveable { mutableStateOf<String?>(null) }
+    val differences = listOfNotNull(
+        apiStatus.brokerCashKrw?.let { Triple(Currency.KRW, it, it - summary.cash.krw) }?.takeIf { kotlin.math.abs(it.third) >= 1 },
+        apiStatus.brokerCashUsd?.let { Triple(Currency.USD, it, it - summary.cash.usd) }?.takeIf { kotlin.math.abs(it.third) >= 0.01 },
+    )
+
+    SectionCard(title = "한투 연결 계좌") {
+        Text(
+            "매수·매도 체결은 한투에서 불러옵니다. 입금·출금(투자금)과 배당은 직접 기록하세요.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = onSync, enabled = !syncing) { Text("한투에서 불러오기") }
+            if (syncing) CircularProgressIndicator(Modifier.padding(start = 12.dp).size(20.dp), strokeWidth = 2.dp)
+            TextButton(onClick = onOpenSettings) { Text("연결 설정") }
+        }
+        apiStatus.brokerCashDate?.let { date ->
+            Text(
+                "한투 예수금 (${formatDate(date)} 불러온 값)",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            apiStatus.brokerCashKrw?.let { LabeledValue("원화 (D+2)", MoneyFormat.won(it)) }
+            apiStatus.brokerCashUsd?.let { LabeledValue("달러", MoneyFormat.usd(it)) }
+            if (differences.isEmpty()) {
+                Text("앱 계산 예수금과 같습니다.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                differences.forEach { (currency, _, diff) ->
+                    WarningText("앱 계산 예수금과 ${MoneyFormat.signedAmount(currency, diff)} 차이가 있습니다.")
+                }
+                Text(
+                    "기록하지 않은 입금·출금 때문이면 기록 추가에서 입금·출금을 남기세요. " +
+                        "예탁금 이용료·수수료·세금 때문이면 아래 버튼으로 예수금 조정을 남기세요.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                differences.forEach { (currency, _, diff) ->
+                    TextButton(onClick = { confirm = currency.name }) {
+                        Text("${currency.label} 차이 ${MoneyFormat.signedAmount(currency, diff)} 를 예수금 조정으로 기록")
+                    }
+                }
+            }
+        }
+    }
+
+    differences.firstOrNull { it.first.name == confirm }?.let { (currency, _, diff) ->
+        ConfirmDialog(
+            title = "예수금 조정",
+            text = "${MoneyFormat.signedAmount(currency, diff)} 를 예수금 조정으로 기록합니다. 이 금액은 투자금이 아니라 수익으로 계산됩니다. " +
+                "입금·출금 때문에 생긴 차이라면 취소하고 입금·출금을 기록하세요.",
+            confirmLabel = "기록",
+            onConfirm = { onRecordCashDifference(currency, diff) },
+            onDismiss = { confirm = null },
+        )
     }
 }
