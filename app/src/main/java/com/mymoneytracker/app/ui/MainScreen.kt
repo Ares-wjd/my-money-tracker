@@ -39,7 +39,11 @@ import com.mymoneytracker.app.ui.accounts.AccountDetailScreen
 import com.mymoneytracker.app.ui.accounts.AccountEditScreen
 import com.mymoneytracker.app.ui.accounts.AccountsScreen
 import com.mymoneytracker.app.ui.common.LoadingBox
+import com.mymoneytracker.app.ui.goals.GoalEditScreen
 import com.mymoneytracker.app.ui.goals.GoalsScreen
+import com.mymoneytracker.app.ui.goals.GoalsViewModel
+import com.mymoneytracker.app.ui.goals.SavingsAccountDetailScreen
+import com.mymoneytracker.app.ui.goals.SavingsAccountEditScreen
 import com.mymoneytracker.app.ui.holdings.HoldingDetailScreen
 import com.mymoneytracker.app.ui.holdings.HoldingEditScreen
 import com.mymoneytracker.app.ui.home.HomeScreen
@@ -63,6 +67,9 @@ private object Routes {
     const val HOLDING_EDIT = "holding-edit/{accountId}?holdingId={holdingId}"
     const val RECORD_EDIT = "record-edit/{accountId}/{type}?recordId={recordId}&holdingId={holdingId}"
     const val CASH_ADJUST = "cash-adjust/{accountId}"
+    const val SAVINGS_DETAIL = "savings/{savingsId}"
+    const val SAVINGS_EDIT = "savings-edit?savingsId={savingsId}"
+    const val GOAL_EDIT = "goal-edit/{savingsId}?goalId={goalId}"
 
     fun accountDetail(id: String) = "account/$id"
     fun accountEdit(id: String? = null) = if (id == null) "account-edit" else "account-edit?accountId=$id"
@@ -74,6 +81,10 @@ private object Routes {
         return "record-edit/$accountId/${type.name}" + if (query.isEmpty()) "" else "?" + query.joinToString("&")
     }
     fun cashAdjust(accountId: String) = "cash-adjust/$accountId"
+    fun savingsDetail(id: String) = "savings/$id"
+    fun savingsEdit(id: String? = null) = if (id == null) "savings-edit" else "savings-edit?savingsId=$id"
+    fun goalEdit(savingsId: String, goalId: String? = null) =
+        "goal-edit/$savingsId" + (goalId?.let { "?goalId=$it" } ?: "")
 }
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
@@ -95,12 +106,14 @@ private fun optionalString(name: String) = navArgument(name) {
 @Composable
 fun MainScreen(user: SignedInUser, onSignOut: () -> Unit) {
     val portfolioViewModel: PortfolioViewModel = viewModel(key = user.uid, factory = PortfolioViewModel.factory(user.uid))
+    val goalsViewModel: GoalsViewModel = viewModel(key = "goals-" + user.uid, factory = GoalsViewModel.factory(user.uid))
     val updateViewModel: AppUpdateViewModel = viewModel()
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val snackbarHostState = remember { SnackbarHostState() }
     val message by portfolioViewModel.message.collectAsStateWithLifecycle()
+    val goalsMessage by goalsViewModel.message.collectAsStateWithLifecycle()
     val updateState by updateViewModel.state.collectAsStateWithLifecycle()
     val showUpdateDialog by updateViewModel.showDialog.collectAsStateWithLifecycle()
 
@@ -111,6 +124,13 @@ fun MainScreen(user: SignedInUser, onSignOut: () -> Unit) {
         message?.let {
             snackbarHostState.showSnackbar(it)
             portfolioViewModel.messageShown()
+        }
+    }
+
+    LaunchedEffect(goalsMessage) {
+        goalsMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            goalsViewModel.messageShown()
         }
     }
 
@@ -157,7 +177,50 @@ fun MainScreen(user: SignedInUser, onSignOut: () -> Unit) {
                     onAddAccount = { navController.navigate(Routes.accountEdit()) },
                 )
             }
-            composable(Routes.GOALS) { GoalsScreen() }
+            composable(Routes.GOALS) {
+                GoalsScreen(
+                    viewModel = goalsViewModel,
+                    onOpenAccount = { navController.navigate(Routes.savingsDetail(it)) },
+                    onAddAccount = { navController.navigate(Routes.savingsEdit()) },
+                )
+            }
+            composable(Routes.SAVINGS_DETAIL) { entry ->
+                val savingsId = entry.arguments?.getString("savingsId").orEmpty()
+                SavingsAccountDetailScreen(
+                    viewModel = goalsViewModel,
+                    accountId = savingsId,
+                    onBack = { navController.popBackStack() },
+                    onEdit = { navController.navigate(Routes.savingsEdit(savingsId)) },
+                    onAddGoal = { navController.navigate(Routes.goalEdit(savingsId)) },
+                    onOpenGoal = { navController.navigate(Routes.goalEdit(savingsId, it)) },
+                )
+            }
+            composable(Routes.SAVINGS_EDIT, arguments = listOf(optionalString("savingsId"))) { entry ->
+                val savingsId = entry.arguments?.getString("savingsId")
+                SavingsAccountEditScreen(
+                    viewModel = goalsViewModel,
+                    accountId = savingsId,
+                    onBack = { navController.popBackStack() },
+                    onSaved = { savedId ->
+                        navController.popBackStack()
+                        if (savingsId == null) navController.navigate(Routes.savingsDetail(savedId))
+                    },
+                    onDeleted = {
+                        if (!navController.popBackStack(Routes.GOALS, inclusive = false)) {
+                            navController.navigateToTab(Routes.GOALS)
+                        }
+                    },
+                )
+            }
+            composable(Routes.GOAL_EDIT, arguments = listOf(optionalString("goalId"))) { entry ->
+                GoalEditScreen(
+                    viewModel = goalsViewModel,
+                    accountId = entry.arguments?.getString("savingsId").orEmpty(),
+                    goalId = entry.arguments?.getString("goalId"),
+                    onBack = { navController.popBackStack() },
+                    onDone = { navController.popBackStack() },
+                )
+            }
             composable(Routes.SETTINGS) {
                 SettingsScreen(
                     user = user,
