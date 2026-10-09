@@ -1,4 +1,4 @@
-# 내 자산 (My Money Tracker)
+# Money Tracker
 
 안드로이드용 개인 자산 관리 앱. 데이터는 Google 클라우드(Firebase Firestore)에 저장한다.
 

@@ -53,7 +53,7 @@ fun LoginScreen(onSignIn: suspend (Context) -> Unit) {
                 tint = MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.height(16.dp))
-            Text("내 자산", style = MaterialTheme.typography.headlineMedium)
+            Text("Money Tracker", style = MaterialTheme.typography.headlineMedium)
             Spacer(Modifier.height(8.dp))
             Text(
                 "모든 자산과 부채를 한곳에서 관리하세요.\n데이터는 Google 클라우드에 안전하게 저장됩니다.",
