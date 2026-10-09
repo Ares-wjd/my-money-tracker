@@ -99,34 +99,54 @@ class KisClient(private val store: SecureStore) {
 
     private data class KisResponse(val json: JSONObject, val hasMore: Boolean)
 
-    /** 조회 API 호출. rt_cd 가 0 이 아니면 한투가 보낸 메시지로 예외를 던진다. */
+    /**
+     * 조회 API 호출. rt_cd 가 0 이 아니면 한투가 보낸 메시지로 예외를 던진다.
+     * 초당 호출 한도(EGW00201)에 걸리면 잠시 기다렸다가 최대 [MAX_RETRIES] 번 다시 시도한다.
+     */
     private suspend fun call(path: String, trId: String, params: Map<String, String>, continued: Boolean = false): KisResponse {
         val (appKey, appSecret) = credentials()
-        val accessToken = token()
-        return callMutex.withLock {
-            delay(CALL_INTERVAL_MS) // 초당 호출 한도 대응
-            val response = withContext(Dispatchers.IO) {
-                HttpJson.get(
-                    BASE + path,
-                    params,
-                    mapOf(
-                        "content-type" to "application/json; charset=utf-8",
-                        "authorization" to "Bearer $accessToken",
-                        "appkey" to appKey,
-                        "appsecret" to appSecret,
-                        "tr_id" to trId,
-                        "tr_cont" to if (continued) "N" else "",
-                        "custtype" to "P",
-                    ),
-                )
+        var attempt = 0
+        while (true) {
+            val accessToken = token()
+            val result = callMutex.withLock {
+                delay(CALL_INTERVAL_MS) // 초당 호출 한도 대응: 모든 호출을 한 줄로 세워 간격을 둔다
+                val response = withContext(Dispatchers.IO) {
+                    HttpJson.get(
+                        BASE + path,
+                        params,
+                        mapOf(
+                            "content-type" to "application/json; charset=utf-8",
+                            "authorization" to "Bearer $accessToken",
+                            "appkey" to appKey,
+                            "appsecret" to appSecret,
+                            "tr_id" to trId,
+                            "tr_cont" to if (continued) "N" else "",
+                            "custtype" to "P",
+                        ),
+                    )
+                }
+                val json = runCatching { JSONObject(response.body) }.getOrNull()
+                    ?: throw ApiException("한투 응답을 읽지 못했습니다 (HTTP ${response.code}).")
+                json to response.headers["tr_cont"]
             }
-            val json = runCatching { JSONObject(response.body) }.getOrNull()
-                ?: throw ApiException("한투 응답을 읽지 못했습니다 (HTTP ${response.code}).")
-            if (json.optString("rt_cd") != "0") {
-                if (json.optString("msg_cd") == "EGW00123") clearToken() // 토큰 만료
-                throw ApiException("한투 API 오류: ${json.optString("msg1").ifBlank { "HTTP ${response.code}" }}")
+            val (json, trCont) = result
+            if (json.optString("rt_cd") == "0") return KisResponse(json, trCont in setOf("F", "M"))
+
+            val msgCode = json.optString("msg_cd")
+            if (msgCode == RATE_LIMIT_CODE && attempt < MAX_RETRIES) {
+                attempt++
+                delay(RETRY_BASE_DELAY_MS * attempt)
+                continue
             }
-            KisResponse(json, response.headers["tr_cont"] in setOf("F", "M"))
+            if (msgCode == "EGW00123") clearToken() // 토큰 만료
+            val message = json.optString("msg1").ifBlank { "알 수 없는 오류" }
+            throw ApiException(
+                if (msgCode == RATE_LIMIT_CODE) {
+                    "한투 API 초당 호출 한도를 넘었습니다. 잠시 후 다시 시도하세요. ($message)"
+                } else {
+                    "한투 API 오류: $message"
+                },
+            )
         }
     }
 
@@ -365,7 +385,11 @@ class KisClient(private val store: SecureStore) {
 
     companion object {
         private const val BASE = "https://openapi.koreainvestment.com:9443"
-        private const val CALL_INTERVAL_MS = 80L
+        /** 호출 간격. 실전 한도(초당 20건)보다 넉넉하게 초당 약 4건. */
+        private const val CALL_INTERVAL_MS = 250L
+        private const val RATE_LIMIT_CODE = "EGW00201"
+        private const val MAX_RETRIES = 4
+        private const val RETRY_BASE_DELAY_MS = 1_200L
         private const val MAX_PAGES = 20
         private val YMD: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
 
