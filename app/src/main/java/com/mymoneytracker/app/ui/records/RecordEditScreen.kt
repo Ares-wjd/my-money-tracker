@@ -36,6 +36,7 @@ import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.NumberField
 import com.mymoneytracker.app.ui.common.TextInput
 import com.mymoneytracker.app.ui.common.WarningText
+import com.mymoneytracker.app.ui.common.formatDate
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.Record
@@ -71,6 +72,16 @@ fun RecordEditScreen(
     ) { padding ->
         if (current == null || (recordId != null && existing == null)) {
             LoadingBox(Modifier.padding(padding))
+        } else if (existing != null && existing.externalId != null) {
+            ImportedRecordView(
+                data = current,
+                record = existing,
+                modifier = Modifier.padding(padding),
+                onSave = { record ->
+                    viewModel.saveRecord(record)
+                    onDone()
+                },
+            )
         } else {
             RecordForm(
                 data = current,
@@ -312,5 +323,33 @@ private fun RecordForm(
             onConfirm = onDelete,
             onDismiss = { confirmDelete = false },
         )
+    }
+}
+
+/** 한투에서 불러온 기록: 내용은 고칠 수 없고 메모만 고칠 수 있다. */
+@Composable
+private fun ImportedRecordView(
+    data: PortfolioData,
+    record: Record,
+    modifier: Modifier,
+    onSave: (Record) -> Unit,
+) {
+    var memo by rememberSaveable { mutableStateOf(record.memo) }
+    val accountId = record.accountId
+    Column(
+        modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            "한투에서 불러온 기록이라 내용은 고칠 수 없고 메모만 고칠 수 있습니다. 잘못되었다면 한투 앱의 내역을 확인하세요.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LabeledValue("날짜", formatDate(record.date))
+        LabeledValue("내용", recordTitle(record, data, accountId))
+        recordDetailText(record, data)?.let { LabeledValue("상세", it) }
+        LabeledValue("금액", recordAmountText(record, data, accountId))
+        TextInput("메모", memo, { memo = it }, maxLength = 100)
+        Button(onClick = { onSave(record.copy(memo = memo.trim())) }, modifier = Modifier.fillMaxWidth()) { Text("메모 저장") }
     }
 }

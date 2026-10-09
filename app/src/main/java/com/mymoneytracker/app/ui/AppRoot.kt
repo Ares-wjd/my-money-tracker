@@ -16,7 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.firebase.firestore.FirebaseFirestore
 import com.mymoneytracker.app.data.AuthRepository
+import com.mymoneytracker.app.data.UserDataDeleter
 import com.mymoneytracker.app.ui.login.LoginScreen
 import kotlinx.coroutines.launch
 
@@ -33,6 +35,11 @@ fun AppRoot() {
         else -> MainScreen(
             user = signedIn,
             onSignOut = { scope.launch { authRepository.signOut() } },
+            onDeleteAccount = { activityContext ->
+                authRepository.deleteAccount(activityContext) { uid ->
+                    UserDataDeleter(FirebaseFirestore.getInstance()).deleteAll(uid)
+                }
+            },
         )
     }
 }

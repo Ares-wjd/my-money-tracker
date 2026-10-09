@@ -1,5 +1,6 @@
 package com.mymoneytracker.app.ui
 
+import android.content.Context
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -104,7 +105,11 @@ private fun optionalString(name: String) = navArgument(name) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun MainScreen(user: SignedInUser, onSignOut: () -> Unit) {
+fun MainScreen(
+    user: SignedInUser,
+    onSignOut: () -> Unit,
+    onDeleteAccount: suspend (Context) -> Unit,
+) {
     val portfolioViewModel: PortfolioViewModel = viewModel(key = user.uid, factory = PortfolioViewModel.factory(user.uid))
     val goalsViewModel: GoalsViewModel = viewModel(key = "goals-" + user.uid, factory = GoalsViewModel.factory(user.uid))
     val updateViewModel: AppUpdateViewModel = viewModel()
@@ -227,6 +232,7 @@ fun MainScreen(user: SignedInUser, onSignOut: () -> Unit) {
                     portfolioViewModel = portfolioViewModel,
                     updateViewModel = updateViewModel,
                     onSignOut = onSignOut,
+                    onDeleteAccount = onDeleteAccount,
                 )
             }
 
@@ -263,6 +269,7 @@ fun MainScreen(user: SignedInUser, onSignOut: () -> Unit) {
                         navController.navigate(Routes.recordEdit(accountId, RecordType.DEPOSIT, recordId = recordId))
                     },
                     onAdjustCash = { navController.navigate(Routes.cashAdjust(accountId)) },
+                    onOpenSettings = { navController.navigateToTab(Routes.SETTINGS) },
                 )
             }
             composable(Routes.HOLDING_EDIT, arguments = listOf(optionalString("holdingId"))) { entry ->

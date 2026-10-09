@@ -8,6 +8,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -40,6 +41,24 @@ class AuthRepository(private val appContext: Context) {
      * [activityContext] 는 계정 선택 UI 를 띄울 Activity 컨텍스트여야 한다.
      */
     suspend fun signInWithGoogle(activityContext: Context) {
+        auth.signInWithCredential(googleCredential(activityContext)).await()
+    }
+
+    /**
+     * 계정 삭제: Google 로 다시 인증한 뒤(Firebase 보안 정책) [deleteData] 로 클라우드 데이터를 지우고
+     * Firebase 로그인 계정을 삭제한다.
+     */
+    suspend fun deleteAccount(activityContext: Context, deleteData: suspend (uid: String) -> Unit) {
+        val user = auth.currentUser ?: error("로그인되어 있지 않습니다.")
+        user.reauthenticate(googleCredential(activityContext)).await()
+        deleteData(user.uid)
+        user.delete().await()
+        runCatching {
+            CredentialManager.create(appContext).clearCredentialState(ClearCredentialStateRequest())
+        }
+    }
+
+    private suspend fun googleCredential(activityContext: Context): AuthCredential {
         val clientId = webClientId()
             ?: error("웹 클라이언트 ID를 찾을 수 없습니다. google-services.json 을 다시 받아 주세요.")
 
@@ -56,7 +75,7 @@ class AuthRepository(private val appContext: Context) {
             error("지원하지 않는 로그인 방식입니다.")
         }
         val idToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
-        auth.signInWithCredential(GoogleAuthProvider.getCredential(idToken, null)).await()
+        return GoogleAuthProvider.getCredential(idToken, null)
     }
 
     suspend fun signOut() {

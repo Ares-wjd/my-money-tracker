@@ -85,6 +85,8 @@ data class Record(
     val tax: Double = 0.0,
     /** 이미 보유하던 종목을 처음 등록할 때 쓴 매수 기록인지 (표시용). */
     val initial: Boolean = false,
+    /** 한투 API 에서 불러온 기록이면 원본 식별자 (예: 주문번호). 이런 기록은 메모만 고칠 수 있다. */
+    val externalId: String? = null,
     val memo: String = "",
     val createdAt: Long = 0L,
 )

@@ -125,6 +125,7 @@ class PortfolioRepository(
             "fee" to record.fee,
             "tax" to record.tax,
             "initial" to record.initial,
+            "externalId" to record.externalId,
             "memo" to record.memo,
             F_CREATED_AT to if (record.createdAt > 0) record.createdAt else System.currentTimeMillis(),
         )
@@ -203,6 +204,7 @@ class PortfolioRepository(
             fee = getDouble("fee") ?: 0.0,
             tax = getDouble("tax") ?: 0.0,
             initial = getBoolean("initial") ?: false,
+            externalId = getString("externalId"),
             memo = getString("memo").orEmpty(),
             createdAt = getLong(F_CREATED_AT) ?: 0L,
         )

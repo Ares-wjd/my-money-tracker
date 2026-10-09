@@ -6,12 +6,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -75,8 +77,11 @@ fun AccountDetailScreen(
     onAddRecord: (RecordType) -> Unit,
     onOpenRecord: (String) -> Unit,
     onAdjustCash: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
+    val apiStatus by viewModel.apiStatus.collectAsStateWithLifecycle()
+    val syncing by viewModel.syncing.collectAsStateWithLifecycle()
     val current = data
     val summary = current?.accountSummary(accountId)
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -121,6 +126,10 @@ fun AccountDetailScreen(
                 data = current,
                 summary = summary,
                 padding = padding,
+                linked = apiStatus.linkedAccountId == accountId,
+                syncing = syncing,
+                onSync = { viewModel.syncKisAccount() },
+                onOpenSettings = onOpenSettings,
                 onAddHolding = onAddHolding,
                 onOpenHolding = onOpenHolding,
                 onOpenRecord = onOpenRecord,
@@ -135,6 +144,10 @@ private fun AccountDetailContent(
     data: PortfolioData,
     summary: AccountSummary,
     padding: PaddingValues,
+    linked: Boolean,
+    syncing: Boolean,
+    onSync: () -> Unit,
+    onOpenSettings: () -> Unit,
     onAddHolding: () -> Unit,
     onOpenHolding: (String) -> Unit,
     onOpenRecord: (String) -> Unit,
@@ -171,6 +184,23 @@ private fun AccountDetailContent(
                 LabeledValue("누적 배당", MoneyFormat.won(summary.dividendsKrw))
                 if (summary.missingFx) WarningText("환율이 없어 달러 금액이 원화 합계에서 빠져 있습니다. 설정에서 환율을 입력하세요.")
                 if (summary.missingPrice) WarningText("현재가가 없는 종목이 있습니다. 종목을 눌러 가격을 입력하세요.")
+            }
+        }
+
+        if (linked) {
+            item {
+                SectionCard(title = "한투 연결 계좌") {
+                    Text(
+                        "매수·매도 체결과 원화 예수금을 한투에서 불러옵니다. 입출금과 배당은 직접 입력하세요.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(onClick = onSync, enabled = !syncing) { Text("한투에서 불러오기") }
+                        if (syncing) CircularProgressIndicator(Modifier.padding(start = 12.dp).size(20.dp), strokeWidth = 2.dp)
+                        TextButton(onClick = onOpenSettings) { Text("연결 설정") }
+                    }
+                }
             }
         }
 
