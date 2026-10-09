@@ -19,7 +19,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -37,6 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.common.DateField
+import com.mymoneytracker.app.ui.common.GoalProgressBar
+import com.mymoneytracker.app.ui.common.appCardColors
 import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.NumberField
@@ -81,6 +82,8 @@ fun SavingsAccountDetailScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onAddGoal,
+                containerColor = MaterialTheme.colorScheme.inverseSurface,
+                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
                 text = { Text("목표 추가") },
             )
@@ -166,7 +169,7 @@ private fun SavingsDetailContent(
 @Composable
 private fun GoalCard(progress: GoalProgress, onClick: () -> Unit) {
     val goal = progress.goal
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = appCardColors()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(goal.name, style = MaterialTheme.typography.titleMedium)
             Text(
@@ -178,10 +181,7 @@ private fun GoalCard(progress: GoalProgress, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            LinearProgressIndicator(
-                progress = { progress.achievedRate.toFloat() },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            )
+            GoalProgressBar(progress.achievedRate.toFloat(), Modifier.padding(vertical = 4.dp))
             LabeledValue(
                 "모은 금액",
                 "${MoneyFormat.won(progress.allocated)} / ${MoneyFormat.won(goal.amount)} (${(progress.achievedRate * 100).roundToLong()}%)",

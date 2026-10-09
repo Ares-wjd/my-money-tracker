@@ -22,6 +22,8 @@ data class KisSyncResult(
     val brokerCashUsd: Double?,
     /** 예전 버전이 자동으로 만든 예수금 조정 중 지운 개수. */
     val removedCashAdjustments: Int,
+    /** 잔고에 함께 온 현재가 (시세 키 → 가격). */
+    val currentPrices: Map<String, Double>,
     val warnings: List<String>,
 )
 
@@ -33,10 +35,34 @@ data class KisSyncResult(
  * - 이후에는 잔고 수량과 비교해 미니스탁(소수점)처럼 체결 내역에 안 잡히는 매매를 "수량 맞춤" 으로 채운다
  * - 입금·출금(투자금)은 사용자가 직접 입력한다. 예수금은 자동으로 맞추지 않고 한투 값만 돌려준다.
  */
+/** 연결 계좌의 실제 예수금과 현재가 (주기적 새로고침용, 체결 내역은 받지 않는다). */
+data class BrokerSnapshot(
+    val cashKrw: Double?,
+    val cashUsd: Double?,
+    val prices: Map<String, Double>,
+    val warnings: List<String>,
+)
+
 class KisSyncService(
     private val kis: KisClient,
     private val repository: PortfolioRepository,
 ) {
+    /** 잔고 조회 2번(국내·해외)으로 실제 예수금과 현재가를 받는다. */
+    suspend fun brokerSnapshot(): BrokerSnapshot {
+        val warnings = mutableListOf<String>()
+        val domestic = kis.domesticBalance()
+        val overseas = try {
+            kis.overseasPresentBalance()
+        } catch (e: ApiException) {
+            warnings += "해외 잔고: ${e.message}"
+            null
+        }
+        val prices = (domestic.holdings + overseas?.holdings.orEmpty())
+            .mapNotNull { h -> h.currentPrice?.takeIf { it > 0 }?.let { MarketKeys.key(h.market, h.code) to it } }
+            .toMap()
+        return BrokerSnapshot(domestic.settledCash, overseas?.usdCash, prices, warnings)
+    }
+
     suspend fun sync(
         account: InvestmentAccount,
         holdings: List<Holding>,
@@ -190,6 +216,9 @@ class KisSyncService(
             brokerCashKrw = domesticBalance.settledCash,
             brokerCashUsd = overseasBalance?.usdCash,
             removedCashAdjustments = legacyCashAdjustments.size,
+            currentPrices = (domesticBalance.holdings + overseasBalance?.holdings.orEmpty())
+                .mapNotNull { h -> h.currentPrice?.takeIf { it > 0 }?.let { MarketKeys.key(h.market, h.code) to it } }
+                .toMap(),
             warnings = warnings,
         )
     }

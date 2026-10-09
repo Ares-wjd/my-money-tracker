@@ -12,7 +12,9 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -23,7 +25,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -132,6 +138,20 @@ fun MainScreen(
         }
     }
 
+    // 홈·계좌 화면을 보는 동안(앱이 화면에 있을 때만) 1분마다 현재가를 새로 받는다.
+    // 한투 실전 한도는 초당 20건이라 종목 몇 개를 1분마다 조회하는 것은 여유가 있다.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val liveRoute = currentRoute in setOf(Routes.HOME, Routes.ACCOUNTS, Routes.ACCOUNT_DETAIL, Routes.HOLDING_DETAIL)
+    LaunchedEffect(liveRoute) {
+        if (!liveRoute) return@LaunchedEffect
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                delay(AUTO_REFRESH_MS)
+                portfolioViewModel.refreshQuotes(silent = true)
+            }
+        }
+    }
+
     LaunchedEffect(goalsMessage) {
         goalsMessage?.let {
             snackbarHostState.showSnackbar(it)
@@ -149,13 +169,18 @@ fun MainScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             if (tabs.any { it.route == currentRoute }) {
-                NavigationBar {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest) {
                     tabs.forEach { tab ->
                         NavigationBarItem(
                             selected = currentRoute == tab.route,
                             onClick = { navController.navigateToTab(tab.route) },
                             icon = { Icon(tab.icon, contentDescription = null) },
                             label = { Text(tab.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            ),
                         )
                     }
                 }
@@ -332,6 +357,8 @@ fun MainScreen(
         }
     }
 }
+
+private const val AUTO_REFRESH_MS = 60_000L
 
 private fun NavHostController.navigateToTab(route: String) {
     navigate(route) {

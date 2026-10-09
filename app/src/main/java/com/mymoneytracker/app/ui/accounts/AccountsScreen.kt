@@ -3,13 +3,13 @@ package com.mymoneytracker.app.ui.accounts
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -19,7 +19,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.common.AccountKindBadge
 import com.mymoneytracker.app.ui.common.ListRow
+import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.accountDescription
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.PlaceholderContent
@@ -40,6 +42,8 @@ fun AccountsScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onAddAccount,
+                containerColor = MaterialTheme.colorScheme.inverseSurface,
+                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
                 text = { Text("계좌 추가") },
             )
@@ -57,17 +61,24 @@ fun AccountsScreen(
                 modifier = Modifier.padding(padding),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
             ) {
-                items(current.accounts, key = { it.account.id }) { account ->
-                    ListRow(
-                        title = account.account.name,
-                        subtitle = accountDescription(account.account.kind.label, account.account.number) +
-                            "\n투자금 ${MoneyFormat.won(account.investedKrw)} · 종목 ${account.holdings.count { it.position.quantity > 0 }}개",
-                        value = MoneyFormat.won(account.valueKrw),
-                        subValue = "${MoneyFormat.signedWon(account.profitKrw)} (${MoneyFormat.percent(account.returnRate)})",
-                        subValueColor = profitColor(account.profitKrw),
-                        onClick = { onOpenAccount(account.account.id) },
-                    )
-                    HorizontalDivider()
+                item {
+                    SectionCard {
+                        current.accounts.forEachIndexed { index, account ->
+                            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            ListRow(
+                                title = account.account.name,
+                                subtitle = listOf(
+                                    accountDescription(account.account.kind.label, account.account.number),
+                                    "투자금 ${MoneyFormat.won(account.investedKrw)} · 종목 ${account.holdings.count { it.position.quantity > 0 }}개",
+                                ).filter { it.isNotBlank() }.joinToString("\n"),
+                                value = MoneyFormat.won(account.valueKrw),
+                                subValue = "${MoneyFormat.signedWon(account.profitKrw)} (${MoneyFormat.percent(account.returnRate)})",
+                                subValueColor = profitColor(account.profitKrw),
+                                onClick = { onOpenAccount(account.account.id) },
+                                leading = { AccountKindBadge(account.account.kind) },
+                            )
+                        }
+                    }
                 }
             }
         }

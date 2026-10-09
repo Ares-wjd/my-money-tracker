@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.common.AccountNumberField
 import com.mymoneytracker.app.ui.common.ConfirmDialog
+import com.mymoneytracker.app.ui.common.appCardColors
 import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.NumberField
@@ -116,7 +117,7 @@ private fun SavingsAccountForm(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         rows.forEachIndexed { index, row ->
-            Card(Modifier.fillMaxWidth()) {
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = appCardColors()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("계좌 ${index + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))

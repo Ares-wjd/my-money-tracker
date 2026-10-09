@@ -1,6 +1,22 @@
 package com.mymoneytracker.app.ui.common
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
+import com.mymoneytracker.app.ui.theme.Brand
+import com.mymoneytracker.app.ui.theme.LocalMoneyColors
+import com.mymoneytracker.core.model.AccountKind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,12 +63,12 @@ private val dateFormatter = DateTimeFormatter.ofPattern("yyyy.M.d (E)", Locale.K
 
 fun formatDate(date: LocalDate): String = dateFormatter.format(date)
 
-/** 수익은 빨강, 손실은 파랑 (국내 증권 앱 관례). */
+/** 수익은 빨강, 손실은 파랑 (국내 증권 앱 관례). 다크 모드에서는 밝은 톤. */
 @Composable
 fun profitColor(value: Double?): Color = when {
     value == null || value == 0.0 -> MaterialTheme.colorScheme.onSurface
-    value > 0 -> Color(0xFFE5383B)
-    else -> Color(0xFF2F6FDB)
+    value > 0 -> LocalMoneyColors.current.profit
+    else -> LocalMoneyColors.current.loss
 }
 
 @Composable
@@ -86,6 +102,7 @@ fun PlaceholderContent(
     }
 }
 
+/** 흰 카드 (다크 모드에서는 한 단계 밝은 바탕). highlighted 면 브랜드 색 강조 카드. */
 @Composable
 fun SectionCard(
     modifier: Modifier = Modifier,
@@ -93,20 +110,190 @@ fun SectionCard(
     highlighted: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val money = LocalMoneyColors.current
     Card(
         modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
         colors = if (highlighted) {
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            CardDefaults.cardColors(containerColor = money.heroContainer, contentColor = money.onHero)
         } else {
-            CardDefaults.cardColors()
+            appCardColors()
         },
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (title != null) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
             }
             content()
         }
+    }
+}
+
+@Composable
+fun appCardColors() = CardDefaults.cardColors(
+    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+    contentColor = MaterialTheme.colorScheme.onSurface,
+)
+
+/** 진한 강조 카드 (목표 탭의 "이번 달 넣을 금액" 등). */
+@Composable
+fun InkCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.inverseSurface,
+            contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        ),
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
+    }
+}
+
+/** 강조 카드 안의 수익 알약: "▲ 4,120,000원 · +8.54%" */
+@Composable
+fun ProfitPill(text: String, value: Double?) {
+    Text(
+        text,
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest, RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        color = profitColor(value),
+        style = MaterialTheme.typography.labelLarge,
+    )
+}
+
+/** 작은 정보 칸 (라벨 위, 값 아래). */
+@Composable
+fun StatTile(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color = Color.Unspecified,
+    onHero: Boolean = false,
+) {
+    val labelColor = if (onHero) LocalMoneyColors.current.onHero.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
+    Column(
+        modifier = modifier
+            .then(
+                if (onHero) Modifier else Modifier.background(MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.shapes.medium),
+            )
+            .padding(horizontal = if (onHero) 0.dp else 12.dp, vertical = if (onHero) 0.dp else 10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = labelColor)
+        Text(value, style = MaterialTheme.typography.titleSmall, color = valueColor)
+    }
+}
+
+/** 한 줄 알약 선택 (그래프 보기 단위 등). 선택된 항목은 진한 바탕. */
+@Composable
+fun <T> SegmentedPills(
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        options.forEach { option ->
+            val isSelected = option == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 36.dp)
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.inverseSurface else MaterialTheme.colorScheme.surfaceContainer,
+                        MaterialTheme.shapes.small,
+                    )
+                    .clickable(role = Role.RadioButton) { onSelect(option) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label(option),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (isSelected) MaterialTheme.colorScheme.inverseOnSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** 목록 앞의 둥근 사각 배지 (계좌 종류, 종목 티커). */
+@Composable
+fun LabelBadge(text: String, container: Color, content: Color, modifier: Modifier = Modifier, minWidth: Int = 40) {
+    Box(
+        modifier = modifier
+            .widthIn(min = minWidth.dp)
+            .heightIn(min = 36.dp)
+            .background(container, MaterialTheme.shapes.small)
+            .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = content, maxLines = 1)
+    }
+}
+
+/** 종목 티커 배지: 코드가 있으면 코드, 없으면 이름 앞 글자. */
+@Composable
+fun TickerBadge(code: String, name: String) {
+    val text = code.ifBlank { name.take(2) }.take(6)
+    LabelBadge(text, MaterialTheme.colorScheme.inverseSurface, MaterialTheme.colorScheme.inverseOnSurface, minWidth = 52)
+}
+
+/** 계좌 종류 배지. */
+@Composable
+fun AccountKindBadge(kind: AccountKind) {
+    val dark = isSystemInDarkTheme()
+    val (text, container, content) = when (kind) {
+        AccountKind.GENERAL -> Triple("위탁", if (dark) Color(0xFF173B33) else Color(0xFFE6F2EE), if (dark) Color(0xFF7FD9BC) else Color(0xFF0F6B5C))
+        AccountKind.ISA -> Triple("ISA", if (dark) Color(0xFF1C2B4A) else Color(0xFFE8EEFB), if (dark) Color(0xFF9CBBFF) else Color(0xFF1F5FD1))
+        AccountKind.PENSION -> Triple("연금", if (dark) Color(0xFF3A2C10) else Color(0xFFFDF3E1), if (dark) Color(0xFFF2C46B) else Color(0xFF8A5A08))
+        AccountKind.IRP -> Triple("IRP", if (dark) Color(0xFF3A2C10) else Color(0xFFFDF3E1), if (dark) Color(0xFFF2C46B) else Color(0xFF8A5A08))
+        AccountKind.DC -> Triple("DC", if (dark) Color(0xFF3A2C10) else Color(0xFFFDF3E1), if (dark) Color(0xFFF2C46B) else Color(0xFF8A5A08))
+        AccountKind.OTHER -> Triple("기타", MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    LabelBadge(text, container, content)
+}
+
+/** 목표 진행 막대. */
+@Composable
+fun GoalProgressBar(fraction: Float, modifier: Modifier = Modifier) {
+    val money = LocalMoneyColors.current
+    val clamped = fraction.coerceIn(0f, 1f)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(10.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(5.dp)),
+    ) {
+        if (clamped > 0f) {
+            Box(
+                Modifier
+                    .fillMaxWidth(clamped.coerceAtLeast(0.02f))
+                    .height(10.dp)
+                    .background(if (clamped >= 1f) money.goalDone else money.goal, RoundedCornerShape(5.dp)),
+            )
+        }
+    }
+}
+
+/** 앱 로고 (B · 계단 막대). */
+@Composable
+fun AppLogo(size: Dp, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(size)) {
+        val k = this.size.width / 108f
+        drawRoundRect(Brand.Ink, cornerRadius = CornerRadius(28f * k))
+        fun bar(x: Float, y: Float, h: Float, color: Color) = drawRoundRect(
+            color,
+            topLeft = Offset(x * k, y * k),
+            size = Size(14f * k, h * k),
+            cornerRadius = CornerRadius(5f * k),
+        )
+        bar(27f, 58f, 24f, Color.White)
+        bar(47f, 44f, 38f, Color.White)
+        bar(67f, 28f, 54f, Brand.Mint)
+        drawCircle(Brand.Gold, radius = 5f * k, center = Offset(74f * k, 18f * k))
     }
 }
 
@@ -286,7 +473,7 @@ fun ConfirmDialog(
     )
 }
 
-/** 목록의 한 줄 (왼쪽 제목·설명, 오른쪽 값·부가값). */
+/** 목록의 한 줄 (앞 배지, 왼쪽 제목·설명, 오른쪽 값·부가값). */
 @Composable
 fun ListRow(
     title: String,
@@ -295,24 +482,27 @@ fun ListRow(
     subValue: String? = null,
     subValueColor: Color = Color.Unspecified,
     onClick: (() -> Unit)? = null,
+    leading: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        leading?.invoke()
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(title, style = MaterialTheme.typography.titleSmall)
             if (subtitle != null) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(value, style = MaterialTheme.typography.bodyLarge)
+            Text(value, style = MaterialTheme.typography.titleSmall)
             if (subValue != null) {
-                Text(subValue, style = MaterialTheme.typography.bodySmall, color = subValueColor)
+                Text(subValue, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = subValueColor)
             }
         }
     }

@@ -28,10 +28,12 @@ import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.CashOverride
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.PortfolioSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +55,7 @@ data class PortfolioData(
     val settings: AppSettings,
     val market: MarketSnapshot,
     val summary: PortfolioSummary,
+    val cashOverrides: Map<String, CashOverride> = emptyMap(),
 ) {
     /** 계산에 쓰는 환율: 자동으로 받은 최신 환율, 없으면 직접 입력한 환율. */
     val usdKrw: Double? get() = market.latestUsdKrw()?.second ?: settings.manualUsdKrw
@@ -90,6 +93,13 @@ data class ApiStatus(
 ) {
     val hasKis: Boolean get() = kisKeyHint != null
     val hasExim: Boolean get() = eximKeyHint != null
+
+    /** 한투 연결 계좌는 실제 예수금으로 평가한다. */
+    fun cashOverrides(): Map<String, CashOverride> {
+        val id = linkedAccountId ?: return emptyMap()
+        if (brokerCashKrw == null && brokerCashUsd == null) return emptyMap()
+        return mapOf(id to CashOverride(krw = brokerCashKrw, usd = brokerCashUsd))
+    }
 
     /** KIS 서비스 만료까지 남은 날 (만료일을 입력한 경우). */
     fun daysUntilKisExpiry(today: LocalDate = LocalDate.now()): Long? =
@@ -130,14 +140,18 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     private val marketRepository = MarketDataRepository(firestore, uid, kis, exim)
     private val syncService = KisSyncService(kis, repository)
 
+    private val _apiStatus = MutableStateFlow(readApiStatus())
+    val apiStatus: StateFlow<ApiStatus> = _apiStatus.asStateFlow()
+
+    private val baseData = combine(repository.accounts(), repository.holdings(), repository.records()) { a, h, r -> Triple(a, h, r) }
+
     /** null 이면 아직 첫 데이터를 받기 전(로딩 중). */
     val data: StateFlow<PortfolioData?> = combine(
-        repository.accounts(),
-        repository.holdings(),
-        repository.records(),
+        baseData,
         repository.settings(),
         marketRepository.snapshot(),
-    ) { accounts, holdings, records, settings, market ->
+        _apiStatus,
+    ) { (accounts, holdings, records), settings, market, status ->
         val fx = market.latestUsdKrw()?.second ?: settings.manualUsdKrw
         PortfolioData(
             accounts = accounts,
@@ -145,7 +159,12 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             records = records,
             settings = settings,
             market = market,
-            summary = PortfolioCalculator.summarize(accounts, holdings, records, fx, priceOf = { PriceLookup.current(it, market) }),
+            summary = PortfolioCalculator.summarize(
+                accounts, holdings, records, fx,
+                priceOf = { PriceLookup.current(it, market) },
+                cashOverrides = status.cashOverrides(),
+            ),
+            cashOverrides = status.cashOverrides(),
         )
     }
         .flowOn(Dispatchers.Default)
@@ -153,9 +172,6 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
 
     val summary: StateFlow<PortfolioSummary?> = data.map { it?.summary }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
-
-    private val _apiStatus = MutableStateFlow(readApiStatus())
-    val apiStatus: StateFlow<ApiStatus> = _apiStatus.asStateFlow()
 
     private val _refresh = MutableStateFlow(RefreshState())
     val refresh: StateFlow<RefreshState> = _refresh.asStateFlow()
@@ -180,7 +196,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             selection = selection,
             points = ChartCalculator.series(
                 dates, today, current.accounts, current.holdings, current.records, current.market,
-                current.settings.manualUsdKrw, selection.accountId,
+                current.settings.manualUsdKrw, selection.accountId, current.cashOverrides,
             ),
             hasEarlier = ChartCalculator.hasEarlier(selection.interval, today, first, selection.rangeFactor),
             loading = loading,
@@ -244,23 +260,51 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
 
     // ---------------------------------------------------------------- 시세
 
+    /**
+     * 보유 종목 현재가와 환율을 새로 받는다. 한투 연결 계좌가 있으면 잔고 조회로 실제 예수금·현재가도 갱신한다.
+     * @param silent 자동 새로고침이면 성공 메시지를 띄우지 않는다.
+     */
     fun refreshQuotes(silent: Boolean = false) {
         val current = data.value ?: return
-        if (_refresh.value.running) return
+        if (_refresh.value.running || _syncing.value) return
+        val status = _apiStatus.value
+        if (silent && !status.hasKis && !status.hasExim) return
         _refresh.value = _refresh.value.copy(running = true)
         viewModelScope.launch {
+            val errors = mutableListOf<String>()
+            val linked = status.linkedAccountId?.takeIf { status.hasKis && !status.linkedAccountNo.isNullOrBlank() }
+            val linkedKeys = mutableSetOf<String>()
+            if (linked != null && current.account(linked) != null) {
+                try {
+                    val snapshot = syncService.brokerSnapshot()
+                    snapshot.prices.forEach { (key, price) -> marketRepository.saveLatest(key, price) }
+                    linkedKeys += snapshot.prices.keys
+                    saveBrokerCash(snapshot.cashKrw, snapshot.cashUsd)
+                    errors += snapshot.warnings
+                } catch (e: ApiException) {
+                    errors += "한투 잔고: ${e.message}"
+                } catch (e: Exception) {
+                    errors += "한투 잔고: 네트워크 오류"
+                }
+            }
+            // 잔고 조회로 가격을 받은 종목은 시세 조회를 건너뛴다 (호출 수 절약).
             val held = current.summary.accounts.flatMap { a -> a.holdings.filter { it.position.quantity > 0 }.map { it.holding } }
+                .filter { MarketKeys.of(it) !in linkedKeys }
             val needsFx = current.summary.accounts.any { a ->
                 a.cash.usd != 0.0 || a.holdings.any { it.holding.currency == Currency.USD && it.position.quantity > 0 }
             }
-            val errors = if (!_apiStatus.value.hasKis && !_apiStatus.value.hasExim && silent) {
-                emptyList()
-            } else {
-                runCatching { marketRepository.refreshLatest(held, needsFx) }.getOrElse { listOf("시세 새로고침 실패") }
-            }
-            _refresh.value = RefreshState(running = false, lastRefreshedAt = System.currentTimeMillis(), errors = errors)
+            errors += runCatching { marketRepository.refreshLatest(held, needsFx, forceFx = !silent) }
+                .getOrElse { listOf("시세 새로고침 실패") }
+            _refresh.value = RefreshState(running = false, lastRefreshedAt = System.currentTimeMillis(), errors = errors.distinct())
             if (!silent && errors.isEmpty()) _message.value = "시세와 환율을 새로 받았습니다."
         }
+    }
+
+    private fun saveBrokerCash(krw: Double?, usd: Double?) {
+        store.put(SecureStore.KIS_BROKER_CASH_KRW, krw?.toString())
+        store.put(SecureStore.KIS_BROKER_CASH_USD, usd?.toString())
+        store.put(SecureStore.KIS_BROKER_CASH_DATE, LocalDate.now().toString())
+        _apiStatus.value = readApiStatus()
     }
 
     // ---------------------------------------------------------------- 그래프
@@ -424,10 +468,8 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             _message.value = try {
                 val result = syncService.sync(account, current.holdings, current.records, status.syncStart, status.lastSync)
                 store.put(SecureStore.KIS_LAST_SYNC, LocalDate.now().toString())
-                store.put(SecureStore.KIS_BROKER_CASH_KRW, result.brokerCashKrw?.toString())
-                store.put(SecureStore.KIS_BROKER_CASH_USD, result.brokerCashUsd?.toString())
-                store.put(SecureStore.KIS_BROKER_CASH_DATE, LocalDate.now().toString())
-                _apiStatus.value = readApiStatus()
+                result.currentPrices.forEach { (key, price) -> marketRepository.saveLatest(key, price) }
+                saveBrokerCash(result.brokerCashKrw, result.brokerCashUsd)
                 buildString {
                     append("한투에서 체결 ${result.importedTrades}건을 불러왔습니다.")
                     if (result.createdHoldings > 0) append(" 새 종목 ${result.createdHoldings}개.")
@@ -445,6 +487,8 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
                 "한투 불러오기 실패: 인터넷 연결을 확인하세요."
             }
             _syncing.value = false
+            // 새로 만든 종목·기록이 화면 데이터에 반영된 뒤 나머지 시세·환율을 받는다.
+            delay(1_500)
             refreshQuotes(silent = true)
         }
     }

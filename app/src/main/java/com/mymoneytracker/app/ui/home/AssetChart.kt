@@ -35,6 +35,7 @@ import com.mymoneytracker.app.ui.ChartState
 import com.mymoneytracker.app.ui.common.ChipSelector
 import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.SectionCard
+import com.mymoneytracker.app.ui.common.SegmentedPills
 import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.app.ui.common.formatDate
 import com.mymoneytracker.app.ui.common.profitColor
@@ -53,7 +54,7 @@ fun AssetChartCard(
     onShowEarlier: () -> Unit,
 ) {
     SectionCard(title = "자산 추이") {
-        ChipSelector("보기 단위", ChartInterval.entries, state.selection.interval, { it.label }, onSelectInterval)
+        SegmentedPills(ChartInterval.entries, state.selection.interval, { it.label }, onSelectInterval)
         if (accounts.size > 1) {
             ChipSelector(
                 "계좌",

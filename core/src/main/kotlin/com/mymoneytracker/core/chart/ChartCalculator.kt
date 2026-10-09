@@ -5,6 +5,7 @@ import com.mymoneytracker.core.market.PriceLookup
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Record
+import com.mymoneytracker.core.portfolio.CashOverride
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import java.time.LocalDate
 import java.time.YearMonth
@@ -78,6 +79,7 @@ object ChartCalculator {
         snapshot: MarketSnapshot,
         manualUsdKrw: Double?,
         accountId: String? = null,
+        cashOverrides: Map<String, CashOverride> = emptyMap(),
     ): List<ChartPoint> {
         val targetAccounts = if (accountId == null) accounts else accounts.filter { it.id == accountId }
         return dates.map { date ->
@@ -90,6 +92,8 @@ object ChartCalculator {
                 usdKrw = fx,
                 priceOf = { h -> if (isToday) PriceLookup.current(h, snapshot) else PriceLookup.at(h, snapshot, date) },
                 asOf = date,
+                // 실제 예수금은 오늘 값만 알 수 있다.
+                cashOverrides = if (isToday) cashOverrides else emptyMap(),
             )
             ChartPoint(date, summary.valueKrw, summary.investedKrw, summary.dividendsKrw)
         }

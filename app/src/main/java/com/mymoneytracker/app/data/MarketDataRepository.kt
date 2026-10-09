@@ -12,7 +12,9 @@ import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.PricePoint
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.combine
 import java.time.LocalDate
 import java.util.TreeMap
 
@@ -32,7 +34,36 @@ class MarketDataRepository(
     private var cache = MarketSnapshot()
     private val docMeta = mutableMapOf<String, Pair<LocalDate?, LocalDate?>>()
 
-    fun snapshot(): Flow<MarketSnapshot> = callbackFlow {
+    /** 자주 받는 현재가는 메모리에 두고, Firestore 에는 [PERSIST_INTERVAL_MS] 마다 한 번만 저장한다 (쓰기 횟수 절약). */
+    private val liveQuotes = MutableStateFlow<Map<String, PricePoint>>(emptyMap())
+    private val lastPersistedAt = mutableMapOf<String, Long>()
+    private var lastFxAttemptAt = 0L
+
+    /** Firestore 캐시 + 메모리의 최신 현재가. */
+    fun snapshot(): Flow<MarketSnapshot> = combine(storedSnapshot(), liveQuotes) { stored, live ->
+        if (live.isEmpty()) return@combine stored
+        val prices = stored.prices.toMutableMap()
+        live.forEach { (key, quote) ->
+            val history = prices[key] ?: PriceHistory()
+            val latest = history.latest
+            val newer = latest == null || (quote.date ?: LocalDate.MIN) >= (latest.date ?: LocalDate.MIN)
+            prices[key] = if (newer) history.copy(latest = quote) else history
+        }
+        stored.copy(prices = prices)
+    }
+
+    /** 현재가 저장: 메모리에는 바로, Firestore 에는 가끔. */
+    fun saveLatest(key: String, price: Double) {
+        val today = LocalDate.now()
+        liveQuotes.value = liveQuotes.value + (key to PricePoint(price, today))
+        val now = System.currentTimeMillis()
+        if (now - (lastPersistedAt[key] ?: 0L) >= PERSIST_INTERVAL_MS) {
+            lastPersistedAt[key] = now
+            col.document(PRICE_PREFIX + key).set(mapOf("latest" to price, "latestDate" to today.toString()), SetOptions.merge())
+        }
+    }
+
+    private fun storedSnapshot(): Flow<MarketSnapshot> = callbackFlow {
         val registration = col.addSnapshotListener { snapshot, error ->
             if (error != null) {
                 Log.w(TAG, "시세 캐시 불러오기 실패", error)
@@ -63,7 +94,7 @@ class MarketDataRepository(
     /**
      * 보유 종목의 현재가와 최신 환율을 받아 저장한다. 실패한 항목은 메시지로 모아 돌려준다.
      */
-    suspend fun refreshLatest(holdings: List<Holding>, needsFx: Boolean): List<String> {
+    suspend fun refreshLatest(holdings: List<Holding>, needsFx: Boolean, forceFx: Boolean = false): List<String> {
         val errors = mutableListOf<String>()
         val today = LocalDate.now()
         if (kis.hasCredentials) {
@@ -74,8 +105,7 @@ class MarketDataRepository(
                     } else {
                         kis.overseasPrice(holding.market, holding.code)
                     }
-                    col.document(PRICE_PREFIX + MarketKeys.of(holding))
-                        .set(mapOf("latest" to price, "latestDate" to today.toString()), SetOptions.merge())
+                    MarketKeys.of(holding)?.let { saveLatest(it, price) }
                 } catch (e: ApiException) {
                     errors += "${holding.name}: ${e.message}"
                     if (e.message?.contains("App Key") == true || e.message?.contains("토큰") == true) return errors
@@ -86,7 +116,10 @@ class MarketDataRepository(
         } else if (holdings.any { MarketKeys.quotable(it) }) {
             errors += "한국투자증권 API 키가 없어 시세를 받지 못했습니다. 설정에서 입력하세요."
         }
-        if (needsFx) {
+        // 환율은 하루 한 번 바뀌므로 30분에 한 번만 조회한다 (일일 호출 한도 1,000회).
+        val fxDue = forceFx || System.currentTimeMillis() - lastFxAttemptAt >= FX_INTERVAL_MS
+        if (needsFx && fxDue) {
+            lastFxAttemptAt = System.currentTimeMillis()
             if (exim.hasKey) {
                 try {
                     fetchFxOnOrBefore(today, maxBack = 7)
@@ -223,5 +256,7 @@ class MarketDataRepository(
         const val TAG = "MarketData"
         const val PRICE_PREFIX = "price_"
         const val FX_DOC = "fx_USD"
+        const val PERSIST_INTERVAL_MS = 15 * 60 * 1000L
+        const val FX_INTERVAL_MS = 30 * 60 * 1000L
     }
 }

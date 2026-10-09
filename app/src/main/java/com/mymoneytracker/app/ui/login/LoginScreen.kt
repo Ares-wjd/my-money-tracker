@@ -9,11 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,6 +29,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import com.mymoneytracker.app.ui.common.AppLogo
 
 @Composable
 fun LoginScreen(onSignIn: suspend (Context) -> Unit) {
@@ -46,12 +44,7 @@ fun LoginScreen(onSignIn: suspend (Context) -> Unit) {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(
-                Icons.Filled.AccountBalanceWallet,
-                contentDescription = null,
-                modifier = Modifier.size(72.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
+            AppLogo(88.dp)
             Spacer(Modifier.height(16.dp))
             Text("Money Tracker", style = MaterialTheme.typography.headlineMedium)
             Spacer(Modifier.height(8.dp))

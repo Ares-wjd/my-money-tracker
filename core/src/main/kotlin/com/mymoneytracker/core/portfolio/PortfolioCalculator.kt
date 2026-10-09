@@ -8,6 +8,9 @@ import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import java.time.LocalDate
 
+/** 실제 예수금 (null 인 통화는 기록으로 계산한 값을 쓴다). */
+data class CashOverride(val krw: Double? = null, val usd: Double? = null)
+
 /** 통화별 금액. */
 data class CashBalance(val krw: Double = 0.0, val usd: Double = 0.0) {
     operator fun get(currency: Currency): Double = when (currency) {
@@ -60,7 +63,10 @@ data class AccountSummary(
     val account: InvestmentAccount,
     /** 투자금 = 입금 − 출금 ± 이체 (원화). */
     val investedKrw: Double,
+    /** 평가에 쓰는 예수금: 한투 연결 계좌는 한투 실제 예수금, 그 외에는 기록으로 계산한 값. */
     val cash: CashBalance,
+    /** 기록으로 계산한 예수금 (실제 예수금과 비교하거나 "예수금 수정" 에 쓴다). */
+    val computedCash: CashBalance = cash,
     val holdings: List<HoldingValuation>,
     val dividendsKrw: Double,
     /** 가격이 없는 종목이 있어 평가금이 실제보다 작게 계산됐는지. */
@@ -106,6 +112,7 @@ object PortfolioCalculator {
      * @param priceOf 종목의 현재가 (없으면 null)
      * @param usdKrw 원/달러 환율 (없으면 달러 금액은 원화 합계에서 빠진다)
      * @param asOf 이 날짜까지의 기록만 반영 (null 이면 전부)
+     * @param cashOverrides 계좌 ID → 실제 예수금 (한투 연결 계좌). 통화별로 null 이 아닌 값만 덮어쓴다.
      */
     fun summarize(
         accounts: List<InvestmentAccount>,
@@ -114,6 +121,7 @@ object PortfolioCalculator {
         usdKrw: Double?,
         priceOf: (Holding) -> PricePoint? = { h -> h.manualPrice?.let { PricePoint(it, h.manualPriceDate) } },
         asOf: LocalDate? = null,
+        cashOverrides: Map<String, CashOverride> = emptyMap(),
     ): PortfolioSummary {
         val effective = records
             .filter { asOf == null || !it.date.isAfter(asOf) }
@@ -125,6 +133,7 @@ object PortfolioCalculator {
                 records = effective.filter { it.accountId == account.id || it.toAccountId == account.id },
                 usdKrw = usdKrw,
                 priceOf = priceOf,
+                cashOverride = cashOverrides[account.id],
             )
         }
         return PortfolioSummary(summaries, usdKrw)
@@ -136,6 +145,7 @@ object PortfolioCalculator {
         records: List<Record>,
         usdKrw: Double?,
         priceOf: (Holding) -> PricePoint?,
+        cashOverride: CashOverride?,
     ): AccountSummary {
         var invested = 0.0
         var cash = CashBalance()
@@ -199,12 +209,17 @@ object PortfolioCalculator {
                 Currency.USD -> v.position.dividends * (usdKrw ?: 0.0)
             }
         }
-        val hasUsd = cash.usd != 0.0 || valuations.any { it.holding.currency == Currency.USD && it.position.quantity > 0 }
+        val effectiveCash = CashBalance(
+            krw = cashOverride?.krw ?: cash.krw,
+            usd = cashOverride?.usd ?: cash.usd,
+        )
+        val hasUsd = effectiveCash.usd != 0.0 || valuations.any { it.holding.currency == Currency.USD && it.position.quantity > 0 }
 
         return AccountSummary(
             account = account,
             investedKrw = invested,
-            cash = cash,
+            cash = effectiveCash,
+            computedCash = cash,
             holdings = valuations,
             dividendsKrw = dividendsKrw,
             missingPrice = valuations.any { it.position.quantity > 0 && it.price == null },
@@ -254,7 +269,7 @@ object PortfolioCalculator {
 
     /** 기록으로 계산한 예수금. "예수금 수정" 에서 실제 값과의 차이를 구할 때 쓴다. */
     fun cashOf(summary: PortfolioSummary, accountId: String): CashBalance =
-        summary.accounts.firstOrNull { it.account.id == accountId }?.cash ?: CashBalance()
+        summary.accounts.firstOrNull { it.account.id == accountId }?.computedCash ?: CashBalance()
 
     private const val EPSILON = 1e-9
 }

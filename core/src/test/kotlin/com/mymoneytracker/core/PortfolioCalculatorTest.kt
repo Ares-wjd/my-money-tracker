@@ -7,6 +7,7 @@ import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.PricePoint
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.CashOverride
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -153,6 +154,21 @@ class PortfolioCalculatorTest {
         assertEquals(6.0, PortfolioCalculator.quantityAt(samsung, listOf(buy, sell), day3), 1e-9)
         assertEquals(10.0, PortfolioCalculator.quantityAt(samsung, listOf(buy, sell), day3, excludeRecordId = sell.id), 1e-9)
         assertEquals(0.0, PortfolioCalculator.quantityAt(samsung, listOf(buy, sell), day1.minusDays(1)), 1e-9)
+    }
+
+    @Test
+    fun brokerCashOverridesComputedCashForValuation() {
+        // 입금 기록 없이 매수만 불러온 연결 계좌: 기록상 예수금은 마이너스지만 실제 예수금으로 평가한다.
+        val records = listOf(rec("kr", RecordType.BUY, day1, holding = "s", qty = 10.0, price = 70_000.0))
+        val summary = PortfolioCalculator.summarize(
+            listOf(kr), listOf(samsung), records, null,
+            cashOverrides = mapOf("kr" to CashOverride(krw = 50_000.0)),
+        )
+        val a = summary.accounts.single()
+        assertEquals(-700_000.0, a.computedCash.krw, 1e-9)
+        assertEquals(50_000.0, a.cash.krw, 1e-9)
+        assertEquals(850_000.0, a.valueKrw, 1e-9)
+        assertEquals(-700_000.0, PortfolioCalculator.cashOf(summary, "kr").krw, 1e-9)
     }
 
     @Test

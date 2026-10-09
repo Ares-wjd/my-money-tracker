@@ -51,7 +51,7 @@ fun CashAdjustScreen(
     onDone: () -> Unit,
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
-    val cash = data?.accountSummary(accountId)?.cash
+    val cash = data?.accountSummary(accountId)?.computedCash
 
     Scaffold(
         topBar = {
