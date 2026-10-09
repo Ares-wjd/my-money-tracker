@@ -60,10 +60,13 @@
 | 해외 일봉 | `/uapi/overseas-price/v1/quotations/dailyprice` | HHDFS76240000 | `EXCD, SYMB, GUBN=0, BYMD, MODP=1` → `output2[].xymd, clos` (BYMD 이전 100건) |
 | 국내 잔고 | `/uapi/domestic-stock/v1/trading/inquire-balance` | TTTC8434R | `CANO, ACNT_PRDT_CD, INQR_DVSN=02 ...` → `output1[].pdno, prdt_name, hldg_qty, pchs_avg_pric`, `output2[0].prvs_rcdl_excc_amt`(D+2 예수금) |
 | 국내 체결 | `/uapi/domestic-stock/v1/trading/inquire-daily-ccld` | TTTC0081R (3개월 이내) / CTSC9215R (이전) | `INQR_STRT_DT, INQR_END_DT, CCLD_DVSN=01, EXCG_ID_DVSN_CD=ALL` → `output1[].ord_dt, odno, sll_buy_dvsn_cd(01 매도/02 매수), pdno, tot_ccld_qty, avg_prvs` |
-| 해외 잔고 | `/uapi/overseas-stock/v1/trading/inquire-balance` | TTTS3012R | `OVRS_EXCG_CD=NASD(미국 전체), TR_CRCY_CD=USD` → `output1[].ovrs_pdno, ovrs_cblc_qty, pchs_avg_pric, ovrs_excg_cd` |
+| 해외 체결기준 현재잔고 | `/uapi/overseas-stock/v1/trading/inquire-present-balance` | CTRP6504R | `WCRC_FRCR_DVSN_CD=02, NATN_CD=840, TR_MKET_CD=00, INQR_DVSN_CD=00(전체: 일반+미니스탁)` → `output1[].pdno, prdt_name, ccld_qty_smtl1, avg_unpr3, ovrs_now_pric1, ovrs_excg_cd`, `output2[].crcy_cd, frcr_dncl_amt_2`(외화예수금) |
+| (사용 안 함) 해외 잔고 | `/uapi/overseas-stock/v1/trading/inquire-balance` | TTTS3012R | **미니스탁(소수점)이 빠져 있어** 위 현재잔고 API 로 대체 |
 | 해외 체결 | `/uapi/overseas-stock/v1/trading/inquire-ccnl` | TTTS3035R | `ORD_STRT_DT, ORD_END_DT, CCLD_NCCS_DVSN=01` → `output[].ord_dt, odno, sll_buy_dvsn_cd, pdno, ft_ccld_qty, ft_ccld_unpr3, ovrs_excg_cd` |
 
 ### 앱 구현 메모
 - 체결 내역에는 수수료·세금이 따로 없어 0 으로 저장하고, 대신 원화 예수금을 한투 D+2 예수금에 맞추는 "예수금 조정" 으로 차이를 반영한다.
 - 불러온 체결의 문서 ID 는 `kis_{주문일}_{주문번호}_{종목코드}` 로 정해 같은 체결이 두 번 저장되지 않게 한다.
-- 해외 예수금(달러)은 자동으로 맞추지 않는다 (직접 "예수금 수정").
+- 미니스탁(소수점) 매매는 체결 내역 API 에 나오지 않는다. 불러올 때마다 잔고 수량과 비교해 차이를 오늘 날짜의
+  "수량 맞춤" 매수(한투 평균단가에 맞춘 단가)·매도(현재가) 기록으로 채운다. 문서 ID `kis_adj_{날짜}_{종목ID}`.
+- 달러 예수금도 현재잔고 API 의 외화예수금(`frcr_dncl_amt_2`)에 맞춘다.

@@ -35,6 +35,14 @@ data class KisHolding(
     val quantity: Double,
     val averagePrice: Double,
     val market: Market,
+    val currentPrice: Double? = null,
+)
+
+data class KisOverseasBalance(
+    /** 일반 해외주식 + 미니스탁(소수점) 보유 종목. */
+    val holdings: List<KisHolding>,
+    /** 달러 예수금. */
+    val usdCash: Double?,
 )
 
 data class KisDomesticBalance(
@@ -242,7 +250,10 @@ class KisClient(private val store: SecureStore) {
             r.json.optJSONArray("output1")?.objects().orEmpty().forEach { row ->
                 val quantity = row.num("hldg_qty") ?: 0.0
                 if (quantity > 0) {
-                    holdings += KisHolding(row.str("pdno"), row.str("prdt_name"), quantity, row.num("pchs_avg_pric") ?: 0.0, Market.KR)
+                    holdings += KisHolding(
+                        row.str("pdno"), row.str("prdt_name"), quantity, row.num("pchs_avg_pric") ?: 0.0,
+                        Market.KR, row.num("prpr"),
+                    )
                 }
             }
             r.json.optJSONArray("output2")?.optJSONObject(0)?.let { settledCash = it.num("prvs_rcdl_excc_amt") }
@@ -254,37 +265,46 @@ class KisClient(private val store: SecureStore) {
         return KisDomesticBalance(holdings, settledCash)
     }
 
-    suspend fun overseasBalance(): List<KisHolding> {
+    /**
+     * 해외 체결기준 현재잔고. 조회 구분 "00(전체)" 로 일반 해외주식과 미니스탁(소수점)을 함께 받는다.
+     * (일반 해외 잔고 API 에는 미니스탁이 빠져 있다)
+     */
+    suspend fun overseasPresentBalance(): KisOverseasBalance {
         val (cano, product) = account()
-        val holdings = mutableListOf<KisHolding>()
-        var fk = ""
-        var nk = ""
-        var continued = false
-        repeat(MAX_PAGES) {
-            val r = call(
-                "/uapi/overseas-stock/v1/trading/inquire-balance",
-                "TTTS3012R",
-                mapOf(
-                    "CANO" to cano, "ACNT_PRDT_CD" to product, "OVRS_EXCG_CD" to "NASD", "TR_CRCY_CD" to "USD",
-                    "CTX_AREA_FK200" to fk, "CTX_AREA_NK200" to nk,
-                ),
-                continued,
+        val r = call(
+            "/uapi/overseas-stock/v1/trading/inquire-present-balance",
+            "CTRP6504R",
+            mapOf(
+                "CANO" to cano, "ACNT_PRDT_CD" to product, "WCRC_FRCR_DVSN_CD" to "02",
+                "NATN_CD" to "840", "TR_MKET_CD" to "00", "INQR_DVSN_CD" to "00",
+            ),
+        )
+        val holdings = r.json.optJSONArray("output1")?.objects().orEmpty().mapNotNull { row ->
+            val quantity = row.num("ccld_qty_smtl1")?.takeIf { it > 0 } ?: row.num("cblc_qty13")?.takeIf { it > 0 }
+                ?: return@mapNotNull null
+            val code = row.str("pdno").ifBlank { return@mapNotNull null }
+            KisHolding(
+                code = code,
+                name = row.str("prdt_name").ifBlank { code },
+                quantity = quantity,
+                averagePrice = row.num("avg_unpr3") ?: 0.0,
+                market = tradingMarket(row.str("ovrs_excg_cd")),
+                currentPrice = row.num("ovrs_now_pric1"),
             )
-            r.json.optJSONArray("output1")?.objects().orEmpty().forEach { row ->
-                val quantity = row.num("ovrs_cblc_qty") ?: 0.0
-                if (quantity > 0) {
-                    holdings += KisHolding(
-                        row.str("ovrs_pdno"), row.str("ovrs_item_name"), quantity,
-                        row.num("pchs_avg_pric") ?: 0.0, tradingMarket(row.str("ovrs_excg_cd")),
-                    )
-                }
-            }
-            fk = r.json.str("ctx_area_fk200")
-            nk = r.json.str("ctx_area_nk200")
-            if (!r.hasMore || nk.isBlank()) return holdings
-            continued = true
         }
-        return holdings
+            // 같은 종목이 일반·미니스탁으로 나뉘어 오면 합친다 (평균단가는 수량 가중 평균).
+            .groupBy { it.code to it.market }
+            .map { (_, rows) ->
+                val total = rows.sumOf { it.quantity }
+                rows.first().copy(
+                    quantity = total,
+                    averagePrice = if (total > 0) rows.sumOf { it.quantity * it.averagePrice } / total else 0.0,
+                )
+            }
+        val usdCash = r.json.optJSONArray("output2")?.objects().orEmpty()
+            .firstOrNull { it.str("crcy_cd") == "USD" }
+            ?.num("frcr_dncl_amt_2")
+        return KisOverseasBalance(holdings, usdCash)
     }
 
     /** 국내 체결 내역. 3개월 이내와 이전은 서로 다른 TR 을 쓰므로 달 단위로 나눠 조회한다. */

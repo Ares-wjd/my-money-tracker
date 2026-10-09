@@ -17,6 +17,7 @@ data class KisSyncResult(
     val importedTrades: Int,
     val createdHoldings: Int,
     val initialPositions: Int,
+    val quantityAdjustments: Int,
     val cashAdjusted: Double?,
     val warnings: List<String>,
 )
@@ -26,7 +27,8 @@ data class KisSyncResult(
  *
  * - 체결 내역 → 매수·매도 기록 (문서 ID 를 주문번호로 정해 중복 저장을 막는다)
  * - 처음 연결할 때는 시작일 이전부터 갖고 있던 수량을 "초기 보유" 기록으로 채운다
- * - 원화 예수금은 한투의 D+2 예수금에 맞춰 "예수금 조정" 기록을 만든다 (예탁금 이용료 등)
+ * - 이후에는 잔고 수량과 비교해 미니스탁(소수점)처럼 체결 내역에 안 잡히는 매매를 "수량 맞춤" 으로 채운다
+ * - 원화(D+2)·달러 예수금을 한투 값에 맞춰 "예수금 조정" 기록을 만든다 (예탁금 이용료 등)
  */
 class KisSyncService(
     private val kis: KisClient,
@@ -90,72 +92,122 @@ class KisSyncService(
             )
         }
 
-        // 처음 연결: 시작일 이전부터 보유하던 수량을 초기 보유로 채운다.
+        // 잔고 수량 맞추기
+        // - 처음 연결: 시작일 이전부터 보유하던 수량을 "초기 보유" 로 채운다.
+        // - 이후: 체결 내역으로 잡히지 않는 미니스탁(소수점) 매매·누락분을 오늘 날짜 "수량 맞춤" 으로 채운다.
         var initialPositions = 0
+        var quantityAdjustments = 0
+        val todayKey = today.toString().replace("-", "")
         val domesticBalance = kis.domesticBalance()
-        if (lastSync == null) {
-            val balanceHoldings = domesticBalance.holdings + try {
-                kis.overseasBalance()
-            } catch (e: ApiException) {
-                warnings += "해외 잔고: ${e.message}"
-                emptyList()
+        val overseasBalance = try {
+            kis.overseasPresentBalance()
+        } catch (e: ApiException) {
+            warnings += "해외 잔고: ${e.message}"
+            null
+        }
+        for (real in domesticBalance.holdings + overseasBalance?.holdings.orEmpty()) {
+            val holding = holdingFor(real.code, real.name, real.market)
+            val adjustId = "kis_adj_${todayKey}_${holding.id}".sanitizeId()
+            val related = (records + newRecords).filter { it.holdingId == holding.id && it.id != adjustId }
+            val position = PortfolioCalculator.position(holding, related)
+            val missing = real.quantity - position.quantity
+            if (kotlin.math.abs(missing) <= QUANTITY_EPSILON) continue
+
+            if (lastSync == null && missing > 0) {
+                newRecords += Record(
+                    id = "kis_init_${holding.id}".sanitizeId(),
+                    accountId = account.id,
+                    type = RecordType.BUY,
+                    date = startDate.minusDays(1),
+                    holdingId = holding.id,
+                    quantity = missing,
+                    price = real.averagePrice,
+                    initial = true,
+                    externalId = "KIS:init",
+                    memo = "한투 잔고 기준 초기 보유 (평균단가 기준)",
+                    createdAt = 0L,
+                )
+                initialPositions++
+            } else if (lastSync == null) {
+                warnings += "${holding.name}: 앱 수량이 한투 잔고보다 ${-missing}주 많습니다. 기록을 확인하세요."
+            } else if (missing > 0) {
+                // 앱의 평균단가가 한투 평균단가와 같아지도록 단가를 정한다.
+                val cost = real.quantity * real.averagePrice - position.quantity * position.averagePrice
+                newRecords += Record(
+                    id = adjustId,
+                    accountId = account.id,
+                    type = RecordType.BUY,
+                    date = today,
+                    holdingId = holding.id,
+                    quantity = missing,
+                    price = (cost / missing).takeIf { it > 0 } ?: real.averagePrice,
+                    externalId = "KIS:adjust",
+                    memo = "한투 잔고 기준 수량 맞춤 (소수점·누락 체결)",
+                    createdAt = System.currentTimeMillis(),
+                )
+                quantityAdjustments++
+            } else {
+                newRecords += Record(
+                    id = adjustId,
+                    accountId = account.id,
+                    type = RecordType.SELL,
+                    date = today,
+                    holdingId = holding.id,
+                    quantity = -missing,
+                    price = real.currentPrice?.takeIf { it > 0 } ?: position.averagePrice,
+                    externalId = "KIS:adjust",
+                    memo = "한투 잔고 기준 수량 맞춤 (소수점·누락 체결)",
+                    createdAt = System.currentTimeMillis(),
+                )
+                quantityAdjustments++
             }
-            for (real in balanceHoldings) {
-                val holding = holdingFor(real.code, real.name, real.market)
-                val appQuantity = PortfolioCalculator.position(holding, (records + newRecords).filter { it.holdingId == holding.id }).quantity
-                val missing = real.quantity - appQuantity
-                if (missing > 1e-9) {
-                    newRecords += Record(
-                        id = "kis_init_${holding.id}".sanitizeId(),
-                        accountId = account.id,
-                        type = RecordType.BUY,
-                        date = startDate.minusDays(1),
-                        holdingId = holding.id,
-                        quantity = missing,
-                        price = real.averagePrice,
-                        initial = true,
-                        externalId = "KIS:init",
-                        memo = "한투 잔고 기준 초기 보유 (평균단가 기준)",
-                        createdAt = 0L,
-                    )
-                    initialPositions++
-                } else if (missing < -1e-9) {
-                    warnings += "${holding.name}: 앱 수량이 한투 잔고보다 ${-missing}주 많습니다. 기록을 확인하세요."
-                }
+        }
+        val balanceKeys = (domesticBalance.holdings + overseasBalance?.holdings.orEmpty())
+            .map { MarketKeys.key(it.market, it.code) }.toSet()
+        accountHoldings.filter { it.code.isNotBlank() && MarketKeys.key(it.market, it.code) !in balanceKeys }.forEach { holding ->
+            val quantity = PortfolioCalculator.position(holding, (records + newRecords).filter { it.holdingId == holding.id }).quantity
+            if (quantity > QUANTITY_EPSILON && (holding.market == Market.KR || overseasBalance != null)) {
+                warnings += "${holding.name}: 한투 잔고에는 없는데 앱에는 ${quantity}주가 있습니다. 기록을 확인하세요."
             }
         }
 
         newRecords.forEach { repository.saveRecord(it) }
 
-        // 원화 예수금 맞추기 (같은 날 다시 불러오면 그날의 조정 기록을 덮어쓴다)
+        // 예수금 맞추기: 원화는 D+2 예수금, 달러는 외화예수금 기준 (같은 날 다시 불러오면 그날의 조정 기록을 덮어쓴다)
         var cashAdjusted: Double? = null
-        domesticBalance.settledCash?.let { realCash ->
-            val adjustId = "kis_cash_${today.toString().replace("-", "")}_${account.id}".sanitizeId()
-            val allRecords = (records + newRecords).filter { it.id != adjustId }
+        val cashTargets = listOfNotNull(
+            domesticBalance.settledCash?.let { Currency.KRW to it },
+            overseasBalance?.usdCash?.let { Currency.USD to it },
+        )
+        for ((currency, realCash) in cashTargets) {
+            val adjustId = "kis_cash_${currency.name.lowercase()}_${todayKey}_${account.id}".sanitizeId()
+            val legacyId = "kis_cash_${todayKey}_${account.id}".sanitizeId()
+            val allRecords = (records + newRecords).filter { it.id != adjustId && it.id != legacyId }
             val summary = PortfolioCalculator.summarize(listOf(account), accountHoldings, allRecords, usdKrw = null)
-            val diff = realCash - summary.accounts.single().cash.krw
-            if (abs(diff) >= 1) {
-                repository.saveRecord(
-                    Record(
-                        id = adjustId,
-                        accountId = account.id,
-                        type = RecordType.CASH_ADJUST,
-                        date = today,
-                        currency = Currency.KRW,
-                        amount = diff.roundToLong().toDouble(),
-                        externalId = "KIS:cash",
-                        memo = "한투 예수금 자동 맞춤 (예탁금 이용료·수수료·세금 등)",
-                        createdAt = System.currentTimeMillis(),
-                    ),
-                )
-                cashAdjusted = diff
-            }
+            val diff = realCash - summary.accounts.single().cash[currency]
+            val threshold = if (currency == Currency.KRW) 1.0 else 0.01
+            if (kotlin.math.abs(diff) < threshold) continue
+            repository.saveRecord(
+                Record(
+                    id = adjustId,
+                    accountId = account.id,
+                    type = RecordType.CASH_ADJUST,
+                    date = today,
+                    currency = currency,
+                    amount = if (currency == Currency.KRW) diff.roundToLong().toDouble() else Math.round(diff * 100) / 100.0,
+                    externalId = "KIS:cash",
+                    memo = "한투 예수금 자동 맞춤 (예탁금 이용료·수수료·세금 등)",
+                    createdAt = System.currentTimeMillis(),
+                ),
+            )
+            if (currency == Currency.KRW) cashAdjusted = diff
         }
 
         return KisSyncResult(
-            importedTrades = newRecords.count { it.type != RecordType.BUY || !it.initial },
+            importedTrades = newRecords.count { it.externalId?.startsWith("KIS:") == true && it.externalId !in setOf("KIS:init", "KIS:adjust") },
             createdHoldings = createdHoldings,
             initialPositions = initialPositions,
+            quantityAdjustments = quantityAdjustments,
             cashAdjusted = cashAdjusted,
             warnings = warnings,
         )
@@ -164,6 +216,7 @@ class KisSyncService(
     private fun String.sanitizeId(): String = replace(Regex("[^A-Za-z0-9_\\-]"), "_").take(140)
 
     private companion object {
+        const val QUANTITY_EPSILON = 1e-6
         val ETF_BRANDS = listOf("KODEX", "TIGER", "ACE", "SOL", "RISE", "KBSTAR", "HANARO", "ARIRANG", "KOSEF", "PLUS", "TIMEFOLIO")
     }
 }

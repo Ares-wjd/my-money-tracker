@@ -402,6 +402,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
                     append("한투에서 체결 ${result.importedTrades}건을 불러왔습니다.")
                     if (result.createdHoldings > 0) append(" 새 종목 ${result.createdHoldings}개.")
                     if (result.initialPositions > 0) append(" 초기 보유 ${result.initialPositions}개.")
+                    if (result.quantityAdjustments > 0) append(" 잔고 기준 수량 맞춤 ${result.quantityAdjustments}건.")
                     result.cashAdjusted?.let { append(" 예수금 ${MoneyFormat.signedWon(it)} 맞춤.") }
                     if (result.warnings.isNotEmpty()) append("\n" + result.warnings.joinToString("\n"))
                 }
