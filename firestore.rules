@@ -1,10 +1,145 @@
 rules_version = '2';
 
-// 로그인한 본인만 자신의 데이터(users/{uid} 이하)를 읽고 쓸 수 있다.
+// 내 자산 앱 Firestore 보안 규칙
+// - 로그인한 본인만 자기 데이터(users/{uid} 이하)를 읽고 쓸 수 있다.
+// - 쓰기는 컬렉션별로 허용된 필드·타입·길이만 받는다 (잘못되거나 비정상적으로 큰 데이터 차단).
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    function data() {
+      return request.resource.data;
+    }
+    function str(v, max) {
+      return v is string && v.size() <= max;
+    }
+    function optStr(v, max) {
+      return v == null || str(v, max);
+    }
+    function num(v) {
+      return v is number && v > -1000000000000000.0 && v < 1000000000000000.0;
+    }
+    function optNum(v) {
+      return v == null || num(v);
+    }
+    function date(v) {
+      return v is string && v.size() == 10;
+    }
+    function optDate(v) {
+      return v == null || date(v);
+    }
+    function onlyKeys(keys) {
+      return data().keys().hasOnly(keys);
+    }
+
+    match /users/{uid} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && onlyKeys(['email', 'displayName', 'lastLoginAt'])
+        && optStr(data().get('email', null), 320)
+        && optStr(data().get('displayName', null), 200)
+        && optNum(data().get('lastLoginAt', null));
+
+      // 투자 계좌
+      match /accounts/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && onlyKeys(['name', 'memo', 'createdAt'])
+          && str(data().name, 100)
+          && str(data().memo, 500)
+          && num(data().createdAt);
+      }
+
+      // 보유 종목
+      match /holdings/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && onlyKeys(['accountId', 'name', 'code', 'market', 'assetType', 'manualPrice', 'manualPriceDate', 'createdAt'])
+          && str(data().accountId, 100)
+          && str(data().name, 200)
+          && str(data().code, 40)
+          && data().market in ['KR', 'NASDAQ', 'NYSE', 'AMEX', 'US_OTHER']
+          && data().assetType in ['STOCK', 'ETF', 'FUND', 'BOND']
+          && optNum(data().get('manualPrice', null))
+          && optDate(data().get('manualPriceDate', null))
+          && num(data().createdAt);
+      }
+
+      // 입출금·이체·환전·매매·배당·예수금 조정 기록
+      match /records/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && onlyKeys(['accountId', 'type', 'date', 'currency', 'amount', 'krwAmount', 'toAccountId', 'holdingId',
+                       'quantity', 'price', 'fee', 'tax', 'initial', 'externalId', 'memo', 'createdAt'])
+          && str(data().accountId, 100)
+          && data().type in ['DEPOSIT', 'WITHDRAW', 'TRANSFER', 'EXCHANGE', 'BUY', 'SELL', 'DIVIDEND', 'CASH_ADJUST']
+          && date(data().date)
+          && data().currency in ['KRW', 'USD']
+          && num(data().amount)
+          && num(data().krwAmount)
+          && optStr(data().get('toAccountId', null), 100)
+          && optStr(data().get('holdingId', null), 100)
+          && num(data().quantity)
+          && num(data().price)
+          && num(data().fee)
+          && num(data().tax)
+          && data().initial is bool
+          && optStr(data().get('externalId', null), 100)
+          && str(data().memo, 300)
+          && num(data().createdAt);
+      }
+
+      // 설정
+      match /settings/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && id == 'app'
+          && onlyKeys(['manualUsdKrw'])
+          && optNum(data().get('manualUsdKrw', null));
+      }
+
+      // 시세·환율 캐시
+      match /marketData/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && id.size() <= 120
+          && onlyKeys(['latest', 'latestDate', 'closes', 'historyFrom', 'historyTo', 'rates'])
+          && optNum(data().get('latest', null))
+          && optDate(data().get('latestDate', null))
+          && optDate(data().get('historyFrom', null))
+          && optDate(data().get('historyTo', null))
+          && (!('closes' in data()) || (data().closes is map && data().closes.size() <= 20000))
+          && (!('rates' in data()) || (data().rates is map && data().rates.size() <= 20000));
+      }
+
+      // 목적통장
+      match /savingsAccounts/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && onlyKeys(['name', 'balance', 'balanceDate', 'annualRate', 'memo', 'createdAt'])
+          && str(data().name, 100)
+          && num(data().balance)
+          && optDate(data().get('balanceDate', null))
+          && num(data().annualRate)
+          && str(data().memo, 500)
+          && num(data().createdAt);
+      }
+
+      // 목적통장의 목표
+      match /savingsGoals/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && onlyKeys(['accountId', 'name', 'type', 'amount', 'dueDate', 'intervalMonths', 'createdAt'])
+          && str(data().accountId, 100)
+          && str(data().name, 100)
+          && data().type in ['ONE_TIME', 'RECURRING']
+          && num(data().amount)
+          && date(data().dueDate)
+          && data().intervalMonths is int && data().intervalMonths >= 0 && data().intervalMonths <= 1200
+          && num(data().createdAt);
+      }
     }
   }
 }

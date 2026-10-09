@@ -71,8 +71,9 @@ class KisClient(private val store: SecureStore) {
         }
         val json = runCatching { JSONObject(response.body) }.getOrNull()
         val token = json?.optString("access_token").orEmpty()
-        if (response.code !in 200..299 || token.isBlank()) {
-            val message = json?.optString("error_description")?.ifBlank { null } ?: json?.optString("msg1")?.ifBlank { null }
+        if (json == null || response.code !in 200..299 || token.isBlank()) {
+            val message = json?.optString("error_description")?.ifBlank { null }
+                ?: json?.optString("msg1")?.ifBlank { null }
             throw ApiException(
                 "한투 접근 토큰 발급 실패" + (message?.let { ": $it" } ?: " (HTTP ${response.code})") +
                     ". App Key·Secret 이 맞는지, KIS 서비스가 만료되지 않았는지 확인하세요.",

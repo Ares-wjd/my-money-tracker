@@ -39,3 +39,29 @@
   파기 전 등록 이메일로 '재동의' 안내가 오며, 재동의하면 2년 연장된다. 파기된 키는 재사용 불가 → 새로 발급.
   앱에서는 "환율 API 키가 만료되었거나 잘못되었습니다. 재발급 후 설정에서 다시 입력하세요" 로 안내한다.
 - `result: 4`: 오늘 호출 한도 초과. 캐시된 값을 쓰고 다음 날 다시 시도.
+
+## 한국투자증권 Open API (조회 전용)
+
+- 출처: KIS Developers 문서·공식 예제(koreainvestment/open-trading-api) 기준. **실전 계정으로 실제 호출해 검증할 것.**
+- 기본 URL: `https://openapi.koreainvestment.com:9443`
+- 공통 헤더: `authorization: Bearer {토큰}`, `appkey`, `appsecret`, `tr_id`, `custtype: P`, 연속조회 시 `tr_cont: N`
+  - 응답 헤더 `tr_cont` 가 `F`/`M` 이면 다음 페이지가 있다 (`CTX_AREA_FK/NK` 값을 그대로 넘긴다).
+- 응답 `rt_cd` 가 `"0"` 이 아니면 오류. `msg1` 을 사용자에게 보여준다. `EGW00123` 은 토큰 만료.
+- **주문·정정·취소 API 는 사용하지 않는다.**
+
+| 용도 | 경로 | tr_id | 주요 파라미터 → 사용하는 응답 |
+| --- | --- | --- | --- |
+| 접근 토큰 | `POST /oauth2/tokenP` | - | `grant_type=client_credentials, appkey, appsecret` → `access_token`, `expires_in` (하루 1회 발급 원칙, 기기에 캐시) |
+| 국내 현재가 | `/uapi/domestic-stock/v1/quotations/inquire-price` | FHKST01010100 | `FID_COND_MRKT_DIV_CODE=J, FID_INPUT_ISCD` → `output.stck_prpr` |
+| 국내 일봉 | `/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice` | FHKST03010100 | `FID_INPUT_DATE_1/2, FID_PERIOD_DIV_CODE=D, FID_ORG_ADJ_PRC=0` → `output2[].stck_bsop_date, stck_clpr` (최대 100건) |
+| 해외 현재가 | `/uapi/overseas-price/v1/quotations/price` | HHDFS00000300 | `EXCD(NAS/NYS/AMS), SYMB` → `output.last` |
+| 해외 일봉 | `/uapi/overseas-price/v1/quotations/dailyprice` | HHDFS76240000 | `EXCD, SYMB, GUBN=0, BYMD, MODP=1` → `output2[].xymd, clos` (BYMD 이전 100건) |
+| 국내 잔고 | `/uapi/domestic-stock/v1/trading/inquire-balance` | TTTC8434R | `CANO, ACNT_PRDT_CD, INQR_DVSN=02 ...` → `output1[].pdno, prdt_name, hldg_qty, pchs_avg_pric`, `output2[0].prvs_rcdl_excc_amt`(D+2 예수금) |
+| 국내 체결 | `/uapi/domestic-stock/v1/trading/inquire-daily-ccld` | TTTC0081R (3개월 이내) / CTSC9215R (이전) | `INQR_STRT_DT, INQR_END_DT, CCLD_DVSN=01, EXCG_ID_DVSN_CD=ALL` → `output1[].ord_dt, odno, sll_buy_dvsn_cd(01 매도/02 매수), pdno, tot_ccld_qty, avg_prvs` |
+| 해외 잔고 | `/uapi/overseas-stock/v1/trading/inquire-balance` | TTTS3012R | `OVRS_EXCG_CD=NASD(미국 전체), TR_CRCY_CD=USD` → `output1[].ovrs_pdno, ovrs_cblc_qty, pchs_avg_pric, ovrs_excg_cd` |
+| 해외 체결 | `/uapi/overseas-stock/v1/trading/inquire-ccnl` | TTTS3035R | `ORD_STRT_DT, ORD_END_DT, CCLD_NCCS_DVSN=01` → `output[].ord_dt, odno, sll_buy_dvsn_cd, pdno, ft_ccld_qty, ft_ccld_unpr3, ovrs_excg_cd` |
+
+### 앱 구현 메모
+- 체결 내역에는 수수료·세금이 따로 없어 0 으로 저장하고, 대신 원화 예수금을 한투 D+2 예수금에 맞추는 "예수금 조정" 으로 차이를 반영한다.
+- 불러온 체결의 문서 ID 는 `kis_{주문일}_{주문번호}_{종목코드}` 로 정해 같은 체결이 두 번 저장되지 않게 한다.
+- 해외 예수금(달러)은 자동으로 맞추지 않는다 (직접 "예수금 수정").
