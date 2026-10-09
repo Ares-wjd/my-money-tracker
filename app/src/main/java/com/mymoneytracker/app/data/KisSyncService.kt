@@ -33,9 +33,9 @@ data class KisSyncResult(
  * - 체결 내역 → 매수·매도 기록 (문서 ID 를 주문번호로 정해 중복 저장을 막는다)
  * - 처음 연결할 때는 시작일 이전부터 갖고 있던 수량을 "초기 보유" 기록으로 채운다
  * - 이후에는 잔고 수량과 비교해 미니스탁(소수점)처럼 체결 내역에 안 잡히는 매매를 "수량 맞춤" 으로 채운다
- * - 입금·출금(투자금)은 사용자가 직접 입력한다. 예수금은 자동으로 맞추지 않고 한투 값만 돌려준다.
+ * - 입금·출금(투자금)은 사용자가 직접 입력한다. 예수금은 한투 값을 돌려주고, 화면 쪽에서 예수금 기록으로 남긴다.
  */
-/** 연결 계좌의 실제 예수금과 현재가 (주기적 새로고침용, 체결 내역은 받지 않는다). */
+/** 연결 계좌의 예수금과 현재가 (주기적 새로고침용, 체결 내역은 받지 않는다). */
 data class BrokerSnapshot(
     val cashKrw: Double?,
     val cashUsd: Double?,
@@ -202,9 +202,7 @@ class KisSyncService(
 
         newRecords.forEach { repository.saveRecord(it) }
 
-        // 예수금은 자동으로 맞추지 않는다. 기록 안 된 입출금이 "수익" 으로 섞이지 않도록,
-        // 한투 예수금만 돌려주고 차이는 화면에서 보여준다 (입출금은 사용자가 직접 입력).
-        // 예전 버전이 자동으로 만든 예수금 조정 기록은 지운다.
+        // 예전 버전이 자동으로 만든 예수금 조정 기록은 지운다 (예수금은 이제 한투 값을 그대로 쓴다).
         val legacyCashAdjustments = records.filter { it.accountId == account.id && it.externalId == "KIS:cash" }
         legacyCashAdjustments.forEach { repository.deleteRecord(it.id) }
 

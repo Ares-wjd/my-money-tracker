@@ -19,6 +19,8 @@ fun recordTitle(record: Record, data: PortfolioData, accountId: String): String 
             "이체 ← ${data.account(record.accountId)?.name ?: "삭제된 계좌"}"
         }
         RecordType.EXCHANGE -> if (record.currency == Currency.KRW) "환전 원화 → 달러" else "환전 달러 → 원화"
+        RecordType.CASH_ADJUST -> "예수금 조정 (예전 기록, 계산 안 함)"
+        RecordType.CASH_BALANCE -> "예수금 (${record.currency.label})"
         else -> record.type.label
     }
 }
@@ -42,6 +44,7 @@ fun recordAmountText(record: Record, data: PortfolioData, accountId: String): St
         RecordType.SELL -> MoneyFormat.signedAmount(holdingCurrency, record.quantity * record.price - record.fee - record.tax)
         RecordType.DIVIDEND -> MoneyFormat.signedAmount(holdingCurrency, record.amount)
         RecordType.CASH_ADJUST -> MoneyFormat.signedAmount(record.currency, record.amount)
+        RecordType.CASH_BALANCE -> MoneyFormat.amount(record.currency, record.amount)
     }
 }
 

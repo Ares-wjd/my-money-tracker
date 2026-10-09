@@ -54,7 +54,7 @@ import com.mymoneytracker.app.ui.goals.SavingsAccountEditScreen
 import com.mymoneytracker.app.ui.holdings.HoldingDetailScreen
 import com.mymoneytracker.app.ui.holdings.HoldingEditScreen
 import com.mymoneytracker.app.ui.home.HomeScreen
-import com.mymoneytracker.app.ui.records.CashAdjustScreen
+import com.mymoneytracker.app.ui.records.CashBalanceScreen
 import com.mymoneytracker.app.ui.records.RecordEditScreen
 import com.mymoneytracker.app.ui.settings.SettingsScreen
 import com.mymoneytracker.app.ui.update.AppUpdateViewModel
@@ -73,7 +73,7 @@ private object Routes {
     const val HOLDING_DETAIL = "holding/{holdingId}"
     const val HOLDING_EDIT = "holding-edit/{accountId}?holdingId={holdingId}"
     const val RECORD_EDIT = "record-edit/{accountId}/{type}?recordId={recordId}&holdingId={holdingId}"
-    const val CASH_ADJUST = "cash-adjust/{accountId}"
+    const val CASH_BALANCE = "cash-balance/{accountId}"
     const val SAVINGS_DETAIL = "savings/{savingsId}"
     const val SAVINGS_EDIT = "savings-edit?savingsId={savingsId}"
     const val GOAL_EDIT = "goal-edit/{savingsId}?goalId={goalId}"
@@ -87,7 +87,7 @@ private object Routes {
         val query = listOfNotNull(recordId?.let { "recordId=$it" }, holdingId?.let { "holdingId=$it" })
         return "record-edit/$accountId/${type.name}" + if (query.isEmpty()) "" else "?" + query.joinToString("&")
     }
-    fun cashAdjust(accountId: String) = "cash-adjust/$accountId"
+    fun cashBalance(accountId: String) = "cash-balance/$accountId"
     fun savingsDetail(id: String) = "savings/$id"
     fun savingsEdit(id: String? = null) = if (id == null) "savings-edit" else "savings-edit?savingsId=$id"
     fun goalEdit(savingsId: String, goalId: String? = null) =
@@ -293,7 +293,7 @@ fun MainScreen(
                         // 유형은 기록에서 읽으므로 경로에는 아무 유형이나 넣어도 된다.
                         navController.navigate(Routes.recordEdit(accountId, RecordType.DEPOSIT, recordId = recordId))
                     },
-                    onAdjustCash = { navController.navigate(Routes.cashAdjust(accountId)) },
+                    onEnterCash = { navController.navigate(Routes.cashBalance(accountId)) },
                     onOpenSettings = { navController.navigateToTab(Routes.SETTINGS) },
                 )
             }
@@ -346,8 +346,8 @@ fun MainScreen(
                     onDone = { navController.popBackStack() },
                 )
             }
-            composable(Routes.CASH_ADJUST) { entry ->
-                CashAdjustScreen(
+            composable(Routes.CASH_BALANCE) { entry ->
+                CashBalanceScreen(
                     viewModel = portfolioViewModel,
                     accountId = entry.arguments?.getString("accountId").orEmpty(),
                     onBack = { navController.popBackStack() },

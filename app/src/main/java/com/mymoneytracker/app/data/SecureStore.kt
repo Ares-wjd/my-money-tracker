@@ -78,9 +78,6 @@ class SecureStore(context: Context) {
         const val KIS_LINKED_ACCOUNT_ID = "kis_linked_account_id"
         const val KIS_SYNC_START = "kis_sync_start"
         const val KIS_LAST_SYNC = "kis_last_sync"
-        const val KIS_BROKER_CASH_KRW = "kis_broker_cash_krw"
-        const val KIS_BROKER_CASH_USD = "kis_broker_cash_usd"
-        const val KIS_BROKER_CASH_DATE = "kis_broker_cash_date"
         const val EXIM_KEY = "exim_key"
     }
 }

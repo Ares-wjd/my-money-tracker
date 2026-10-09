@@ -28,7 +28,6 @@ import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
-import com.mymoneytracker.core.portfolio.CashOverride
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.PortfolioSummary
 import kotlinx.coroutines.Dispatchers
@@ -55,7 +54,6 @@ data class PortfolioData(
     val settings: AppSettings,
     val market: MarketSnapshot,
     val summary: PortfolioSummary,
-    val cashOverrides: Map<String, CashOverride> = emptyMap(),
 ) {
     /** 계산에 쓰는 환율: 자동으로 받은 최신 환율, 없으면 직접 입력한 환율. */
     val usdKrw: Double? get() = market.latestUsdKrw()?.second ?: settings.manualUsdKrw
@@ -86,20 +84,9 @@ data class ApiStatus(
     val linkedAccountId: String? = null,
     val syncStart: LocalDate? = null,
     val lastSync: LocalDate? = null,
-    /** 마지막으로 불러온 한투 예수금 (원화 D+2, 달러). */
-    val brokerCashKrw: Double? = null,
-    val brokerCashUsd: Double? = null,
-    val brokerCashDate: LocalDate? = null,
 ) {
     val hasKis: Boolean get() = kisKeyHint != null
     val hasExim: Boolean get() = eximKeyHint != null
-
-    /** 한투 연결 계좌는 실제 예수금으로 평가한다. */
-    fun cashOverrides(): Map<String, CashOverride> {
-        val id = linkedAccountId ?: return emptyMap()
-        if (brokerCashKrw == null && brokerCashUsd == null) return emptyMap()
-        return mapOf(id to CashOverride(krw = brokerCashKrw, usd = brokerCashUsd))
-    }
 
     /** KIS 서비스 만료까지 남은 날 (만료일을 입력한 경우). */
     fun daysUntilKisExpiry(today: LocalDate = LocalDate.now()): Long? =
@@ -150,8 +137,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         baseData,
         repository.settings(),
         marketRepository.snapshot(),
-        _apiStatus,
-    ) { (accounts, holdings, records), settings, market, status ->
+    ) { (accounts, holdings, records), settings, market ->
         val fx = market.latestUsdKrw()?.second ?: settings.manualUsdKrw
         PortfolioData(
             accounts = accounts,
@@ -162,9 +148,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             summary = PortfolioCalculator.summarize(
                 accounts, holdings, records, fx,
                 priceOf = { PriceLookup.current(it, market) },
-                cashOverrides = status.cashOverrides(),
             ),
-            cashOverrides = status.cashOverrides(),
         )
     }
         .flowOn(Dispatchers.Default)
@@ -196,7 +180,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             selection = selection,
             points = ChartCalculator.series(
                 dates, today, current.accounts, current.holdings, current.records, current.market,
-                current.settings.manualUsdKrw, selection.accountId, current.cashOverrides,
+                current.settings.manualUsdKrw, selection.accountId,
             ),
             hasEarlier = ChartCalculator.hasEarlier(selection.interval, today, first, selection.rangeFactor),
             loading = loading,
@@ -242,26 +226,47 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
 
     fun saveManualUsdKrw(rate: Double?) = repository.saveManualUsdKrw(rate)
 
-    /** 한투 예수금과의 차이를 "예수금 조정" 으로 기록한다 (예탁금 이용료·수수료·세금 등). */
-    fun recordCashDifference(accountId: String, currency: Currency, difference: Double) {
-        val amount = if (currency == Currency.KRW) Math.round(difference).toDouble() else Math.round(difference * 100) / 100.0
-        repository.saveRecord(
-            Record(
-                accountId = accountId,
-                type = RecordType.CASH_ADJUST,
-                date = LocalDate.now(),
-                currency = currency,
-                amount = amount,
-                memo = "한투 예수금과 맞춤 (예탁금 이용료·수수료·세금 등)",
-            ),
-        )
-        _message.value = "예수금 조정 ${MoneyFormat.signedAmount(currency, amount)} 을 기록했습니다."
+    /** 직접 입력한 예수금을 기록한다. 같은 날 다시 입력하면 그날 값을 덮어쓴다. */
+    fun saveCashBalance(accountId: String, date: LocalDate, krw: Double?, usd: Double?, memo: String) {
+        listOfNotNull(krw?.let { Currency.KRW to it }, usd?.let { Currency.USD to it }).forEach { (currency, value) ->
+            repository.saveRecord(cashBalanceRecord("cash", accountId, date, currency, value, memo, externalId = null))
+        }
     }
+
+    /** 한투 예수금을 연결 계좌의 예수금 기록으로 남긴다. 지금 예수금과 다를 때만 저장한다 (1분 새로고침마다 쓰지 않도록). */
+    private fun saveBrokerCash(accountId: String, krw: Double?, usd: Double?) {
+        val cash = data.value?.accountSummary(accountId)?.cash ?: return
+        val today = LocalDate.now()
+        listOfNotNull(krw?.let { Currency.KRW to it }, usd?.let { Currency.USD to it }).forEach { (currency, value) ->
+            val record = cashBalanceRecord("kis_cash", accountId, today, currency, value, "한투에서 불러옴", externalId = "KIS:balance")
+            if (kotlin.math.abs(cash[currency] - record.amount) >= 0.005) repository.saveRecord(record)
+        }
+    }
+
+    private fun cashBalanceRecord(
+        prefix: String,
+        accountId: String,
+        date: LocalDate,
+        currency: Currency,
+        value: Double,
+        memo: String,
+        externalId: String?,
+    ) = Record(
+        id = "${prefix}_${accountId}_${date.toString().replace("-", "")}_${currency.name}".replace(Regex("[^A-Za-z0-9_\\-]"), "_"),
+        accountId = accountId,
+        type = RecordType.CASH_BALANCE,
+        date = date,
+        currency = currency,
+        amount = if (currency == Currency.KRW) Math.round(value).toDouble() else Math.round(value * 100) / 100.0,
+        externalId = externalId,
+        memo = memo,
+        createdAt = System.currentTimeMillis(),
+    )
 
     // ---------------------------------------------------------------- 시세
 
     /**
-     * 보유 종목 현재가와 환율을 새로 받는다. 한투 연결 계좌가 있으면 잔고 조회로 실제 예수금·현재가도 갱신한다.
+     * 보유 종목 현재가와 환율을 새로 받는다. 한투 연결 계좌가 있으면 잔고 조회로 예수금·현재가도 갱신한다.
      * @param silent 자동 새로고침이면 성공 메시지를 띄우지 않는다.
      */
     fun refreshQuotes(silent: Boolean = false) {
@@ -279,7 +284,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
                     val snapshot = syncService.brokerSnapshot()
                     snapshot.prices.forEach { (key, price) -> marketRepository.saveLatest(key, price) }
                     linkedKeys += snapshot.prices.keys
-                    saveBrokerCash(snapshot.cashKrw, snapshot.cashUsd)
+                    saveBrokerCash(linked, snapshot.cashKrw, snapshot.cashUsd)
                     errors += snapshot.warnings
                 } catch (e: ApiException) {
                     errors += "한투 잔고: ${e.message}"
@@ -298,13 +303,6 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             _refresh.value = RefreshState(running = false, lastRefreshedAt = System.currentTimeMillis(), errors = errors.distinct())
             if (!silent && errors.isEmpty()) _message.value = "시세와 환율을 새로 받았습니다."
         }
-    }
-
-    private fun saveBrokerCash(krw: Double?, usd: Double?) {
-        store.put(SecureStore.KIS_BROKER_CASH_KRW, krw?.toString())
-        store.put(SecureStore.KIS_BROKER_CASH_USD, usd?.toString())
-        store.put(SecureStore.KIS_BROKER_CASH_DATE, LocalDate.now().toString())
-        _apiStatus.value = readApiStatus()
     }
 
     // ---------------------------------------------------------------- 그래프
@@ -365,9 +363,6 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         linkedAccountId = store.get(SecureStore.KIS_LINKED_ACCOUNT_ID),
         syncStart = store.get(SecureStore.KIS_SYNC_START)?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
         lastSync = store.get(SecureStore.KIS_LAST_SYNC)?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
-        brokerCashKrw = store.get(SecureStore.KIS_BROKER_CASH_KRW)?.toDoubleOrNull(),
-        brokerCashUsd = store.get(SecureStore.KIS_BROKER_CASH_USD)?.toDoubleOrNull(),
-        brokerCashDate = store.get(SecureStore.KIS_BROKER_CASH_DATE)?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
     )
 
     private fun hint(value: String): String = if (value.length <= 4) "••••" else value.take(4) + "••••"
@@ -445,10 +440,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         store.put(SecureStore.KIS_LINKED_ACCOUNT_ID, linkedAccountId)
         store.put(SecureStore.KIS_SYNC_START, syncStart.toString())
         if (previous.linkedAccountId != linkedAccountId || previous.linkedAccountNo != accountNo || previous.syncStart != syncStart) {
-            listOf(
-                SecureStore.KIS_LAST_SYNC, SecureStore.KIS_BROKER_CASH_KRW,
-                SecureStore.KIS_BROKER_CASH_USD, SecureStore.KIS_BROKER_CASH_DATE,
-            ).forEach { store.put(it, null) }
+            store.put(SecureStore.KIS_LAST_SYNC, null)
         }
         _apiStatus.value = readApiStatus()
         _message.value = "연결 계좌 정보를 이 기기에 저장했습니다."
@@ -469,7 +461,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
                 val result = syncService.sync(account, current.holdings, current.records, status.syncStart, status.lastSync)
                 store.put(SecureStore.KIS_LAST_SYNC, LocalDate.now().toString())
                 result.currentPrices.forEach { (key, price) -> marketRepository.saveLatest(key, price) }
-                saveBrokerCash(result.brokerCashKrw, result.brokerCashUsd)
+                saveBrokerCash(account.id, result.brokerCashKrw, result.brokerCashUsd)
                 buildString {
                     append("한투에서 체결 ${result.importedTrades}건을 불러왔습니다.")
                     if (result.createdHoldings > 0) append(" 새 종목 ${result.createdHoldings}개.")
@@ -478,7 +470,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
                     if (result.removedCashAdjustments > 0) {
                         append(" 예전에 자동으로 만든 예수금 조정 ${result.removedCashAdjustments}건을 지웠습니다.")
                     }
-                    append("\n입금·출금은 직접 기록하세요. 계좌 화면에서 한투 예수금과의 차이를 확인할 수 있습니다.")
+                    append("\n예수금도 한투 값으로 맞췄습니다. 입금·출금(투자금)은 직접 기록하세요.")
                     if (result.warnings.isNotEmpty()) append("\n" + result.warnings.joinToString("\n"))
                 }
             } catch (e: ApiException) {

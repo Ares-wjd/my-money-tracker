@@ -69,7 +69,10 @@ enum class RecordType(val label: String) {
     BUY("매수"),
     SELL("매도"),
     DIVIDEND("배당"),
+    /** 예전 버전의 예수금 조정 (지금은 계산에 쓰지 않는다). */
     CASH_ADJUST("예수금 조정"),
+    /** 그날의 예수금 잔액 (직접 입력하거나 한투에서 불러온 값). */
+    CASH_BALANCE("예수금"),
 }
 
 /**
@@ -77,10 +80,11 @@ enum class RecordType(val label: String) {
  *
  * - DEPOSIT / WITHDRAW: [currency], [amount](해당 통화), [krwAmount](원화 환산, 투자금 계산용)
  * - TRANSFER: [accountId] 보내는 계좌, [toAccountId] 받는 계좌, [currency], [amount], [krwAmount]
- * - EXCHANGE: [currency] 바꾸기 전 통화, [krwAmount] 원화 금액, [amount] 달러 금액
+ * - EXCHANGE: [currency] 바꾸기 전 통화, [krwAmount] 원화 금액, [amount] 달러 금액 (기록용, 예수금에 영향 없음)
  * - BUY / SELL: [holdingId], [quantity], [price](종목 통화), [fee], [tax]
  * - DIVIDEND: [holdingId], [amount] (종목 통화, 세후)
- * - CASH_ADJUST: [currency], [amount] (부호 있음. +면 예수금 증가)
+ * - CASH_ADJUST: [currency], [amount] (예전 버전 기록, 계산에 쓰지 않음)
+ * - CASH_BALANCE: [currency], [amount] 그날의 예수금 잔액. 통화별로 가장 최근 값이 그 계좌의 예수금이다.
  */
 data class Record(
     val id: String = "",

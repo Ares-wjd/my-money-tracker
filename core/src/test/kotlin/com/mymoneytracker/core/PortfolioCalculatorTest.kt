@@ -7,7 +7,6 @@ import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.PricePoint
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
-import com.mymoneytracker.core.portfolio.CashOverride
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -80,13 +79,13 @@ class PortfolioCalculatorTest {
             rec("kr", RecordType.DEPOSIT, day1, amount = 1_000_000.0, krw = 1_000_000.0),
             rec("kr", RecordType.BUY, day1, holding = "s", qty = 10.0, price = 70_000.0, fee = 500.0),
             rec("kr", RecordType.DIVIDEND, day2, holding = "s", amount = 3_000.0),
-            rec("kr", RecordType.CASH_ADJUST, day2, amount = 200.0), // 예탁금 이용료
+            rec("kr", RecordType.CASH_BALANCE, day2, amount = 302_700.0), // 직접 입력한 예수금
         )
         val summary = PortfolioCalculator.summarize(listOf(kr), listOf(samsung), records, usdKrw = null)
         val a = summary.accounts.single()
         assertEquals(1_000_000.0, a.investedKrw, 1e-9)
-        // 1,000,000 - 700,500 + 3,000 + 200
         assertEquals(302_700.0, a.cash.krw, 1e-9)
+        assertEquals(day2, a.cashDate)
         // 종목 800,000 + 예수금 302,700
         assertEquals(1_102_700.0, a.valueKrw, 1e-9)
         assertEquals(102_700.0, a.profitKrw, 1e-9)
@@ -102,13 +101,15 @@ class PortfolioCalculatorTest {
     }
 
     @Test
-    fun transferAndExchangeBetweenAccounts() {
+    fun transferBetweenAccounts() {
         val records = listOf(
             rec("kr", RecordType.DEPOSIT, day1, amount = 2_000_000.0, krw = 2_000_000.0),
             rec("kr", RecordType.TRANSFER, day1, amount = 1_000_000.0, krw = 1_000_000.0, to = "us"),
             rec("us", RecordType.EXCHANGE, day2, currency = Currency.KRW, amount = 700.0, krw = 980_000.0),
             rec("us", RecordType.BUY, day2, holding = "a", qty = 3.0, price = 180.0, fee = 1.0),
             rec("us", RecordType.DIVIDEND, day3, holding = "a", amount = 2.0),
+            rec("us", RecordType.CASH_BALANCE, day3, currency = Currency.KRW, amount = 20_000.0),
+            rec("us", RecordType.CASH_BALANCE, day3, currency = Currency.USD, amount = 161.0),
         )
         val summary = PortfolioCalculator.summarize(listOf(kr, us), listOf(samsung, apple), records, usdKrw = 1_400.0)
         val krSummary = summary.accounts.first { it.account.id == "kr" }
@@ -119,8 +120,9 @@ class PortfolioCalculatorTest {
         assertEquals(2_000_000.0, summary.investedKrw, 1e-9)
 
         assertEquals(20_000.0, usSummary.cash.krw, 1e-9)
-        // 700 - 541 + 2
         assertEquals(161.0, usSummary.cash.usd, 1e-9)
+        // 받은 계좌의 예수금 기록은 보낸 계좌에 섞이지 않는다.
+        assertEquals(0.0, krSummary.cash.krw, 1e-9)
         // 종목 600$ × 1400 + 20,000 + 161$ × 1400
         assertEquals(840_000.0 + 20_000.0 + 225_400.0, usSummary.valueKrw, 1e-9)
         assertEquals(2.0 * 1_400.0, usSummary.dividendsKrw, 1e-9)
@@ -157,18 +159,28 @@ class PortfolioCalculatorTest {
     }
 
     @Test
-    fun brokerCashOverridesComputedCashForValuation() {
-        // 입금 기록 없이 매수만 불러온 연결 계좌: 기록상 예수금은 마이너스지만 실제 예수금으로 평가한다.
-        val records = listOf(rec("kr", RecordType.BUY, day1, holding = "s", qty = 10.0, price = 70_000.0))
-        val summary = PortfolioCalculator.summarize(
-            listOf(kr), listOf(samsung), records, null,
-            cashOverrides = mapOf("kr" to CashOverride(krw = 50_000.0)),
+    fun cashIsLatestBalanceRecordNotCalculated() {
+        val records = listOf(
+            rec("kr", RecordType.BUY, day1, holding = "s", qty = 10.0, price = 70_000.0),
+            rec("kr", RecordType.CASH_BALANCE, day1, amount = 10_000.0),
+            rec("kr", RecordType.CASH_BALANCE, day2, amount = 50_000.0),
+            rec("kr", RecordType.CASH_BALANCE, day2, currency = Currency.USD, amount = 12.5),
+            rec("kr", RecordType.CASH_ADJUST, day2, amount = 999.0), // 예전 버전 기록은 무시
+            rec("kr", RecordType.CASH_BALANCE, day3, amount = 70_000.0),
         )
-        val a = summary.accounts.single()
-        assertEquals(-700_000.0, a.computedCash.krw, 1e-9)
-        assertEquals(50_000.0, a.cash.krw, 1e-9)
-        assertEquals(850_000.0, a.valueKrw, 1e-9)
-        assertEquals(-700_000.0, PortfolioCalculator.cashOf(summary, "kr").krw, 1e-9)
+        val now = PortfolioCalculator.summarize(listOf(kr), listOf(samsung), records, 1_000.0).accounts.single()
+        assertEquals(70_000.0, now.cash.krw, 1e-9)
+        assertEquals(12.5, now.cash.usd, 1e-9)
+        assertEquals(day3, now.cashDate)
+        // 매수는 예수금을 줄이지 않는다 (예수금은 입력한 값 그대로).
+        assertEquals(800_000.0 + 70_000.0 + 12_500.0, now.valueKrw, 1e-9)
+
+        val past = PortfolioCalculator.summarize(listOf(kr), listOf(samsung), records, 1_000.0, asOf = day2).accounts.single()
+        assertEquals(50_000.0, past.cash.krw, 1e-9)
+
+        val none = PortfolioCalculator.summarize(listOf(kr), listOf(samsung), records, null, asOf = day1.minusDays(1)).accounts.single()
+        assertEquals(0.0, none.cash.krw, 1e-9)
+        assertNull(none.cashDate)
     }
 
     @Test

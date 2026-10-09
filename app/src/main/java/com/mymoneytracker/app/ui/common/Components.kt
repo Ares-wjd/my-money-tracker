@@ -354,7 +354,7 @@ fun <T> ChipSelector(
 /**
  * 숫자 입력창. 쉼표 없이 입력받고, 아래에 읽기 쉬운 형식으로 보여준다.
  * @param allowDecimal 소수점 허용 (달러 금액, 수량 등)
- * @param allowNegative 음수 허용 (예수금 조정)
+ * @param allowNegative 음수 허용 (예수금)
  */
 @Composable
 fun NumberField(

@@ -30,7 +30,7 @@ data class AppSettings(
  *
  * users/{uid}/accounts/{id}   투자 계좌
  * users/{uid}/holdings/{id}   보유 종목 (accountId 로 계좌와 연결)
- * users/{uid}/records/{id}    입출금·이체·환전·매매·배당·예수금 조정 기록
+ * users/{uid}/records/{id}    입출금·이체·매매·배당·예수금 기록
  * users/{uid}/settings/app    설정
  *
  * 쓰기는 기다리지 않는다. Firestore 가 로컬 캐시에 먼저 반영하고 온라인이 되면 동기화한다.

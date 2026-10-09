@@ -130,8 +130,8 @@ private fun HoldingForm(
                 }
                 if (hasInitial) {
                     Text(
-                        "현재 수량과 평균단가를 기준일의 매수 기록으로 남깁니다. 이 금액만큼 예수금이 줄어드니, " +
-                            "기존 투자금은 입금 기록으로, 실제 예수금은 예수금 수정으로 맞춰 주세요.",
+                        "현재 수량과 평균단가를 기준일의 매수 기록으로 남깁니다. " +
+                            "기존 투자금은 입금 기록으로, 예수금은 계좌 화면의 예수금 입력으로 넣어 주세요.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -186,7 +186,7 @@ private fun HoldingForm(
     if (confirmDelete && onDelete != null) {
         ConfirmDialog(
             title = "종목 삭제",
-            text = "이 종목의 매수·매도·배당 기록이 모두 함께 삭제되고, 예수금 계산도 달라집니다. 되돌릴 수 없습니다.",
+            text = "이 종목의 매수·매도·배당 기록이 모두 함께 삭제됩니다. 되돌릴 수 없습니다.",
             confirmLabel = "삭제",
             onConfirm = onDelete,
             onDismiss = { confirmDelete = false },

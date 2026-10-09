@@ -179,6 +179,7 @@ private fun RecordForm(
             else -> null
         }
         RecordType.CASH_ADJUST -> if (amount == null || amount == 0.0) "조정 금액을 입력하세요." else null
+        RecordType.CASH_BALANCE -> if (amount == null) "예수금을 입력하세요." else null
     }
 
     Column(
@@ -193,7 +194,7 @@ private fun RecordForm(
         DateField("날짜", date, { day = it.toEpochDay() })
 
         when (type) {
-            RecordType.DEPOSIT, RecordType.WITHDRAW, RecordType.TRANSFER, RecordType.CASH_ADJUST -> {
+            RecordType.DEPOSIT, RecordType.WITHDRAW, RecordType.TRANSFER, RecordType.CASH_ADJUST, RecordType.CASH_BALANCE -> {
                 if (type == RecordType.TRANSFER) {
                     val others = data.accounts.filter { it.id != accountId }
                     if (others.isEmpty()) {
@@ -204,14 +205,18 @@ private fun RecordForm(
                 }
                 ChipSelector("통화", Currency.entries, currency, { it.label }, { currency = it })
                 NumberField(
-                    label = if (type == RecordType.CASH_ADJUST) "조정 금액 (+ 증가 / − 감소)" else "금액",
+                    label = when (type) {
+                        RecordType.CASH_ADJUST -> "조정 금액 (+ 증가 / − 감소)"
+                        RecordType.CASH_BALANCE -> "그날의 예수금"
+                        else -> "금액"
+                    },
                     value = amountText,
                     onValueChange = { amountText = it },
                     allowDecimal = currency == Currency.USD,
-                    allowNegative = type == RecordType.CASH_ADJUST,
+                    allowNegative = type == RecordType.CASH_ADJUST || type == RecordType.CASH_BALANCE,
                     preview = { MoneyFormat.amount(currency, it) },
                 )
-                if (currency == Currency.USD && type != RecordType.CASH_ADJUST) {
+                if (currency == Currency.USD && type != RecordType.CASH_ADJUST && type != RecordType.CASH_BALANCE) {
                     NumberField(
                         label = "적용 환율 (원/달러, 투자금 원화 환산용)",
                         value = rateText,
@@ -302,7 +307,7 @@ private fun RecordForm(
                         tax = tax,
                     )
                     RecordType.DIVIDEND -> base.copy(holdingId = holdingId, amount = amount ?: 0.0)
-                    RecordType.CASH_ADJUST -> base.copy(currency = currency, amount = amount ?: 0.0)
+                    RecordType.CASH_ADJUST, RecordType.CASH_BALANCE -> base.copy(currency = currency, amount = amount ?: 0.0)
                 }
                 onSave(record)
             },
@@ -318,7 +323,7 @@ private fun RecordForm(
     if (confirmDelete && onDelete != null) {
         ConfirmDialog(
             title = "기록 삭제",
-            text = "이 기록을 삭제할까요? 투자금·예수금·수익률 계산이 다시 이루어집니다.",
+            text = "이 기록을 삭제할까요? 투자금·평가금·수익률 계산이 다시 이루어집니다.",
             confirmLabel = "삭제",
             onConfirm = onDelete,
             onDismiss = { confirmDelete = false },

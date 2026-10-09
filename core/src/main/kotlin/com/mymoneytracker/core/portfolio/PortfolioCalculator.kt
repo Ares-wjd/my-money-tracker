@@ -8,19 +8,11 @@ import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import java.time.LocalDate
 
-/** 실제 예수금 (null 인 통화는 기록으로 계산한 값을 쓴다). */
-data class CashOverride(val krw: Double? = null, val usd: Double? = null)
-
 /** 통화별 금액. */
 data class CashBalance(val krw: Double = 0.0, val usd: Double = 0.0) {
     operator fun get(currency: Currency): Double = when (currency) {
         Currency.KRW -> krw
         Currency.USD -> usd
-    }
-
-    fun plus(currency: Currency, value: Double): CashBalance = when (currency) {
-        Currency.KRW -> copy(krw = krw + value)
-        Currency.USD -> copy(usd = usd + value)
     }
 
     fun toKrw(usdKrw: Double?): Double = krw + usd * (usdKrw ?: 0.0)
@@ -63,10 +55,10 @@ data class AccountSummary(
     val account: InvestmentAccount,
     /** 투자금 = 입금 − 출금 ± 이체 (원화). */
     val investedKrw: Double,
-    /** 평가에 쓰는 예수금: 한투 연결 계좌는 한투 실제 예수금, 그 외에는 기록으로 계산한 값. */
+    /** 예수금: 통화별로 가장 최근의 예수금 기록 (직접 입력 또는 한투에서 불러온 값). 기록이 없으면 0. */
     val cash: CashBalance,
-    /** 기록으로 계산한 예수금 (실제 예수금과 비교하거나 "예수금 수정" 에 쓴다). */
-    val computedCash: CashBalance = cash,
+    /** 가장 최근 예수금 기록의 날짜 (없으면 null). */
+    val cashDate: LocalDate? = null,
     val holdings: List<HoldingValuation>,
     val dividendsKrw: Double,
     /** 가격이 없는 종목이 있어 평가금이 실제보다 작게 계산됐는지. */
@@ -78,7 +70,7 @@ data class AccountSummary(
     /** 계좌 평가금 (원화) = 종목 평가금 + 예수금. */
     val valueKrw: Double get() = holdings.sumOf { it.marketValueKrw ?: 0.0 } + cash.toKrw(usdKrw)
 
-    /** 수익금 (배당 포함) = 평가금 − 투자금. 예수금 조정(예탁금 이용료 등)도 여기에 반영된다. */
+    /** 수익금 (배당 포함) = 평가금 − 투자금. 예탁금 이용료 등도 예수금을 통해 여기에 반영된다. */
     val profitKrw: Double get() = valueKrw - investedKrw
 
     /** 수익금 (배당 미포함). */
@@ -112,7 +104,6 @@ object PortfolioCalculator {
      * @param priceOf 종목의 현재가 (없으면 null)
      * @param usdKrw 원/달러 환율 (없으면 달러 금액은 원화 합계에서 빠진다)
      * @param asOf 이 날짜까지의 기록만 반영 (null 이면 전부)
-     * @param cashOverrides 계좌 ID → 실제 예수금 (한투 연결 계좌). 통화별로 null 이 아닌 값만 덮어쓴다.
      */
     fun summarize(
         accounts: List<InvestmentAccount>,
@@ -121,7 +112,6 @@ object PortfolioCalculator {
         usdKrw: Double?,
         priceOf: (Holding) -> PricePoint? = { h -> h.manualPrice?.let { PricePoint(it, h.manualPriceDate) } },
         asOf: LocalDate? = null,
-        cashOverrides: Map<String, CashOverride> = emptyMap(),
     ): PortfolioSummary {
         val effective = records
             .filter { asOf == null || !it.date.isAfter(asOf) }
@@ -133,7 +123,6 @@ object PortfolioCalculator {
                 records = effective.filter { it.accountId == account.id || it.toAccountId == account.id },
                 usdKrw = usdKrw,
                 priceOf = priceOf,
-                cashOverride = cashOverrides[account.id],
             )
         }
         return PortfolioSummary(summaries, usdKrw)
@@ -145,48 +134,26 @@ object PortfolioCalculator {
         records: List<Record>,
         usdKrw: Double?,
         priceOf: (Holding) -> PricePoint?,
-        cashOverride: CashOverride?,
     ): AccountSummary {
         var invested = 0.0
         var cash = CashBalance()
-        val holdingById = holdings.associateBy { it.id }
+        var cashDate: LocalDate? = null
 
+        // 예수금은 계산하지 않는다. 통화별로 가장 최근의 예수금 기록(records 는 날짜순)을 쓴다.
         for (r in records) {
             val incoming = r.type == RecordType.TRANSFER && r.toAccountId == account.id && r.accountId != account.id
             when (r.type) {
-                RecordType.DEPOSIT -> {
-                    invested += r.krwAmount
-                    cash = cash.plus(r.currency, r.amount)
-                }
-                RecordType.WITHDRAW -> {
-                    invested -= r.krwAmount
-                    cash = cash.plus(r.currency, -r.amount)
-                }
-                RecordType.TRANSFER -> {
-                    val sign = if (incoming) 1.0 else -1.0
-                    invested += sign * r.krwAmount
-                    cash = cash.plus(r.currency, sign * r.amount)
-                }
-                RecordType.EXCHANGE -> {
-                    cash = if (r.currency == Currency.KRW) {
-                        cash.plus(Currency.KRW, -r.krwAmount).plus(Currency.USD, r.amount)
-                    } else {
-                        cash.plus(Currency.USD, -r.amount).plus(Currency.KRW, r.krwAmount)
+                RecordType.DEPOSIT -> invested += r.krwAmount
+                RecordType.WITHDRAW -> invested -= r.krwAmount
+                RecordType.TRANSFER -> invested += (if (incoming) 1.0 else -1.0) * r.krwAmount
+                RecordType.CASH_BALANCE -> if (r.accountId == account.id) {
+                    cash = when (r.currency) {
+                        Currency.KRW -> cash.copy(krw = r.amount)
+                        Currency.USD -> cash.copy(usd = r.amount)
                     }
+                    cashDate = r.date
                 }
-                RecordType.BUY -> {
-                    val currency = holdingById[r.holdingId]?.currency ?: continue
-                    cash = cash.plus(currency, -(r.quantity * r.price + r.fee + r.tax))
-                }
-                RecordType.SELL -> {
-                    val currency = holdingById[r.holdingId]?.currency ?: continue
-                    cash = cash.plus(currency, r.quantity * r.price - r.fee - r.tax)
-                }
-                RecordType.DIVIDEND -> {
-                    val currency = holdingById[r.holdingId]?.currency ?: continue
-                    cash = cash.plus(currency, r.amount)
-                }
-                RecordType.CASH_ADJUST -> cash = cash.plus(r.currency, r.amount)
+                else -> Unit
             }
         }
 
@@ -209,17 +176,13 @@ object PortfolioCalculator {
                 Currency.USD -> v.position.dividends * (usdKrw ?: 0.0)
             }
         }
-        val effectiveCash = CashBalance(
-            krw = cashOverride?.krw ?: cash.krw,
-            usd = cashOverride?.usd ?: cash.usd,
-        )
-        val hasUsd = effectiveCash.usd != 0.0 || valuations.any { it.holding.currency == Currency.USD && it.position.quantity > 0 }
+        val hasUsd = cash.usd != 0.0 || valuations.any { it.holding.currency == Currency.USD && it.position.quantity > 0 }
 
         return AccountSummary(
             account = account,
             investedKrw = invested,
-            cash = effectiveCash,
-            computedCash = cash,
+            cash = cash,
+            cashDate = cashDate,
             holdings = valuations,
             dividendsKrw = dividendsKrw,
             missingPrice = valuations.any { it.position.quantity > 0 && it.price == null },
@@ -266,10 +229,6 @@ object PortfolioCalculator {
             holding,
             records.filter { it.holdingId == holding.id && !it.date.isAfter(date) && it.id != excludeRecordId },
         ).quantity
-
-    /** 기록으로 계산한 예수금. "예수금 수정" 에서 실제 값과의 차이를 구할 때 쓴다. */
-    fun cashOf(summary: PortfolioSummary, accountId: String): CashBalance =
-        summary.accounts.firstOrNull { it.account.id == accountId }?.computedCash ?: CashBalance()
 
     private const val EPSILON = 1e-9
 }
