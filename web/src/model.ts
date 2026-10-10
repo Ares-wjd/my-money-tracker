@@ -136,3 +136,18 @@ export const isImported = (record: Record): boolean => record.externalId?.starts
 /** 한투 연결 계좌인지: 연결 정보는 폰에만 있으므로, 한투에서 불러온 기록이 있는 계좌로 판단한다. */
 export const linkedAccountIds = (records: readonly Record[]): Set<string> =>
   new Set(records.filter(isImported).map((r) => r.accountId));
+
+// 화면 표시용 이름 (폰 앱과 같음)
+export const ACCOUNT_KIND_LABEL: { [K in AccountKind]: string } = {
+  GENERAL: '일반(위탁)', ISA: 'ISA', PENSION: '연금저축', IRP: 'IRP', DC: '퇴직연금(DC)', OTHER: '기타',
+};
+export const ASSET_TYPE_LABEL: { [K in AssetType]: string } = { STOCK: '주식', ETF: 'ETF', FUND: '펀드', BOND: '채권' };
+export const MARKET_LABEL: { [K in Market]: string } = {
+  KR: '국내', NASDAQ: '나스닥', NYSE: '뉴욕', AMEX: '아멕스', US_OTHER: '미국 기타',
+};
+export const RECORD_TYPE_LABEL: { [K in RecordType]: string } = {
+  DEPOSIT: '입금', WITHDRAW: '출금', TRANSFER: '계좌 간 이체', EXCHANGE: '환전', BUY: '매수', SELL: '매도',
+  DIVIDEND: '배당', CASH_ADJUST: '예수금 조정', CASH_BALANCE: '예수금',
+};
+export const CURRENCY_LABEL: { [K in Currency]: string } = { KRW: '원화', USD: '달러' };
+export const GOAL_TYPE_LABEL: { [K in GoalType]: string } = { ONE_TIME: '1회성', RECURRING: '반복' };

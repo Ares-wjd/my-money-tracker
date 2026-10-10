@@ -1,8 +1,15 @@
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth';
+import { Layout } from './components/Layout';
+import { NotFound } from './components/ui';
+import { DataProvider } from './data/DataContext';
 import { firebase } from './firebase';
+import { AccountDetailPage } from './pages/AccountDetailPage';
+import { AccountsPage } from './pages/AccountsPage';
+import { GoalsPage } from './pages/GoalsPage';
+import { HoldingDetailPage } from './pages/HoldingDetailPage';
+import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
-import { StatusPage } from './pages/StatusPage';
 
 function Gate() {
   const { user } = useAuth();
@@ -18,11 +25,20 @@ function Gate() {
   if (user === null) return <LoginPage />;
   return (
     // GitHub Pages 는 경로 재작성을 지원하지 않아 #/ 주소를 쓴다.
-    <HashRouter>
-      <Routes>
-        <Route path="*" element={<StatusPage user={user} />} />
-      </Routes>
-    </HashRouter>
+    <DataProvider uid={user.uid}>
+      <HashRouter>
+        <Routes>
+          <Route element={<Layout user={user} />}>
+            <Route index element={<HomePage />} />
+            <Route path="accounts" element={<AccountsPage />} />
+            <Route path="accounts/:accountId" element={<AccountDetailPage />} />
+            <Route path="holdings/:holdingId" element={<HoldingDetailPage />} />
+            <Route path="goals" element={<GoalsPage />} />
+            <Route path="*" element={<NotFound what="페이지" />} />
+          </Route>
+        </Routes>
+      </HashRouter>
+    </DataProvider>
   );
 }
 
