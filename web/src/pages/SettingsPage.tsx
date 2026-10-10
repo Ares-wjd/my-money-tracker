@@ -5,6 +5,7 @@ import { formatDate } from '../core/dates';
 import { decimal, parseDecimal } from '../core/format';
 import { useAppData, useData } from '../data/DataContext';
 import { saveManualUsdKrw } from '../data/writes';
+import { ThemeSwitch } from '../theme';
 
 export function SettingsPage() {
   const { uid } = useData();
@@ -26,6 +27,10 @@ export function SettingsPage() {
         <NumberField label="직접 입력 환율 (원/달러)" value={rateText} onChange={(v) => { setRateText(v); setSaved(false); }} preview={(n) => `1달러 = ${decimal(n, 2)}원`} />
         <FormActions problem={problem} onSave={() => saveManualUsdKrw(uid, rateText.trim() === '' ? null : rate)} onDone={() => setSaved(true)} />
         {saved && <p className="muted small">저장했습니다.</p>}
+      </Card>
+      <Card title="화면 모드">
+        <p className="muted small">자동은 PC 설정(밝게/어둡게)을 따릅니다. 고른 값은 이 브라우저에 기억합니다.</p>
+        <ThemeSwitch />
       </Card>
       <Card title="폰 앱에서만 하는 것">
         <p className="muted small">한국투자증권 연결·불러오기, API 키 관리, 시세·환율 자동 조회, 앱 업데이트, 탈퇴는 폰 앱에서 합니다 (API 키는 폰에만 저장).</p>

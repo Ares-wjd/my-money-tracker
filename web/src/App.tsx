@@ -11,6 +11,7 @@ import { HoldingDetailPage } from './pages/HoldingDetailPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ThemeProvider } from './theme';
 
 function Gate() {
   const { user } = useAuth();
@@ -22,7 +23,7 @@ function Gate() {
       </main>
     );
   }
-  if (user === undefined) return <main className="center muted">불러오는 중…</main>;
+  if (user === undefined) return <main className="center muted"><span className="spinner" aria-hidden="true" />불러오는 중…</main>;
   if (user === null) return <LoginPage />;
   return (
     // GitHub Pages 는 경로 재작성을 지원하지 않아 #/ 주소를 쓴다.
@@ -46,8 +47,10 @@ function Gate() {
 
 export function App() {
   return (
-    <AuthProvider>
-      <Gate />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <Gate />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

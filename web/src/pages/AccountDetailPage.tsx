@@ -109,8 +109,8 @@ export function AccountDetailPage() {
                 <tr>
                   <th>종목</th>
                   <th className="num">수량</th>
-                  <th className="num">평균단가</th>
-                  <th className="num">현재가</th>
+                  <th className="num optional">평균단가</th>
+                  <th className="num optional">현재가</th>
                   <th className="num">평가금</th>
                   <th className="num">수익률</th>
                 </tr>
@@ -123,7 +123,8 @@ export function AccountDetailPage() {
                     return converted === null ? '환율 필요' : amount(c.currency, converted);
                   };
                   return (
-                    <tr key={v.holding.id}>
+                    // 행 어디를 눌러도 종목 화면으로 (키보드는 첫 칸의 링크로 이동)
+                    <tr key={v.holding.id} className="clickable" onClick={() => navigate(`/holdings/${v.holding.id}`)}>
                       <td>
                         <ListLink
                           to={`/holdings/${v.holding.id}`}
@@ -133,8 +134,8 @@ export function AccountDetailPage() {
                         />
                       </td>
                       <td className="num">{decimal(v.position.quantity)}</td>
-                      <td className="num">{shown(v.position.averagePrice)}</td>
-                      <td className="num">{v.price ? shown(v.price.price) : '없음'}</td>
+                      <td className="num optional">{shown(v.position.averagePrice)}</td>
+                      <td className="num optional">{v.price ? shown(v.price.price) : '없음'}</td>
                       <td className="num strong">{v.marketValue === null ? '가격 입력 필요' : shown(v.marketValue)}</td>
                       <td className={`num ${profitClass(v.returnRate)}`}>{percent(v.returnRate)}</td>
                     </tr>
