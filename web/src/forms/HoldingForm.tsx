@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Choice, DateField, FormActions, Modal, NumberField, TextField } from '../components/form';
 import { today } from '../core/dates';
-import { amount, parseDecimal } from '../core/format';
+import { amountPreview, parseDecimal } from '../core/format';
 import { useAppData, useData } from '../data/DataContext';
 import { deleteHolding, saveHolding, saveRecord } from '../data/writes';
 import { ASSET_TYPES, ASSET_TYPE_LABEL, CURRENCY_LABEL, MARKETS, MARKET_LABEL, marketCurrency, type AssetType, type Holding, type Market } from '../model';
@@ -62,7 +62,7 @@ export function HoldingForm({ accountId, existing, onClose, onDeleted }: { accou
             <>
               <p className="muted small">현재 수량과 평균단가를 기준일의 매수 기록으로 남깁니다. 기존 투자금은 입금 기록으로, 예수금은 계좌 화면의 예수금 입력으로 넣어 주세요.</p>
               <NumberField label="보유 수량" value={quantityText} onChange={setQuantityText} />
-              <NumberField label={`평균단가 (${CURRENCY_LABEL[currency]})`} value={averageText} onChange={setAverageText} preview={(n) => amount(currency, n)} />
+              <NumberField label={`평균단가 (${CURRENCY_LABEL[currency]})`} value={averageText} onChange={setAverageText} preview={(n) => amountPreview(currency, n)} />
               <DateField label="기준일" value={initialDate} onChange={setInitialDate} />
             </>
           )}
@@ -92,7 +92,7 @@ export function PriceForm({ holding, onClose }: { holding: Holding; onClose: () 
   return (
     <Modal title="현재가 직접 입력" onClose={onClose}>
       <p className="muted small">자동 시세가 없는 종목(펀드·채권 등)이나 시세가 틀릴 때 씁니다. 자동 시세와 직접 입력 중 날짜가 더 최근인 값을 씁니다. 비우고 저장하면 직접 입력 가격을 지웁니다.</p>
-      <NumberField label={`현재가 (${CURRENCY_LABEL[currency]})`} value={priceText} onChange={setPriceText} preview={(n) => amount(currency, n)} />
+      <NumberField label={`현재가 (${CURRENCY_LABEL[currency]})`} value={priceText} onChange={setPriceText} preview={(n) => amountPreview(currency, n)} />
       <DateField label="기준일" value={date} onChange={setDate} />
       <FormActions
         problem={problem}

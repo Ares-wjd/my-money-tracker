@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Choice, DateField, FormActions, Modal, NumberField, TextField, numberText } from '../components/form';
 import { Row } from '../components/ui';
 import { formatDate, today } from '../core/dates';
-import { amount as formatAmount, decimal, parseDecimal, usd, won } from '../core/format';
+import { amount as formatAmount, amountPreview, decimal, manwon, parseDecimal, usd, won } from '../core/format';
 import { buildRecord, inputFromRecord, recordProblem, type RecordInput } from '../core/recordForm';
 import { useAppData, useData } from '../data/DataContext';
 import { deleteRecord, saveRecord } from '../data/writes';
@@ -77,7 +77,7 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
             onChange={setAmountText}
             allowDecimal={currency === 'USD'}
             allowNegative={recordType === 'CASH_ADJUST' || recordType === 'CASH_BALANCE'}
-            preview={(n) => formatAmount(currency, n)}
+            preview={(n) => amountPreview(currency, n)}
           />
           {currency === 'USD' && recordType !== 'CASH_ADJUST' && recordType !== 'CASH_BALANCE' && (
             <>
@@ -91,7 +91,7 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
       {recordType === 'EXCHANGE' && (
         <>
           <Choice label="방향" options={CURRENCIES} value={currency} text={(c) => (c === 'KRW' ? '원화 → 달러' : '달러 → 원화')} onChange={setCurrency} />
-          <NumberField label="원화 금액" value={krwText} onChange={setKrwText} allowDecimal={false} preview={won} />
+          <NumberField label="원화 금액" value={krwText} onChange={setKrwText} allowDecimal={false} preview={manwon} />
           <NumberField label="달러 금액" value={amountText} onChange={setAmountText} preview={usd} />
           {input.krw !== null && input.amount !== null && input.amount > 0 && <Row label="적용 환율" value={`${decimal(input.krw / input.amount, 2)}원`} />}
         </>
@@ -103,14 +103,14 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
             <Choice label="종목" options={holdings.map((h) => h.id)} value={holdingId} text={(id) => data.lookup.holding(id)?.name ?? ''} onChange={setHoldingId} />
           )}
           {recordType === 'DIVIDEND' ? (
-            <NumberField label={`배당금 (세후 실수령액, ${CURRENCY_LABEL[holdingCurrency]})`} value={amountText} onChange={setAmountText} preview={(n) => formatAmount(holdingCurrency, n)} />
+            <NumberField label={`배당금 (세후 실수령액, ${CURRENCY_LABEL[holdingCurrency]})`} value={amountText} onChange={setAmountText} preview={(n) => amountPreview(holdingCurrency, n)} />
           ) : (
             <>
               <NumberField label="수량" value={quantityText} onChange={setQuantityText} />
-              <NumberField label={`단가 (${CURRENCY_LABEL[holdingCurrency]})`} value={priceText} onChange={setPriceText} preview={(n) => formatAmount(holdingCurrency, n)} />
+              <NumberField label={`단가 (${CURRENCY_LABEL[holdingCurrency]})`} value={priceText} onChange={setPriceText} preview={(n) => amountPreview(holdingCurrency, n)} />
               <div className="field-row">
-                <NumberField label="수수료" value={feeText} onChange={setFeeText} preview={(n) => formatAmount(holdingCurrency, n)} />
-                <NumberField label="세금" value={taxText} onChange={setTaxText} preview={(n) => formatAmount(holdingCurrency, n)} />
+                <NumberField label="수수료" value={feeText} onChange={setFeeText} preview={(n) => amountPreview(holdingCurrency, n)} />
+                <NumberField label="세금" value={taxText} onChange={setTaxText} preview={(n) => amountPreview(holdingCurrency, n)} />
               </div>
               {input.quantity !== null && input.price !== null && (
                 <Row

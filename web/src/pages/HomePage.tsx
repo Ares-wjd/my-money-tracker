@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { formatShortDate } from '../core/dates';
 import { decimal, percent, signedWon, won } from '../core/format';
 import { useAppData } from '../data/DataContext';
+import { AssetChart } from '../components/AssetChart';
 import { Badge, Card, ListLink, Stat, Warning, profitClass } from '../components/ui';
 import { ACCOUNT_KIND_LABEL } from '../model';
 import { accountDescription } from './text';
@@ -51,6 +52,8 @@ export function HomePage() {
           {summary.missingPrice && <Warning>현재가가 없는 종목이 있어 평가금에서 빠져 있습니다.</Warning>}
         </Card>
       )}
+
+      <AssetChart data={data} />
 
       <Card title="계좌">
         {summary.accounts.map((a) => (

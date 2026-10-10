@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { DateField, FormActions, Modal, NumberField, TextField } from '../components/form';
 import { formatDate, today } from '../core/dates';
-import { parseDecimal, usd, won } from '../core/format';
+import { manwon, parseDecimal, usd } from '../core/format';
 import type { AccountSummary } from '../core/portfolio';
 import { useData } from '../data/DataContext';
 import { cashRecordId, roundCash } from '../data/serialize';
@@ -36,7 +36,7 @@ export function CashForm({ summary, onClose }: { summary: AccountSummary; onClos
   return (
     <Modal title="예수금 입력" onClose={onClose}>
       <p className="muted small">증권사 앱에 보이는 예수금을 그대로 입력하세요. 매매·입출금으로 계산하지 않고, 입력한 값이 이 계좌의 예수금이 됩니다.</p>
-      <NumberField label="원화 예수금" value={krwText} onChange={setKrwText} allowDecimal={false} allowNegative preview={won} />
+      <NumberField label="원화 예수금" value={krwText} onChange={setKrwText} allowDecimal={false} allowNegative preview={manwon} />
       {showUsd && <NumberField label="달러 예수금" value={usdText} onChange={setUsdText} allowNegative preview={usd} />}
       <DateField label="기준일" value={date} onChange={setDate} />
       <TextField label="메모 (선택)" value={memo} onChange={setMemo} maxLength={100} />

@@ -20,6 +20,9 @@
   --accent-soft: #e6f2ee;
   --logo-bg: #16201c;
   --shadow: 0 1px 2px rgba(22, 32, 28, 0.06);
+  /* 그래프 색 (dataviz 검사 통과: 밝게 #007a5e/#b5770a, 어둡게 #27957a/#c4851c) */
+  --chart-value: #007a5e;
+  --chart-invested: #b5770a;
   color-scheme: light;
 }
 /* 화면 모드: 자동이면 PC 설정, 직접 고르면 data-theme (src/theme.tsx) */
@@ -43,6 +46,8 @@
   --accent-soft: #134a3f;
   --logo-bg: #34443d;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --chart-value: #27957a;
+  --chart-invested: #c4851c;
   color-scheme: dark;
   }
 }
@@ -65,6 +70,8 @@
   --accent-soft: #134a3f;
   --logo-bg: #34443d;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --chart-value: #27957a;
+  --chart-invested: #c4851c;
   color-scheme: dark;
 }
 
@@ -249,3 +256,24 @@ button.primary.small-button { padding: 8px 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .skeleton, .spinner { animation: none; } }
 .empty { text-align: center; padding: 24px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+/* W5: 자산 추이 그래프 */
+.chart-filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.chart-readout { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.readout-main { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.readout-value { font-size: 22px; font-weight: 700; }
+.readout-sub { font-weight: 600; }
+.legend { display: flex; gap: 16px; margin: 6px 0 2px; font-size: 13px; color: var(--muted); }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.chart-box { width: 100%; overflow: hidden; }
+.chart-box svg { display: block; touch-action: pan-y; }
+.chart-box svg:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; border-radius: 8px; }
+.grid { stroke: var(--line); stroke-width: 1; }
+.axis { fill: var(--muted); font-size: 11px; font-family: inherit; }
+.line-value { stroke: var(--chart-value); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.line-invested { stroke: var(--chart-invested); stroke-width: 2; stroke-dasharray: 6 5; stroke-linecap: round; }
+.crosshair { stroke: var(--muted); stroke-width: 1; opacity: 0.5; }
+.dot-value { fill: var(--chart-value); stroke: var(--card); stroke-width: 2; }
+.dot-invested { fill: var(--chart-invested); stroke: var(--card); stroke-width: 2; }
+.chart-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+.chart-table { max-height: 320px; overflow-y: auto; }

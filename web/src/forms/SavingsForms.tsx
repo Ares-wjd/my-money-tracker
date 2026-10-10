@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Choice, DateField, FormActions, Modal, NumberField, TextField, numberText } from '../components/form';
 import { Row } from '../components/ui';
 import { plusMonths, today } from '../core/dates';
-import { decimal, parseDecimal, won } from '../core/format';
+import { decimal, manwon, parseDecimal, won } from '../core/format';
 import { useAppData, useData } from '../data/DataContext';
 import { deleteSavingsAccount, deleteSavingsGoal, saveSavingsAccount, saveSavingsGoal } from '../data/writes';
 import { GOAL_TYPES, GOAL_TYPE_LABEL, type GoalType, type SavingsAccount, type SavingsGoal } from '../model';
@@ -68,7 +68,7 @@ export function SavingsAccountForm({ existing, onClose }: { existing: SavingsAcc
             <TextField label="계좌 이름" placeholder="예: CMA, 채권" value={r.name} onChange={(v) => update(i, { name: v })} maxLength={30} />
             <TextField label="계좌번호 (선택)" value={r.number} onChange={(v) => update(i, { number: v.replace(/[^0-9-]/g, '').slice(0, 30) })} />
           </div>
-          <NumberField label="잔액 (원)" value={r.balance} onChange={(v) => update(i, { balance: v })} allowDecimal={false} preview={won} />
+          <NumberField label="잔액 (원)" value={r.balance} onChange={(v) => update(i, { balance: v })} allowDecimal={false} preview={manwon} />
         </div>
       ))}
       {rows.length < MAX_SUB_ACCOUNTS && (
@@ -109,7 +109,7 @@ export function GoalForm({ accountId, existing, onClose }: { accountId: string; 
     <Modal title={existing ? '목표 편집' : '목표 추가'} onClose={onClose}>
       <TextField label="목표 이름" placeholder="예: 노트북, 휴대폰" value={name} onChange={setName} maxLength={40} />
       <Choice label="종류" options={GOAL_TYPES} value={type} text={(t) => GOAL_TYPE_LABEL[t]} onChange={setType} />
-      <NumberField label="목표 금액 (원)" value={amountText} onChange={setAmountText} allowDecimal={false} preview={won} />
+      <NumberField label="목표 금액 (원)" value={amountText} onChange={setAmountText} allowDecimal={false} preview={manwon} />
       <DateField label={type === 'ONE_TIME' ? '목표일' : '기준 지출일 (지나면 주기만큼 자동으로 넘어갑니다)'} value={dueDate} onChange={setDueDate} />
       {type === 'RECURRING' && (
         <NumberField label="반복 주기 (개월, 예: 24 = 2년마다)" value={intervalText} onChange={(v) => setIntervalText(v.replace(/[^0-9]/g, '').slice(0, 3))} allowDecimal={false} />

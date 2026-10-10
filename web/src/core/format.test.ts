@@ -1,6 +1,6 @@
 // core MoneyFormatTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
-import { decimal, parseDecimal, percent, signedAmount, signedWon, usd, won } from './format';
+import { amountPreview, decimal, manwon, parseDecimal, percent, signedAmount, signedWon, usd, won } from './format';
 
 describe('금액 표시 (MoneyFormatTest)', () => {
   it('천 단위 쉼표', () => {
@@ -41,5 +41,16 @@ describe('금액 표시 (MoneyFormatTest)', () => {
     expect(parseDecimal('abc')).toBeNull();
     expect(parseDecimal('.')).toBeNull();
     expect(parseDecimal('1.2.3')).toBeNull();
+  });
+
+  it('입력 미리보기는 만원 단위', () => {
+    expect(manwon(6_000_000)).toBe('600만원');
+    expect(manwon(1_055_000)).toBe('105.5만원');
+    expect(manwon(2_000_000)).toBe('200만원');
+    expect(manwon(123_456_789)).toBe('12,345.6789만원');
+    expect(manwon(10_000)).toBe('1만원');
+    expect(manwon(5_000)).toBe('5,000원');
+    expect(manwon(-3_500_000)).toBe('-350만원');
+    expect(amountPreview('USD', 12.5)).toBe('$12.50');
   });
 });

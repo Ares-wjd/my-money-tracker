@@ -1,0 +1,16 @@
+{
+  "name": "Money Tracker",
+  "short_name": "Money Tracker",
+  "description": "투자 자산과 목적통장을 관리하는 Money Tracker (PC 웹)",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F4F5F2",
+  "theme_color": "#0F6B5C",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -89,3 +89,14 @@ export function parseDecimal(input: string): number | null {
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
 }
+
+/** 입력 미리보기용 만원 단위: 6000000 → "600만원", 1055000 → "105.5만원", 5000 → "5,000원" */
+export function manwon(value: number): string {
+  if (Math.abs(value) < 10_000) return won(value);
+  return decimal(value / 10_000, 4) + '만원';
+}
+
+/** 입력칸 아래 미리보기: 원화는 만원 단위, 달러는 그대로. */
+export function amountPreview(currency: Currency, value: number): string {
+  return currency === 'KRW' ? manwon(value) : usd(value);
+}
