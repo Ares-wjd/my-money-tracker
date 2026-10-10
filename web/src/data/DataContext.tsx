@@ -23,6 +23,7 @@ export interface AppData extends UserData {
 }
 
 interface DataState {
+  uid: string;
   data: AppData | null;
   errors: string[];
   displayCurrency: DisplayCurrency;
@@ -78,7 +79,7 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     }
   };
 
-  return <DataContext.Provider value={{ data, errors, displayCurrency, setDisplayCurrency }}>{children}</DataContext.Provider>;
+  return <DataContext.Provider value={{ uid, data, errors, displayCurrency, setDisplayCurrency }}>{children}</DataContext.Provider>;
 }
 
 export function useData(): DataState {

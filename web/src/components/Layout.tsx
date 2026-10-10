@@ -8,6 +8,7 @@ const NAV = [
   { to: '/', label: '홈', end: true },
   { to: '/accounts', label: '계좌', end: false },
   { to: '/goals', label: '목표', end: false },
+  { to: '/settings', label: '설정', end: false },
 ];
 
 export function Layout({ user }: { user: User }) {

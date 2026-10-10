@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { formatDate, formatShortDate } from '../core/dates';
 import { decimal, won } from '../core/format';
 import type { GoalProgress } from '../core/goals';
 import { useAppData } from '../data/DataContext';
 import { Card } from '../components/ui';
-import { savingsBalance } from '../model';
+import { savingsBalance, type SavingsAccount, type SavingsGoal } from '../model';
+import { GoalForm, SavingsAccountForm } from '../forms/SavingsForms';
+
+type Dialog = { kind: 'account'; existing: SavingsAccount | null } | { kind: 'goal'; accountId: string; existing: SavingsGoal | null } | null;
 
 function goalSchedule(g: GoalProgress): string {
   const interval = g.goal.intervalMonths;
@@ -21,15 +25,19 @@ function goalStatus(g: GoalProgress): string {
 
 export function GoalsPage() {
   const data = useAppData();
+  const [dialog, setDialog] = useState<Dialog>(null);
   const totalMonthly = data.savings.reduce((s, x) => s + x.totalMonthlyPayment, 0);
   const totalBalance = data.savingsAccounts.reduce((s, a) => s + savingsBalance(a), 0);
 
   return (
     <div className="stack">
-      <h1 className="page-title">목표</h1>
+      <div className="page-head">
+        <h1 className="page-title">목표</h1>
+        <button className="primary small-button" onClick={() => setDialog({ kind: 'account', existing: null })}>+ 목적통장 추가</button>
+      </div>
       {data.savings.length === 0 ? (
         <Card title="목적통장이 없습니다">
-          <p className="muted">IT기기금, 지출 통장처럼 목적별 통장을 만들고 목표를 등록하면 매달 넣어야 할 금액을 계산해 드립니다. 지금은 폰 앱에서 추가하세요.</p>
+          <p className="muted">IT기기금, 지출 통장처럼 목적별 통장을 만들고 목표를 등록하면 매달 넣어야 할 금액을 계산해 드립니다.</p>
         </Card>
       ) : (
         <>
@@ -50,7 +58,12 @@ export function GoalsPage() {
               <Card
                 key={s.account.id}
                 title={s.account.name}
-                action={<span className="strong accent">월 {won(s.totalMonthlyPayment)}</span>}
+                action={
+                  <div className="toggle-row">
+                    <span className="strong accent">월 {won(s.totalMonthlyPayment)}</span>
+                    <button className="small-button" onClick={() => setDialog({ kind: 'account', existing: s.account })}>편집</button>
+                  </div>
+                }
               >
                 <p className="muted small">
                   연 {decimal(s.account.annualRate * 100, 2)}% · 잔액 {won(savingsBalance(s.account))}
@@ -67,30 +80,33 @@ export function GoalsPage() {
                 )}
                 {s.goals.length === 0 && <p className="muted small">목표가 없습니다.</p>}
                 {s.goals.map((g) => (
-                  <div key={g.goal.id} className="goal">
-                    <div className="goal-head">
+                  <button key={g.goal.id} className="goal" onClick={() => setDialog({ kind: 'goal', accountId: s.account.id, existing: g.goal })}>
+                    <span className="goal-head">
                       <span className="strong">
                         {g.goal.name} <span className="muted small">· {goalSchedule(g)}</span>
                       </span>
                       <span className="strong">{Math.round(g.achievedRate * 100)}%</span>
-                    </div>
-                    <div className="bar">
-                      <div className={g.remaining <= 0 ? 'bar-fill done' : 'bar-fill'} style={{ width: `${Math.max(2, g.achievedRate * 100)}%` }} />
-                    </div>
-                    <div className="goal-foot">
+                    </span>
+                    <span className="bar">
+                      <span className={g.remaining <= 0 ? 'bar-fill done' : 'bar-fill'} style={{ width: `${Math.max(2, g.achievedRate * 100)}%` }} />
+                    </span>
+                    <span className="goal-foot">
                       <span className="muted small">
                         {won(g.allocated).replace(/원$/, '')} / {won(g.goal.amount)} · {goalStatus(g)}
                       </span>
                       <span className="strong small">월 {won(g.monthlyPayment)}</span>
-                    </div>
-                  </div>
+                    </span>
+                  </button>
                 ))}
                 {s.unallocated > 0 && <p className="muted small">목표에 배분하고 남은 잔액 {won(s.unallocated)}</p>}
+                <button className="text-button align-start" onClick={() => setDialog({ kind: 'goal', accountId: s.account.id, existing: null })}>+ 목표 추가</button>
               </Card>
             ))}
           </div>
         </>
       )}
+      {dialog?.kind === 'account' && <SavingsAccountForm existing={dialog.existing} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'goal' && <GoalForm accountId={dialog.accountId} existing={dialog.existing} onClose={() => setDialog(null)} />}
     </div>
   );
 }

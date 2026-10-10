@@ -1,21 +1,37 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { formatDate } from '../core/dates';
 import { amount, decimal, percent, signedWon, usd, won } from '../core/format';
 import { convert, displayConversion } from '../core/portfolio';
 import { useAppData, useData } from '../data/DataContext';
 import { Card, CurrencyToggle, ListLink, NotFound, Row, Stat, TickerBadge, Warning, profitClass } from '../components/ui';
-import { ASSET_TYPE_LABEL, marketCurrency } from '../model';
-import { recordAmountText, recordDetailText, recordTitle } from '../records/recordText';
+import { ASSET_TYPE_LABEL, RECORD_TYPE_LABEL, marketCurrency, type Record, type RecordType } from '../model';
+import { AccountForm } from '../forms/AccountForm';
+import { CashForm } from '../forms/CashForm';
+import { HoldingForm } from '../forms/HoldingForm';
+import { RecordForm } from '../forms/RecordForm';
+import { AddRecordMenu, RecordRow } from '../records/RecordList';
 import { accountDescription } from './text';
 
 const PAGE = 30;
+
+type Dialog =
+  | { kind: 'account' }
+  | { kind: 'holding' }
+  | { kind: 'cash' }
+  | { kind: 'record'; type: RecordType; existing: Record | null }
+  | null;
+
+/** 기록 추가 메뉴에 보여줄 유형 (예수금은 예수금 카드의 "예수금 입력" 으로 따로 넣는다). */
+const ADDABLE: readonly RecordType[] = ['DEPOSIT', 'WITHDRAW', 'TRANSFER', 'BUY', 'SELL', 'DIVIDEND'];
 
 export function AccountDetailPage() {
   const { accountId = '' } = useParams();
   const data = useAppData();
   const { displayCurrency, setDisplayCurrency } = useData();
   const [visible, setVisible] = useState(PAGE);
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const navigate = useNavigate();
   const summary = data.summary.accounts.find((a) => a.account.id === accountId);
   if (!summary) return <NotFound what="계좌" />;
 
@@ -27,11 +43,14 @@ export function AccountDetailPage() {
 
   return (
     <div className="stack">
-      <div>
-        <h1 className="page-title">{summary.account.name}</h1>
-        <p className="muted">
-          {[accountDescription(summary.account, linked, true), summary.account.memo].filter((s) => s.trim() !== '').join(' · ')}
-        </p>
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">{summary.account.name}</h1>
+          <p className="muted">
+            {[accountDescription(summary.account, linked, true), summary.account.memo].filter((s) => s.trim() !== '').join(' · ')}
+          </p>
+        </div>
+        <button onClick={() => setDialog({ kind: 'account' })}>계좌 편집</button>
       </div>
 
       <Card>
@@ -59,8 +78,11 @@ export function AccountDetailPage() {
               ? '한투에서 불러온 값 (폰 앱이 새로고침할 때 갱신)' + (summary.cashDate ? ` · ${formatDate(summary.cashDate)} 변경` : '')
               : summary.cashDate
                 ? `${formatDate(summary.cashDate)} 입력한 값`
-                : '아직 입력하지 않았습니다.'}
+                : '아직 입력하지 않았습니다. 증권사 앱의 예수금을 입력하세요.'}
           </p>
+          {!linked && (
+            <button className="text-button" onClick={() => setDialog({ kind: 'cash' })}>예수금 입력</button>
+          )}
         </Card>
         {linked && (
           <Card title="한투 연결 계좌">
@@ -69,9 +91,17 @@ export function AccountDetailPage() {
         )}
       </div>
 
-      <Card title="보유 종목" action={hasUsd ? <CurrencyToggle mode={displayCurrency} usdKrw={summary.usdKrw} onChange={setDisplayCurrency} /> : undefined}>
+      <Card
+        title="보유 종목"
+        action={
+          <div className="toggle-row">
+            {hasUsd && <CurrencyToggle mode={displayCurrency} usdKrw={summary.usdKrw} onChange={setDisplayCurrency} />}
+            <button onClick={() => setDialog({ kind: 'holding' })}>+ 종목 추가</button>
+          </div>
+        }
+      >
         {holdings.length === 0 ? (
-          <p className="muted">종목이 없습니다.</p>
+          <p className="muted">종목이 없습니다. 종목을 추가한 뒤 매수 기록을 남기세요.</p>
         ) : (
           <div className="table-wrap">
             <table className="table">
@@ -116,18 +146,20 @@ export function AccountDetailPage() {
         )}
       </Card>
 
-      <Card title={`기록 ${records.length}건`}>
-        {records.length === 0 && <p className="muted">기록이 없습니다.</p>}
+      <Card
+        title={`기록 ${records.length}건`}
+        action={
+          <AddRecordMenu
+            // 한투 연결 계좌는 매수·매도를 불러오므로 직접 추가하지 않는다 (중복 방지).
+            types={ADDABLE.filter((t) => !linked || (t !== 'BUY' && t !== 'SELL'))}
+            label={(t) => RECORD_TYPE_LABEL[t]}
+            onSelect={(type) => setDialog({ kind: 'record', type, existing: null })}
+          />
+        }
+      >
+        {records.length === 0 && <p className="muted">기록이 없습니다. 기록 추가에서 입금부터 남겨 보세요.</p>}
         {records.slice(0, visible).map((r) => (
-          <div key={r.id} className="list-row static">
-            <span className="list-main">
-              <span className="list-title">{recordTitle(r, data.lookup, accountId)}</span>
-              <span className="list-sub">{[formatDate(r.date), recordDetailText(r, data.lookup)].filter(Boolean).join(' · ')}</span>
-            </span>
-            <span className="list-end">
-              <span className="list-value">{recordAmountText(r, data.lookup, accountId)}</span>
-            </span>
-          </div>
+          <RecordRow key={r.id} record={r} accountId={accountId} onClick={() => setDialog({ kind: 'record', type: r.type, existing: r })} />
         ))}
         {records.length > visible && (
           <button className="text-button" onClick={() => setVisible(visible + PAGE)}>
@@ -135,6 +167,15 @@ export function AccountDetailPage() {
           </button>
         )}
       </Card>
+
+      {dialog?.kind === 'account' && (
+        <AccountForm existing={summary.account} onClose={() => setDialog(null)} onDeleted={() => navigate('/accounts')} />
+      )}
+      {dialog?.kind === 'holding' && <HoldingForm accountId={accountId} existing={null} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'cash' && <CashForm summary={summary} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'record' && (
+        <RecordForm accountId={dialog.existing?.accountId ?? accountId} type={dialog.type} existing={dialog.existing} onClose={() => setDialog(null)} />
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { GoalsPage } from './pages/GoalsPage';
 import { HoldingDetailPage } from './pages/HoldingDetailPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 function Gate() {
   const { user } = useAuth();
@@ -34,6 +35,7 @@ function Gate() {
             <Route path="accounts/:accountId" element={<AccountDetailPage />} />
             <Route path="holdings/:holdingId" element={<HoldingDetailPage />} />
             <Route path="goals" element={<GoalsPage />} />
+            <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFound what="페이지" />} />
           </Route>
         </Routes>

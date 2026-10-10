@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { formatShortDate } from '../core/dates';
 import { decimal, percent, signedWon, won } from '../core/format';
 import { useAppData } from '../data/DataContext';
@@ -11,8 +12,9 @@ export function HomePage() {
 
   if (data.accounts.length === 0) {
     return (
-      <Card title="투자 계좌가 없습니다">
-        <p className="muted">계좌 추가는 W3(입력 기능)에서 웹에도 생깁니다. 지금은 폰 앱에서 추가하세요.</p>
+      <Card title="첫 투자 계좌를 등록해 보세요">
+        <p className="muted">계좌를 만들고 입금·매수 기록을 남기면 투자금과 수익률이 자동으로 계산됩니다.</p>
+        <Link to="/accounts">계좌 화면으로 →</Link>
       </Card>
     );
   }

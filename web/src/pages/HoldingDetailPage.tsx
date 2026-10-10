@@ -1,16 +1,23 @@
-import { Link, useParams } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatDate } from '../core/dates';
 import { amount, decimal, percent, signedAmount, usd, won } from '../core/format';
 import { convert, displayConversion } from '../core/portfolio';
 import { useAppData, useData } from '../data/DataContext';
 import { Card, CurrencyToggle, NotFound, Row, profitClass } from '../components/ui';
-import { ASSET_TYPE_LABEL, MARKET_LABEL, marketCurrency } from '../model';
-import { recordAmountText, recordDetailText, recordTitle } from '../records/recordText';
+import { ASSET_TYPE_LABEL, MARKET_LABEL, marketCurrency, type Record, type RecordType } from '../model';
+import { HoldingForm, PriceForm } from '../forms/HoldingForm';
+import { RecordForm } from '../forms/RecordForm';
+import { RecordRow } from '../records/RecordList';
+
+type Dialog = { kind: 'holding' } | { kind: 'price' } | { kind: 'record'; type: RecordType; existing: Record | null } | null;
 
 export function HoldingDetailPage() {
   const { holdingId = '' } = useParams();
   const data = useAppData();
   const { displayCurrency, setDisplayCurrency } = useData();
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const navigate = useNavigate();
   const holding = data.holdings.find((h) => h.id === holdingId);
   const account = holding && data.summary.accounts.find((a) => a.account.id === holding.accountId);
   const v = account?.holdings.find((h) => h.holding.id === holdingId);
@@ -28,15 +35,19 @@ export function HoldingDetailPage() {
   };
   const p = v.position;
   const records = data.recordsOfHolding(holdingId);
+  const linked = data.linked.has(holding.accountId);
 
   return (
     <div className="stack">
-      <div>
-        <p className="muted small">
-          <Link to={`/accounts/${account.account.id}`}>{account.account.name}</Link>
-        </p>
-        <h1 className="page-title">{holding.name}</h1>
-        <p className="muted">{[MARKET_LABEL[holding.market], ASSET_TYPE_LABEL[holding.assetType], holding.code].filter(Boolean).join(' · ')}</p>
+      <div className="page-head">
+        <div>
+          <p className="muted small">
+            <Link to={`/accounts/${account.account.id}`}>{account.account.name}</Link>
+          </p>
+          <h1 className="page-title">{holding.name}</h1>
+          <p className="muted">{[MARKET_LABEL[holding.market], ASSET_TYPE_LABEL[holding.assetType], holding.code].filter(Boolean).join(' · ')}</p>
+        </div>
+        <button onClick={() => setDialog({ kind: 'holding' })}>종목 편집</button>
       </div>
 
       {currency === 'USD' && <CurrencyToggle mode={displayCurrency} usdKrw={data.usdKrw} onChange={setDisplayCurrency} />}
@@ -72,26 +83,38 @@ export function HoldingDetailPage() {
           <Row label="평균단가" value={shown(p.averagePrice)} />
           <Row label="매입금액" value={shown(p.costBasis)} />
           <Row label="현재가" value={v.price ? shown(v.price.price) + (v.price.date ? ` (${formatDate(v.price.date)})` : '') : '없음'} />
+          <button className="text-button align-start" onClick={() => setDialog({ kind: 'price' })}>현재가 직접 입력</button>
           <Row label="누적 배당" value={shown(p.dividends)} />
           <Row label="실현손익" value={shownSigned(p.realizedProfit)} valueClass={profitClass(p.realizedProfit)} />
           <Row label="수수료·세금 합계" value={shown(p.feesAndTaxes)} />
         </Card>
       </div>
 
-      <Card title={`기록 ${records.length}건`}>
+      <Card
+        title={`기록 ${records.length}건`}
+        action={
+          <div className="toggle-row">
+            {/* 한투 연결 계좌는 매수·매도를 불러오므로 직접 추가하지 않는다. */}
+            {!linked && <button onClick={() => setDialog({ kind: 'record', type: 'BUY', existing: null })}>매수</button>}
+            {!linked && <button onClick={() => setDialog({ kind: 'record', type: 'SELL', existing: null })}>매도</button>}
+            <button onClick={() => setDialog({ kind: 'record', type: 'DIVIDEND', existing: null })}>배당</button>
+          </div>
+        }
+      >
+        {linked && <p className="muted small">한투 연결 계좌의 종목이라 매수·매도는 폰 앱에서 한투로부터 불러옵니다.</p>}
         {records.length === 0 && <p className="muted">기록이 없습니다.</p>}
         {records.map((r) => (
-          <div key={r.id} className="list-row static">
-            <span className="list-main">
-              <span className="list-title">{recordTitle(r, data.lookup, holding.accountId)}</span>
-              <span className="list-sub">{[formatDate(r.date), recordDetailText(r, data.lookup)].filter(Boolean).join(' · ')}</span>
-            </span>
-            <span className="list-end">
-              <span className="list-value">{recordAmountText(r, data.lookup, holding.accountId)}</span>
-            </span>
-          </div>
+          <RecordRow key={r.id} record={r} accountId={holding.accountId} onClick={() => setDialog({ kind: 'record', type: r.type, existing: r })} />
         ))}
       </Card>
+
+      {dialog?.kind === 'holding' && (
+        <HoldingForm accountId={holding.accountId} existing={holding} onClose={() => setDialog(null)} onDeleted={() => navigate(`/accounts/${holding.accountId}`)} />
+      )}
+      {dialog?.kind === 'price' && <PriceForm holding={holding} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'record' && (
+        <RecordForm accountId={holding.accountId} type={dialog.type} existing={dialog.existing} presetHoldingId={holding.id} onClose={() => setDialog(null)} />
+      )}
     </div>
   );
 }
