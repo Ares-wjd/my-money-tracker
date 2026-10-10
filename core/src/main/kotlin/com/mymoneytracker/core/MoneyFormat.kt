@@ -47,6 +47,16 @@ object MoneyFormat {
         Currency.USD -> signedUsd(value)
     }
 
+    /** 입력 미리보기용 만원 단위: 6000000 -> "600만원", 1055000 -> "105.5만원", 5000 -> "5,000원" */
+    fun manwon(value: Double): String =
+        if (abs(value) < 10_000) won(value) else decimal(value / 10_000, 4) + "만원"
+
+    /** 입력칸 아래 미리보기: 원화는 만원 단위, 달러는 그대로. */
+    fun amountPreview(currency: Currency, value: Double): String = when (currency) {
+        Currency.KRW -> manwon(value)
+        Currency.USD -> usd(value)
+    }
+
     /** 0.1234 -> "+12.34%" (null 이면 "-") */
     fun percent(rate: Double?): String {
         if (rate == null || rate.isNaN() || rate.isInfinite()) return "-"

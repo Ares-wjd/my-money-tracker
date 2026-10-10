@@ -214,7 +214,7 @@ private fun RecordForm(
                     onValueChange = { amountText = it },
                     allowDecimal = currency == Currency.USD,
                     allowNegative = type == RecordType.CASH_ADJUST || type == RecordType.CASH_BALANCE,
-                    preview = { MoneyFormat.amount(currency, it) },
+                    preview = { MoneyFormat.amountPreview(currency, it) },
                 )
                 if (currency == Currency.USD && type != RecordType.CASH_ADJUST && type != RecordType.CASH_BALANCE) {
                     NumberField(
@@ -237,7 +237,7 @@ private fun RecordForm(
                     { if (it == Currency.KRW) "원화 → 달러" else "달러 → 원화" },
                     { currency = it },
                 )
-                NumberField("원화 금액", krwText, { krwText = it }, allowDecimal = false, preview = { MoneyFormat.won(it) })
+                NumberField("원화 금액", krwText, { krwText = it }, allowDecimal = false, preview = { MoneyFormat.manwon(it) })
                 NumberField("달러 금액", amountText, { amountText = it }, preview = { MoneyFormat.usd(it) })
                 if (krw != null && amount != null && amount > 0) {
                     LabeledValue("적용 환율", "${MoneyFormat.decimal(krw / amount, 2)}원")
@@ -253,7 +253,7 @@ private fun RecordForm(
                         "배당금 (세후 실수령액, ${holdingCurrency.label})",
                         amountText,
                         { amountText = it },
-                        preview = { MoneyFormat.amount(holdingCurrency, it) },
+                        preview = { MoneyFormat.amountPreview(holdingCurrency, it) },
                     )
                 } else {
                     NumberField("수량", quantityText, { quantityText = it })
@@ -261,10 +261,10 @@ private fun RecordForm(
                         "단가 (${holdingCurrency.label})",
                         priceText,
                         { priceText = it },
-                        preview = { MoneyFormat.amount(holdingCurrency, it) },
+                        preview = { MoneyFormat.amountPreview(holdingCurrency, it) },
                     )
-                    NumberField("수수료", feeText, { feeText = it }, preview = { MoneyFormat.amount(holdingCurrency, it) })
-                    NumberField("세금", taxText, { taxText = it }, preview = { MoneyFormat.amount(holdingCurrency, it) })
+                    NumberField("수수료", feeText, { feeText = it }, preview = { MoneyFormat.amountPreview(holdingCurrency, it) })
+                    NumberField("세금", taxText, { taxText = it }, preview = { MoneyFormat.amountPreview(holdingCurrency, it) })
                     if (quantity != null && price != null) {
                         val gross = quantity * price
                         val total = if (type == RecordType.BUY) gross + fee + tax else gross - fee - tax

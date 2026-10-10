@@ -134,7 +134,7 @@ private fun SavingsAccountForm(
                         row.balance,
                         { rows[index] = row.copy(balance = it) },
                         allowDecimal = false,
-                        preview = { MoneyFormat.won(it) },
+                        preview = { MoneyFormat.manwon(it) },
                     )
                 }
             }

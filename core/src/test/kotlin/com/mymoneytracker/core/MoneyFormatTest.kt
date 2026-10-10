@@ -41,4 +41,16 @@ class MoneyFormatTest {
         assertNull(MoneyFormat.parseDecimal("."))
         assertNull(MoneyFormat.parseDecimal("1.2.3"))
     }
+
+    @Test
+    fun previewsInManwon() {
+        assertEquals("600만원", MoneyFormat.manwon(6_000_000.0))
+        assertEquals("105.5만원", MoneyFormat.manwon(1_055_000.0))
+        assertEquals("200만원", MoneyFormat.manwon(2_000_000.0))
+        assertEquals("12,345.6789만원", MoneyFormat.manwon(123_456_789.0))
+        assertEquals("1만원", MoneyFormat.manwon(10_000.0))
+        assertEquals("5,000원", MoneyFormat.manwon(5_000.0))
+        assertEquals("-350만원", MoneyFormat.manwon(-3_500_000.0))
+        assertEquals("$12.50", MoneyFormat.amountPreview(Currency.USD, 12.5))
+    }
 }

@@ -223,7 +223,7 @@ private fun BalanceDialog(
                         row.balance,
                         { rows[index] = row.copy(balance = it) },
                         allowDecimal = false,
-                        preview = { MoneyFormat.won(it) },
+                        preview = { MoneyFormat.manwon(it) },
                     )
                 }
                 LabeledValue("합계", MoneyFormat.won(rows.sumOf { MoneyFormat.parseDecimal(it.balance) ?: 0.0 }), bold = true)

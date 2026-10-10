@@ -102,7 +102,7 @@ private fun CashBalanceForm(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        NumberField("원화 예수금", krwText, { krwText = it }, allowDecimal = false, allowNegative = true, preview = { MoneyFormat.won(it) })
+        NumberField("원화 예수금", krwText, { krwText = it }, allowDecimal = false, allowNegative = true, preview = { MoneyFormat.manwon(it) })
         if (showUsd) {
             NumberField("달러 예수금", usdText, { usdText = it }, allowNegative = true, preview = { MoneyFormat.usd(it) })
         }

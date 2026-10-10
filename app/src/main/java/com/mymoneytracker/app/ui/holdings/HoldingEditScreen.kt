@@ -140,7 +140,7 @@ private fun HoldingForm(
                         "평균단가 (${market.currency.label})",
                         initialAverage,
                         { initialAverage = it },
-                        preview = { MoneyFormat.amount(market.currency, it) },
+                        preview = { MoneyFormat.amountPreview(market.currency, it) },
                     )
                     DateField("기준일", LocalDate.ofEpochDay(initialDay), { initialDay = it.toEpochDay() })
                 }

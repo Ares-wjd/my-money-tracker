@@ -108,7 +108,7 @@ private fun GoalForm(
     ) {
         TextInput("목표 이름 (예: 노트북, 휴대폰)", name, { name = it }, maxLength = 40)
         ChipSelector("종류", GoalType.entries, type, { it.label }, { type = it })
-        NumberField("목표 금액 (원)", amountText, { amountText = it }, allowDecimal = false, preview = { MoneyFormat.won(it) })
+        NumberField("목표 금액 (원)", amountText, { amountText = it }, allowDecimal = false, preview = { MoneyFormat.manwon(it) })
         DateField(
             if (type == GoalType.ONE_TIME) "목표일" else "다음(또는 지난) 지출일",
             LocalDate.ofEpochDay(day),

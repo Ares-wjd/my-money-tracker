@@ -245,7 +245,7 @@ private fun PriceDialog(
                     "현재가 (${holding.currency.label})",
                     priceText,
                     { priceText = it },
-                    preview = { MoneyFormat.amount(holding.currency, it) },
+                    preview = { MoneyFormat.amountPreview(holding.currency, it) },
                 )
                 DateField("기준일", LocalDate.ofEpochDay(day), { day = it.toEpochDay() })
             }
