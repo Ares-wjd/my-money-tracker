@@ -1,0 +1,60 @@
+/* 기본 스타일 (디자인은 W4 에서 다듬는다). 색은 폰 앱 브랜드 색과 같다. */
+:root {
+  --green: #0f6b5c;
+  --on-green: #ffffff;
+  --ink: #16201c;
+  --ground: #f4f5f2;
+  --card: #ffffff;
+  --muted: #55655e;
+  --line: #e4e8e5;
+  --error: #ba1a1a;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --green: #5cc9a7;
+    --on-green: #00382b;
+    --ink: #e3e8e5;
+    --ground: #0f1412;
+    --card: #171d1a;
+    --muted: #a3b0aa;
+    --line: #2c3531;
+    --error: #ffb4ab;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: 'IBM Plex Sans KR', system-ui, -apple-system, 'Malgun Gothic', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+h1 { margin: 12px 0 4px; }
+h2 { margin: 0 0 8px; font-size: 17px; }
+button {
+  font: inherit;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+button.primary { background: var(--green); border-color: var(--green); color: var(--on-green); padding: 12px 20px; font-weight: 600; }
+button:disabled { opacity: 0.6; cursor: default; }
+
+.center { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; text-align: center; }
+.page { max-width: 960px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 18px; }
+.account { display: flex; align-items: center; gap: 10px; }
+.card { background: var(--card); border-radius: 22px; padding: 18px 20px; }
+.card p { margin: 4px 0; }
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.list li:first-child { border-top: none; }
+.muted { color: var(--muted); }
+.error { color: var(--error); }

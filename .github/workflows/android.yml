@@ -3,7 +3,10 @@ name: Android CI
 on:
   push:
     branches: [ "**" ]
+    # 웹·문서만 바뀌었을 때는 앱을 다시 빌드하지 않는다 (폰에 불필요한 업데이트 알림 방지).
+    paths-ignore: [ "web/**", "docs/**", "**.md", "firestore.rules", ".github/workflows/web.yml" ]
   pull_request:
+    paths-ignore: [ "web/**", "docs/**", "**.md", "firestore.rules", ".github/workflows/web.yml" ]
   # GitHub Actions 화면에서 "Run workflow" 로 직접 다시 빌드할 수 있게 한다.
   workflow_dispatch:
 

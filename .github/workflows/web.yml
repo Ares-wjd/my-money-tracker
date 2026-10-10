@@ -1,0 +1,65 @@
+name: Web
+
+on:
+  push:
+    branches: [ "**" ]
+    paths: [ "web/**", ".github/workflows/web.yml" ]
+  pull_request:
+    paths: [ "web/**", ".github/workflows/web.yml" ]
+  # GitHub Actions 화면에서 "Run workflow" 로 직접 다시 배포할 수 있게 한다.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 배포가 동시에 돌지 않도록 한 번에 하나씩 실행한다.
+concurrency:
+  group: web-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      # 변수 FIREBASE_WEB_CONFIG: Firebase 콘솔의 웹 앱 설정(firebaseConfig) 내용. 비밀 값은 아니지만 저장소에는 넣지 않는다.
+      - name: Build
+        env:
+          VITE_FIREBASE_CONFIG: ${{ vars.FIREBASE_WEB_CONFIG }}
+        run: npm run build
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch && vars.FIREBASE_WEB_CONFIG != ''
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  # 기본 브랜치이고 Firebase 웹 설정이 있을 때만 GitHub Pages 로 배포한다.
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch && vars.FIREBASE_WEB_CONFIG != ''
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -15,3 +15,7 @@ app/google-services.json
 # 서명 키
 *.jks
 *.keystore
+
+# 웹 (npm)
+web/node_modules/
+web/dist/

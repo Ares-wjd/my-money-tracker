@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/Logo.tsx","./src/auth.tsx","./src/firebase.test.ts","./src/firebase.ts","./src/main.tsx","./src/model.ts","./src/vite-env.d.ts","./src/data/mappers.test.ts","./src/data/mappers.ts","./src/data/useUserData.ts","./src/pages/LoginPage.tsx","./src/pages/StatusPage.tsx","./vite.config.ts"],"version":"5.9.3"}
