@@ -9,14 +9,13 @@ function group(integer: string): string {
 const roundToLong = (value: number): number => Math.round(value) || 0;
 
 /**
- * 양수를 소수 [digits] 자리로 반올림한 문자열. Java DecimalFormat 기본값처럼 사람이 읽는 십진수 표기를 기준으로
- * 반올림하고, 정확히 가운데면 짝수 쪽으로 보낸다 (HALF_EVEN).
+ * 양수를 소수 [digits] 자리로 반올림한 문자열. Java DecimalFormat 기본값과 같게, 2진수 실제 값을 기준으로 반올림하고
+ * 정확히 가운데일 때만 짝수 쪽으로 보낸다 (HALF_EVEN). 예: 12.345(실제 12.34500000000000063…) → 12.35, 0.125 → 0.12
  */
 function fixedHalfEven(value: number, digits: number): string {
-  const text = String(value);
-  if (text.includes('e')) return value.toFixed(digits);
-  const [intPart, fracPart = ''] = text.split('.');
-  if (fracPart.length <= digits) return `${intPart}.${fracPart.padEnd(digits, '0')}`;
+  if (value >= 1e21) return value.toFixed(digits);
+  // toFixed(100) 은 보통 크기의 double 을 정확한 십진수로 펼친다.
+  const [intPart, fracPart] = value.toFixed(100).split('.');
   const kept = intPart + fracPart.slice(0, digits);
   const rest = fracPart.slice(digits);
   const lastDigit = Number(kept[kept.length - 1]);
