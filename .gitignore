@@ -19,3 +19,4 @@ app/google-services.json
 # 웹 (npm)
 web/node_modules/
 web/dist/
+web/*.tsbuildinfo
