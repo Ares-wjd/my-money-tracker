@@ -28,6 +28,7 @@ import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.DisplayCurrency
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.PortfolioSummary
 import kotlinx.coroutines.Dispatchers
@@ -159,6 +160,18 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
 
     private val _refresh = MutableStateFlow(RefreshState())
     val refresh: StateFlow<RefreshState> = _refresh.asStateFlow()
+
+    /** 해외 종목 금액 보기 (원화 / 외화). 이 기기에만 기억한다. */
+    private val displayPrefs = application.getSharedPreferences("display", android.content.Context.MODE_PRIVATE)
+    private val _displayCurrency = MutableStateFlow(
+        DisplayCurrency.entries.firstOrNull { it.name == displayPrefs.getString(KEY_DISPLAY_CURRENCY, null) } ?: DisplayCurrency.FOREIGN,
+    )
+    val displayCurrency: StateFlow<DisplayCurrency> = _displayCurrency.asStateFlow()
+
+    fun setDisplayCurrency(mode: DisplayCurrency) {
+        _displayCurrency.value = mode
+        displayPrefs.edit().putString(KEY_DISPLAY_CURRENCY, mode.name).apply()
+    }
 
     private val _syncing = MutableStateFlow(false)
     val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
@@ -500,6 +513,8 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     }
 
     companion object {
+        private const val KEY_DISPLAY_CURRENCY = "holding_currency"
+
         fun factory(uid: String): ViewModelProvider.Factory = viewModelFactory {
             initializer { PortfolioViewModel(this[APPLICATION_KEY]!!, uid) }
         }

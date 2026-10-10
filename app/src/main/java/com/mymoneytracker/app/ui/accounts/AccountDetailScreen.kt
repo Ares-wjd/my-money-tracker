@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -43,6 +44,7 @@ import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.ListRow
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.SectionCard
+import com.mymoneytracker.app.ui.common.SegmentedPills
 import com.mymoneytracker.app.ui.common.StatTile
 import com.mymoneytracker.app.ui.common.TickerBadge
 import com.mymoneytracker.app.ui.common.WarningText
@@ -56,6 +58,8 @@ import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.AccountSummary
+import com.mymoneytracker.core.portfolio.DisplayConversion
+import com.mymoneytracker.core.portfolio.DisplayCurrency
 
 /** 기록 추가 메뉴에 보여줄 유형 (예수금은 예수금 카드의 "예수금 입력" 으로 따로 넣는다). */
 private val addableTypes = listOf(
@@ -85,6 +89,7 @@ fun AccountDetailScreen(
     val apiStatus by viewModel.apiStatus.collectAsStateWithLifecycle()
     val syncing by viewModel.syncing.collectAsStateWithLifecycle()
     val refresh by viewModel.refresh.collectAsStateWithLifecycle()
+    val displayCurrency by viewModel.displayCurrency.collectAsStateWithLifecycle()
     val current = data
     val summary = current?.accountSummary(accountId)
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -143,6 +148,8 @@ fun AccountDetailScreen(
                 linked = apiStatus.linkedAccountId == accountId,
                 apiStatus = apiStatus,
                 lastRefreshedAt = refresh.lastRefreshedAt,
+                displayCurrency = displayCurrency,
+                onSelectDisplayCurrency = viewModel::setDisplayCurrency,
                 syncing = syncing,
                 onSync = { viewModel.syncKisAccount() },
                 onOpenSettings = onOpenSettings,
@@ -163,6 +170,8 @@ private fun AccountDetailContent(
     linked: Boolean,
     apiStatus: ApiStatus,
     lastRefreshedAt: Long?,
+    displayCurrency: DisplayCurrency,
+    onSelectDisplayCurrency: (DisplayCurrency) -> Unit,
     syncing: Boolean,
     onSync: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -265,6 +274,11 @@ private fun AccountDetailContent(
                 OutlinedButton(onClick = onAddHolding) { Text("종목 추가") }
             }
         }
+        if (holdings.any { it.holding.currency == Currency.USD }) {
+            item {
+                HoldingCurrencyToggle(displayCurrency, summary.usdKrw, onSelectDisplayCurrency)
+            }
+        }
         if (holdings.isEmpty()) {
             item {
                 Text(
@@ -280,11 +294,14 @@ private fun AccountDetailContent(
                     holdings.forEachIndexed { index, valuation ->
                         val holding = valuation.holding
                         val position = valuation.position
+                        val conversion = DisplayConversion.of(holding.currency, displayCurrency, summary.usdKrw)
                         if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         ListRow(
                             title = holding.name,
                             subtitle = "${holding.assetType.label} · ${MoneyFormat.decimal(position.quantity)}주",
-                            value = valuation.marketValue?.let { MoneyFormat.amount(holding.currency, it) } ?: "가격 입력 필요",
+                            value = valuation.marketValue?.let { value ->
+                                conversion.convert(value)?.let { MoneyFormat.amount(conversion.currency, it) } ?: "환율 필요"
+                            } ?: "가격 입력 필요",
                             subValue = valuation.returnRate?.let { MoneyFormat.percent(it) },
                             subValueColor = profitColor(valuation.returnRate),
                             onClick = { onOpenHolding(holding.id) },
@@ -347,6 +364,31 @@ private fun LinkedAccountCard(
             OutlinedButton(onClick = onSync, enabled = !syncing) { Text("한투에서 불러오기") }
             if (syncing) CircularProgressIndicator(Modifier.padding(start = 12.dp).size(20.dp), strokeWidth = 2.dp)
             TextButton(onClick = onOpenSettings) { Text("연결 설정") }
+        }
+    }
+}
+
+/** 해외 종목 금액 보기 전환 (원화 / 외화). 계좌 상세와 종목 상세에서 함께 쓴다. */
+@Composable
+fun HoldingCurrencyToggle(selected: DisplayCurrency, usdKrw: Double?, onSelect: (DisplayCurrency) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SegmentedPills(
+            options = listOf(DisplayCurrency.FOREIGN, DisplayCurrency.KRW),
+            selected = selected,
+            label = { if (it == DisplayCurrency.FOREIGN) "외화" else "원화" },
+            onSelect = onSelect,
+            modifier = Modifier.width(140.dp),
+        )
+        if (selected == DisplayCurrency.KRW) {
+            Text(
+                usdKrw?.let { "1달러 ${MoneyFormat.decimal(it, 2)}원으로 환산" } ?: "환율이 없어 환산할 수 없습니다",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

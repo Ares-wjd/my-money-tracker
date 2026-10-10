@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioData
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.accounts.HoldingCurrencyToggle
 import com.mymoneytracker.app.ui.common.DateField
 import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.ListRow
@@ -48,6 +49,8 @@ import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.DisplayConversion
+import com.mymoneytracker.core.portfolio.DisplayCurrency
 import com.mymoneytracker.core.portfolio.HoldingValuation
 import java.time.LocalDate
 
@@ -63,6 +66,7 @@ fun HoldingDetailScreen(
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     val apiStatus by viewModel.apiStatus.collectAsStateWithLifecycle()
+    val displayCurrency by viewModel.displayCurrency.collectAsStateWithLifecycle()
     val current = data
     val holding = current?.holding(holdingId)
     val valuation = holding?.let { h ->
@@ -91,6 +95,8 @@ fun HoldingDetailScreen(
                 valuation = valuation,
                 padding = padding,
                 linked = apiStatus.linkedAccountId == holding.accountId,
+                displayCurrency = displayCurrency,
+                onSelectDisplayCurrency = viewModel::setDisplayCurrency,
                 onEditPrice = { editPrice = true },
                 onAddRecord = onAddRecord,
                 onOpenRecord = onOpenRecord,
@@ -115,6 +121,8 @@ private fun HoldingDetailContent(
     valuation: HoldingValuation,
     padding: PaddingValues,
     linked: Boolean,
+    displayCurrency: DisplayCurrency,
+    onSelectDisplayCurrency: (DisplayCurrency) -> Unit,
     onEditPrice: () -> Unit,
     onAddRecord: (RecordType) -> Unit,
     onOpenRecord: (String) -> Unit,
@@ -123,6 +131,10 @@ private fun HoldingDetailContent(
     val position = valuation.position
     val currency = holding.currency
     val records = data.recordsOfHolding(holding.id)
+    // 원화 보기의 해외 종목은 현재 환율로 단순 환산한다 (수익률은 그대로).
+    val conversion = DisplayConversion.of(currency, displayCurrency, data.usdKrw)
+    fun shown(value: Double): String = conversion.convert(value)?.let { MoneyFormat.amount(conversion.currency, it) } ?: "환율 필요"
+    fun shownSigned(value: Double): String = conversion.convert(value)?.let { MoneyFormat.signedAmount(conversion.currency, it) } ?: "환율 필요"
 
     LazyColumn(
         modifier = Modifier.padding(padding),
@@ -136,19 +148,24 @@ private fun HoldingDetailContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        if (currency == Currency.USD) {
+            item { HoldingCurrencyToggle(displayCurrency, data.usdKrw, onSelectDisplayCurrency) }
+        }
         item {
             SectionCard(highlighted = true) {
                 LabeledValue(
                     "평가금",
-                    valuation.marketValue?.let { MoneyFormat.amount(currency, it) } ?: "가격 입력 필요",
+                    valuation.marketValue?.let(::shown) ?: "가격 입력 필요",
                     bold = true,
                 )
-                if (currency != Currency.KRW) {
+                if (currency != Currency.KRW && displayCurrency == DisplayCurrency.FOREIGN) {
                     LabeledValue("원화 환산", valuation.marketValueKrw?.let { MoneyFormat.won(it) } ?: "환율 필요")
+                } else if (currency != Currency.KRW) {
+                    LabeledValue("달러 기준", valuation.marketValue?.let { MoneyFormat.usd(it) } ?: "-")
                 }
                 LabeledValue(
                     "평가손익",
-                    valuation.unrealizedProfit?.let { MoneyFormat.signedAmount(currency, it) } ?: "-",
+                    valuation.unrealizedProfit?.let(::shownSigned) ?: "-",
                     valueColor = profitColor(valuation.unrealizedProfit),
                 )
                 LabeledValue("수익률 (배당 미포함)", MoneyFormat.percent(valuation.returnRate), valueColor = profitColor(valuation.returnRate))
@@ -162,18 +179,18 @@ private fun HoldingDetailContent(
         item {
             SectionCard {
                 LabeledValue("보유 수량", MoneyFormat.decimal(position.quantity))
-                LabeledValue("평균단가", MoneyFormat.amount(currency, position.averagePrice))
-                LabeledValue("매입금액", MoneyFormat.amount(currency, position.costBasis))
+                LabeledValue("평균단가", shown(position.averagePrice))
+                LabeledValue("매입금액", shown(position.costBasis))
                 LabeledValue(
                     "현재가",
                     valuation.price?.let { p ->
-                        MoneyFormat.amount(currency, p.price) + (p.date?.let { " (${formatDate(it)})" } ?: "")
+                        shown(p.price) + (p.date?.let { " (${formatDate(it)})" } ?: "")
                     } ?: "없음",
                 )
                 TextButton(onClick = onEditPrice) { Text("현재가 직접 입력") }
-                LabeledValue("누적 배당", MoneyFormat.amount(currency, position.dividends))
-                LabeledValue("실현손익", MoneyFormat.signedAmount(currency, position.realizedProfit), valueColor = profitColor(position.realizedProfit))
-                LabeledValue("수수료·세금 합계", MoneyFormat.amount(currency, position.feesAndTaxes))
+                LabeledValue("누적 배당", shown(position.dividends))
+                LabeledValue("실현손익", shownSigned(position.realizedProfit), valueColor = profitColor(position.realizedProfit))
+                LabeledValue("수수료·세금 합계", shown(position.feesAndTaxes))
             }
         }
         item {
