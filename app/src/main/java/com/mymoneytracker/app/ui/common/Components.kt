@@ -1,5 +1,24 @@
 package com.mymoneytracker.app.ui.common
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.AssetType
@@ -150,10 +169,15 @@ fun InkCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.inverseSurface,
-            contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-        ),
+        // 다크 모드에서 inverseSurface 는 밝은 색이라 튄다 → 다크 모드는 진녹색 강조 카드와 같게
+        colors = if (isSystemInDarkTheme()) {
+            CardDefaults.cardColors(containerColor = LocalMoneyColors.current.heroContainer, contentColor = LocalMoneyColors.current.onHero)
+        } else {
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.inverseSurface,
+                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+            )
+        },
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
     }
@@ -180,6 +204,8 @@ fun StatTile(
     modifier: Modifier = Modifier,
     valueColor: Color = Color.Unspecified,
     onHero: Boolean = false,
+    /** 칸이 좁아 다 안 들어갈 때 보여줄 짧은 값 (예: "329.1만원"). */
+    shortValue: String? = null,
 ) {
     val labelColor = if (onHero) LocalMoneyColors.current.onHero.copy(alpha = 0.92f) else MaterialTheme.colorScheme.onSurfaceVariant
     Column(
@@ -191,8 +217,42 @@ fun StatTile(
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = labelColor)
-        Text(value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = valueColor, maxLines = 1)
+        AutoShrinkText(value, MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = valueColor, fallback = shortValue)
     }
+}
+
+/**
+ * 한 줄 글자. 칸보다 길면 글자를 조금씩 줄이고(최소 70%), 그래도 넘치면 [fallback](짧은 표현)으로 바꾼다.
+ */
+@Composable
+fun AutoShrinkText(
+    text: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fallback: String? = null,
+    textAlign: TextAlign? = null,
+) {
+    var scale by remember(text) { mutableFloatStateOf(1f) }
+    var useFallback by remember(text) { mutableStateOf(false) }
+    val shown = if (useFallback && fallback != null) fallback else text
+    Text(
+        shown,
+        modifier = modifier,
+        style = style.copy(fontSize = style.fontSize * scale),
+        color = color,
+        maxLines = 1,
+        softWrap = false,
+        textAlign = textAlign,
+        onTextLayout = { layout ->
+            if (layout.hasVisualOverflow) {
+                when {
+                    scale > 0.72f -> scale -= 0.07f
+                    fallback != null && !useFallback -> useFallback = true
+                }
+            }
+        },
+    )
 }
 
 /** 한 줄 알약 선택 (그래프 보기 단위 등). 선택된 항목은 진한 바탕. */
@@ -371,6 +431,26 @@ fun WarningText(text: String, modifier: Modifier = Modifier) {
     Text(text, modifier = modifier, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
 }
 
+/** 선택 칩: 선택되면 진녹색 바탕 + ✓ (선택 여부가 바로 보이도록). */
+@Composable
+fun AppFilterChip(selected: Boolean, label: String, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        leadingIcon = if (selected) {
+            { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+        } else {
+            null
+        },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primary,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
+        ),
+    )
+}
+
 /** 칩 목록 중 하나를 고르는 선택기. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -386,11 +466,7 @@ fun <T> ChipSelector(
         Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             options.forEach { option ->
-                FilterChip(
-                    selected = option == selected,
-                    onClick = { onSelect(option) },
-                    label = { Text(optionLabel(option)) },
-                )
+                AppFilterChip(selected = option == selected, label = optionLabel(option), onClick = { onSelect(option) })
             }
         }
     }
@@ -435,6 +511,128 @@ fun NumberField(
         },
         modifier = modifier.fillMaxWidth(),
     )
+}
+
+private val QUICK_AMOUNTS = listOf(10_000L, 50_000L, 100_000L, 500_000L, 1_000_000L, 5_000_000L)
+
+/** 숫자만 든 입력값에 쉼표를 붙여 보여준다 (저장되는 값은 숫자만). */
+private object ThousandsTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val raw = text.text
+        val negative = raw.startsWith("-")
+        val digits = if (negative) raw.drop(1) else raw
+        val out = StringBuilder()
+        if (negative) out.append('-')
+        // 원래 위치 → 바뀐 위치
+        val map = IntArray(raw.length + 1)
+        var o = if (negative) 1 else 0
+        map[0] = 0
+        if (negative) map[1] = 1
+        digits.forEachIndexed { i, c ->
+            if (i > 0 && (digits.length - i) % 3 == 0) { out.append(','); o++ }
+            out.append(c); o++
+            map[i + 1 + (if (negative) 1 else 0)] = o
+        }
+        val formatted = out.toString()
+        val mapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = map[offset.coerceIn(0, raw.length)]
+            override fun transformedToOriginal(offset: Int): Int {
+                val t = offset.coerceIn(0, formatted.length)
+                var i = 0
+                while (i < raw.length && map[i + 1] <= t) i++
+                return i
+            }
+        }
+        return TransformedText(AnnotatedString(formatted), mapping)
+    }
+}
+
+/**
+ * 원화 금액 입력 (정수, 쓰는 동안 쉼표). 아래에 "131만 5,979원" 미리보기.
+ * [quick] 이면 [+1만]~[+500만] 버튼과 ✕(비우기) — 딱 떨어지는 금액을 적는 곳(입금·출금·이체, 목표 금액)에만 쓴다.
+ */
+@Composable
+fun MoneyField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    allowNegative: Boolean = false,
+    quick: Boolean = false,
+    isError: Boolean = false,
+    supporting: String? = null,
+) {
+    Column(modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = { input ->
+                val filtered = input.filter { it.isDigit() || (allowNegative && it == '-') }
+                if (filtered.lastIndexOf('-') > 0) return@OutlinedTextField
+                onValueChange(filtered.trimStart('0').ifEmpty { if (filtered.isNotEmpty()) "0" else "" }.take(15))
+            },
+            label = { Text(label) },
+            singleLine = true,
+            isError = isError,
+            visualTransformation = ThousandsTransformation,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            trailingIcon = if (quick && value.isNotEmpty()) {
+                { IconButton(onClick = { onValueChange("") }) { Icon(Icons.Filled.Close, contentDescription = "금액 지우기") } }
+            } else {
+                null
+            },
+            supportingText = {
+                val parsed = MoneyFormat.parseDecimal(value)
+                when {
+                    supporting != null -> Text(supporting)
+                    parsed != null -> Text(MoneyFormat.manwon(parsed))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (quick) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                QUICK_AMOUNTS.forEach { n ->
+                    AssistChip(
+                        onClick = {
+                            val current = MoneyFormat.parse(value) ?: 0L
+                            onValueChange((current + n).toString())
+                        },
+                        label = { Text("+${n / 10_000}만", fontWeight = FontWeight.SemiBold) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 추가 버튼(FAB) 색: 밝은 모드는 진한 잉크색, 다크 모드는 진녹색 (다크 모드에서 흰 버튼이 튀지 않도록). */
+@Composable
+fun fabContainerColor(): Color =
+    if (isSystemInDarkTheme()) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.inverseSurface
+
+@Composable
+fun fabContentColor(): Color =
+    if (isSystemInDarkTheme()) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.inverseOnSurface
+
+/** 위 막대 제목: 한 줄, 넘치면 말줄임. */
+@Composable
+fun TopBarTitle(text: String) {
+    Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
+/** 삭제 버튼 (빨간 글씨·테두리). */
+@Composable
+fun DeleteButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.fillMaxWidth(),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.6f)),
+    ) { Text(text) }
 }
 
 @Composable
@@ -542,19 +740,21 @@ fun ListRow(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (subtitle != null) {
+                // 줄바꿈으로 나눈 설명(계좌 탭의 "종류·번호 / 투자금·종목")은 줄 수만큼 보여준다
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = subtitle.count { it == '\n' } + 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
+        // 금액은 줄이지 않고 끝까지 보여준다 (이름 쪽이 말줄임)
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+            Text(value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1, softWrap = false)
             if (subValue != null) {
-                Text(subValue, style = MaterialTheme.typography.labelLarge, color = subValueColor, maxLines = 1)
+                Text(subValue, style = MaterialTheme.typography.labelLarge, color = subValueColor, maxLines = 1, softWrap = false)
             }
         }
     }

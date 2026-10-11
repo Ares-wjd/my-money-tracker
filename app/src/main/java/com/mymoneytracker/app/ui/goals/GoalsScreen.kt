@@ -11,6 +11,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.Alignment
+import com.mymoneytracker.app.ui.common.fabContainerColor
+import com.mymoneytracker.app.ui.common.fabContentColor
 import com.mymoneytracker.app.ui.common.GoalProgressBar
 import com.mymoneytracker.app.ui.common.InkCard
 import com.mymoneytracker.app.ui.common.appCardColors
@@ -52,8 +54,8 @@ fun GoalsScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onAddAccount,
-                containerColor = MaterialTheme.colorScheme.inverseSurface,
-                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                containerColor = fabContainerColor(),
+                contentColor = fabContentColor(),
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
                 text = { Text("목적통장 추가") },
             )
@@ -69,7 +71,7 @@ fun GoalsScreen(
             )
             else -> LazyColumn(
                 modifier = Modifier.padding(padding),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 item {

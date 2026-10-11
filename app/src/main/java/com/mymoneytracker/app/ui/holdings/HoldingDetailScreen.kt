@@ -34,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioData
 import com.mymoneytracker.app.ui.PortfolioViewModel
 import com.mymoneytracker.app.ui.accounts.HoldingCurrencyToggle
+import com.mymoneytracker.app.ui.common.TopBarTitle
 import com.mymoneytracker.app.ui.common.DateField
 import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.ListRow
@@ -77,7 +78,7 @@ fun HoldingDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(holding?.name ?: "종목") },
+                title = { TopBarTitle(holding?.name ?: "종목") },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
                 },

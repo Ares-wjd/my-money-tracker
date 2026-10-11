@@ -30,6 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mymoneytracker.app.ui.common.WarningText
+import com.mymoneytracker.app.ui.common.MoneyField
+import com.mymoneytracker.app.ui.common.DeleteButton
 import com.mymoneytracker.app.ui.common.AccountNumberField
 import com.mymoneytracker.app.ui.common.ConfirmDialog
 import com.mymoneytracker.app.ui.common.appCardColors
@@ -101,7 +104,13 @@ private fun SavingsAccountForm(
 
     val ratePercent = if (rateText.isBlank()) 0.0 else MoneyFormat.parseDecimal(rateText)
     val balancesValid = rows.all { it.balance.isBlank() || (MoneyFormat.parseDecimal(it.balance) ?: -1.0) >= 0 }
-    val valid = name.isNotBlank() && rows.isNotEmpty() && balancesValid && ratePercent != null && ratePercent in 0.0..100.0
+    val problem = when {
+        name.isBlank() -> "통장 이름을 입력하세요."
+        !balancesValid -> "잔액을 확인하세요."
+        ratePercent == null || ratePercent !in 0.0..100.0 -> "기대수익률은 0~100% 사이로 입력하세요."
+        else -> null
+    }
+    val valid = problem == null && rows.isNotEmpty()
     val total = rows.sumOf { MoneyFormat.parseDecimal(it.balance) ?: 0.0 }
 
     Column(
@@ -129,13 +138,7 @@ private fun SavingsAccountForm(
                     }
                     TextInput("계좌 이름 (예: CMA, 채권)", row.name, { rows[index] = row.copy(name = it) }, maxLength = 30)
                     AccountNumberField(row.number) { rows[index] = row.copy(number = it) }
-                    NumberField(
-                        "잔액 (원)",
-                        row.balance,
-                        { rows[index] = row.copy(balance = it) },
-                        allowDecimal = false,
-                        preview = { MoneyFormat.manwon(it) },
-                    )
+                    MoneyField("잔액 (원)", row.balance, { rows[index] = row.copy(balance = it) })
                 }
             }
         }
@@ -151,6 +154,7 @@ private fun SavingsAccountForm(
             preview = { "연 ${MoneyFormat.decimal(it, 2)}% (CMA·채권 예상 수익률)" },
         )
         TextInput("메모 (선택)", memo, { memo = it }, singleLine = false, maxLength = 200)
+        problem?.let { WarningText(it) }
         Button(
             onClick = {
                 val subAccounts = rows.mapIndexed { i, row -> row.toSubAccount(i) }
@@ -172,7 +176,7 @@ private fun SavingsAccountForm(
             modifier = Modifier.fillMaxWidth(),
         ) { Text("저장") }
         if (onDelete != null) {
-            OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) { Text("목적통장 삭제") }
+            DeleteButton("목적통장 삭제", onClick = { confirmDelete = true })
         }
     }
 

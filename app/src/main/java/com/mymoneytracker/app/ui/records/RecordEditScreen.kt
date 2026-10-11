@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioData
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.common.MoneyField
+import com.mymoneytracker.app.ui.common.DeleteButton
 import com.mymoneytracker.app.ui.common.ChipSelector
 import com.mymoneytracker.app.ui.common.ConfirmDialog
 import com.mymoneytracker.app.ui.common.DateField
@@ -203,19 +205,35 @@ private fun RecordForm(
                         ChipSelector("받는 계좌", others.map { it.id }, toAccountId, { id -> data.account(id)?.name.orEmpty() }, { toAccountId = it })
                     }
                 }
-                ChipSelector("통화", Currency.entries, currency, { it.label }, { currency = it })
-                NumberField(
-                    label = when (type) {
-                        RecordType.CASH_ADJUST -> "조정 금액 (+ 증가 / − 감소)"
-                        RecordType.CASH_BALANCE -> "그날의 예수금"
-                        else -> "금액"
-                    },
-                    value = amountText,
-                    onValueChange = { amountText = it },
-                    allowDecimal = currency == Currency.USD,
-                    allowNegative = type == RecordType.CASH_ADJUST || type == RecordType.CASH_BALANCE,
-                    preview = { MoneyFormat.amountPreview(currency, it) },
-                )
+                ChipSelector("통화", Currency.entries, currency, { it.label }, {
+                    currency = it
+                    // 원화는 정수만 (달러에서 바꾸면 소수점 아래를 버린다)
+                    if (it == Currency.KRW) amountText = amountText.substringBefore('.')
+                })
+                val amountLabel = when (type) {
+                    RecordType.CASH_ADJUST -> "조정 금액 (+ 증가 / − 감소)"
+                    RecordType.CASH_BALANCE -> "그날의 예수금"
+                    else -> "금액"
+                }
+                val signed = type == RecordType.CASH_ADJUST || type == RecordType.CASH_BALANCE
+                if (currency == Currency.KRW) {
+                    MoneyField(
+                        amountLabel,
+                        amountText,
+                        { amountText = it },
+                        allowNegative = signed,
+                        // 딱 떨어지는 금액을 적는 입금·출금·이체에만 빠른 입력 버튼
+                        quick = type == RecordType.DEPOSIT || type == RecordType.WITHDRAW || type == RecordType.TRANSFER,
+                    )
+                } else {
+                    NumberField(
+                        label = amountLabel,
+                        value = amountText,
+                        onValueChange = { amountText = it },
+                        allowNegative = signed,
+                        preview = { MoneyFormat.usd(it) },
+                    )
+                }
                 if (currency == Currency.USD && type != RecordType.CASH_ADJUST && type != RecordType.CASH_BALANCE) {
                     NumberField(
                         label = "적용 환율 (원/달러, 투자금 원화 환산용)",
@@ -237,7 +255,7 @@ private fun RecordForm(
                     { if (it == Currency.KRW) "원화 → 달러" else "달러 → 원화" },
                     { currency = it },
                 )
-                NumberField("원화 금액", krwText, { krwText = it }, allowDecimal = false, preview = { MoneyFormat.manwon(it) })
+                MoneyField("원화 금액", krwText, { krwText = it })
                 NumberField("달러 금액", amountText, { amountText = it }, preview = { MoneyFormat.usd(it) })
                 if (krw != null && amount != null && amount > 0) {
                     LabeledValue("적용 환율", "${MoneyFormat.decimal(krw / amount, 2)}원")
@@ -316,7 +334,7 @@ private fun RecordForm(
         ) { Text("저장") }
 
         if (onDelete != null) {
-            OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) { Text("기록 삭제") }
+            DeleteButton("기록 삭제", onClick = { confirmDelete = true })
         }
     }
 

@@ -156,7 +156,8 @@ private fun HomeContent(
                     style = MaterialTheme.typography.headlineMedium,
                 )
                 ProfitPill(
-                    MoneyFormat.signedWon(summary.profitKrw) + " · " + MoneyFormat.rate(summary.returnRate),
+                    // 수익률을 계산할 수 없으면(투자금 0) "· -" 대신 수익금만
+                    MoneyFormat.signedWon(summary.profitKrw) + (summary.returnRate?.let { " · " + MoneyFormat.rate(it) } ?: ""),
                     summary.profitKrw,
                 )
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -216,7 +217,7 @@ private fun HomeContent(
                         title = account.account.name,
                         subtitle = accountDescription(account.account.kind.label, account.account.number).ifBlank { null },
                         value = MoneyFormat.won(account.valueKrw),
-                        subValue = MoneyFormat.rate(account.returnRate),
+                        subValue = account.returnRate?.let { MoneyFormat.rate(it) },
                         subValueColor = profitColor(account.returnRate),
                         onClick = { onOpenAccount(account.account.id) },
                         leading = { AccountKindBadge(account.account.kind) },

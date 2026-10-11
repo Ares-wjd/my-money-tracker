@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.common.WarningText
+import com.mymoneytracker.app.ui.common.DeleteButton
 import com.mymoneytracker.app.ui.common.AccountNumberField
 import com.mymoneytracker.app.ui.common.ChipSelector
 import com.mymoneytracker.app.ui.common.ConfirmDialog
@@ -94,6 +96,7 @@ private fun AccountForm(
         ChipSelector("계좌 종류", AccountKind.entries, kind, { it.label }, { kind = it })
         AccountNumberField(number) { number = it }
         TextInput("메모 (선택)", memo, { memo = it }, singleLine = false, maxLength = 200)
+        if (name.isBlank()) WarningText("계좌 이름을 입력하세요.")
         Button(
             onClick = {
                 onSave(
@@ -111,7 +114,7 @@ private fun AccountForm(
             modifier = Modifier.fillMaxWidth(),
         ) { Text("저장") }
         if (onDelete != null) {
-            OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) { Text("계좌 삭제") }
+            DeleteButton("계좌 삭제", onClick = { confirmDelete = true })
         }
     }
 

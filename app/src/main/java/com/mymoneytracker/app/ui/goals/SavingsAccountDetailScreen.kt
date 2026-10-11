@@ -1,6 +1,16 @@
 package com.mymoneytracker.app.ui.goals
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,12 +45,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mymoneytracker.app.ui.common.fabContainerColor
+import com.mymoneytracker.app.ui.common.fabContentColor
 import com.mymoneytracker.app.ui.common.DateField
 import com.mymoneytracker.app.ui.common.GoalProgressBar
 import com.mymoneytracker.app.ui.common.appCardColors
 import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.LoadingBox
-import com.mymoneytracker.app.ui.common.NumberField
+import com.mymoneytracker.app.ui.common.MoneyField
+import com.mymoneytracker.app.ui.common.TopBarTitle
+import com.mymoneytracker.app.ui.theme.LocalMoneyColors
 import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.app.ui.common.formatDate
@@ -66,11 +80,14 @@ fun SavingsAccountDetailScreen(
     val data by viewModel.data.collectAsStateWithLifecycle()
     val summary = data?.summary(accountId)
     var editBalance by rememberSaveable { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    // 스크롤을 내리면 목표 추가 버튼을 작게 (카드를 덜 가리도록)
+    val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(summary?.account?.name ?: "목적통장") },
+                title = { TopBarTitle(summary?.account?.name ?: "목적통장") },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
                 },
@@ -82,9 +99,10 @@ fun SavingsAccountDetailScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onAddGoal,
-                containerColor = MaterialTheme.colorScheme.inverseSurface,
-                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                expanded = fabExpanded,
+                containerColor = fabContainerColor(),
+                contentColor = fabContentColor(),
+                icon = { Icon(Icons.Filled.Add, contentDescription = "목표 추가") },
                 text = { Text("목표 추가") },
             )
         },
@@ -92,7 +110,7 @@ fun SavingsAccountDetailScreen(
         if (summary == null) {
             LoadingBox(Modifier.padding(padding))
         } else {
-            SavingsDetailContent(summary, padding, onEditBalance = { editBalance = true }, onOpenGoal = onOpenGoal)
+            SavingsDetailContent(summary, padding, listState, onEditBalance = { editBalance = true }, onOpenGoal = onOpenGoal)
             if (editBalance) {
                 BalanceDialog(
                     account = summary.account,
@@ -111,13 +129,15 @@ fun SavingsAccountDetailScreen(
 private fun SavingsDetailContent(
     summary: SavingsSummary,
     padding: PaddingValues,
+    listState: LazyListState,
     onEditBalance: () -> Unit,
     onOpenGoal: (String) -> Unit,
 ) {
     val account = summary.account
     LazyColumn(
+        state = listState,
         modifier = Modifier.padding(padding),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
@@ -128,10 +148,17 @@ private fun SavingsDetailContent(
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                 )
-                LabeledValue(
-                    "통장 잔액",
-                    MoneyFormat.won(account.balance) + (account.balanceDate?.let { " (${formatDate(it)})" } ?: ""),
-                )
+                // 금액만 크게, 기준일은 아래 작은 글씨 (괄호가 겹치지 않게)
+                LabeledValue("통장 잔액", MoneyFormat.won(account.balance))
+                account.balanceDate?.let {
+                    Text(
+                        "${formatDate(it)} 기준",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LocalMoneyColors.current.onHero.copy(alpha = 0.85f),
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.End,
+                    )
+                }
                 account.subAccounts.forEach { sub ->
                     LabeledValue(
                         "  · " + listOf(sub.name, sub.number).filter { it.isNotBlank() }.joinToString(" "),
@@ -141,7 +168,13 @@ private fun SavingsDetailContent(
                 LabeledValue("기대수익률", "연 ${MoneyFormat.decimal(account.annualRate * 100, 2)}%")
                 LabeledValue("목표 합계", MoneyFormat.won(summary.totalGoalAmount))
                 if (summary.unallocated > 0) LabeledValue("배분 후 남는 잔액", MoneyFormat.won(summary.unallocated))
-                TextButton(onClick = onEditBalance) { Text("현재 잔액 입력") }
+                // 초록 카드 위에서도 잘 보이도록 테두리 버튼
+                OutlinedButton(
+                    onClick = onEditBalance,
+                    modifier = Modifier.padding(top = 8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = LocalMoneyColors.current.onHero),
+                    border = BorderStroke(1.dp, LocalMoneyColors.current.onHero.copy(alpha = 0.7f)),
+                ) { Text("현재 잔액 입력") }
             }
         }
         item {
@@ -176,15 +209,19 @@ private fun GoalCard(progress: GoalProgress, onClick: () -> Unit) {
                 if (goal.type == GoalType.RECURRING) {
                     "${goal.intervalMonths}개월마다 · 다음 ${formatDate(progress.nextDueDate)}"
                 } else {
-                    "1회 · ${formatDate(progress.nextDueDate)}"
+                    "1회성 · ${formatDate(progress.nextDueDate)}"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            GoalProgressBar(progress.achievedRate.toFloat(), Modifier.padding(vertical = 4.dp))
+            // 진행 막대 옆에 %, 금액은 짧게 (한 줄에 들어가도록)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GoalProgressBar(progress.achievedRate.toFloat(), Modifier.weight(1f).padding(vertical = 4.dp))
+                Text("${(progress.achievedRate * 100).roundToLong()}%", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            }
             LabeledValue(
                 "모은 금액",
-                "${MoneyFormat.won(progress.allocated)} / ${MoneyFormat.won(goal.amount)} (${(progress.achievedRate * 100).roundToLong()}%)",
+                "${MoneyFormat.shortWon(progress.allocated).removeSuffix("원")} / ${MoneyFormat.shortWon(goal.amount)}",
             )
             LabeledValue(
                 "남은 기간",
@@ -218,12 +255,10 @@ private fun BalanceDialog(
             ) {
                 Text("계좌별 현재 금액을 입력하세요.", style = MaterialTheme.typography.bodySmall)
                 rows.forEachIndexed { index, row ->
-                    NumberField(
+                    MoneyField(
                         listOf(row.name, row.number).filter { it.isNotBlank() }.joinToString(" ") + " (원)",
                         row.balance,
                         { rows[index] = row.copy(balance = it) },
-                        allowDecimal = false,
-                        preview = { MoneyFormat.manwon(it) },
                     )
                 }
                 LabeledValue("합계", MoneyFormat.won(rows.sumOf { MoneyFormat.parseDecimal(it.balance) ?: 0.0 }), bold = true)

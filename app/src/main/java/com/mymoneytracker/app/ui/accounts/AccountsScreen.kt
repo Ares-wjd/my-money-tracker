@@ -19,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.common.fabContainerColor
+import com.mymoneytracker.app.ui.common.fabContentColor
 import com.mymoneytracker.app.ui.common.AccountKindBadge
 import com.mymoneytracker.app.ui.common.ListRow
 import com.mymoneytracker.app.ui.common.SectionCard
@@ -42,8 +44,8 @@ fun AccountsScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onAddAccount,
-                containerColor = MaterialTheme.colorScheme.inverseSurface,
-                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                containerColor = fabContainerColor(),
+                contentColor = fabContentColor(),
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
                 text = { Text("계좌 추가") },
             )
@@ -59,7 +61,7 @@ fun AccountsScreen(
             )
             else -> LazyColumn(
                 modifier = Modifier.padding(padding),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
             ) {
                 item {
                     SectionCard {
@@ -72,7 +74,7 @@ fun AccountsScreen(
                                     "투자금 ${MoneyFormat.won(account.investedKrw)} · 종목 ${account.holdings.count { it.position.quantity > 0 }}개",
                                 ).filter { it.isNotBlank() }.joinToString("\n"),
                                 value = MoneyFormat.won(account.valueKrw),
-                                subValue = "${MoneyFormat.signedWon(account.profitKrw)} · ${MoneyFormat.rate(account.returnRate)}",
+                                subValue = MoneyFormat.signedWon(account.profitKrw) + (account.returnRate?.let { " · " + MoneyFormat.rate(it) } ?: ""),
                                 subValueColor = profitColor(account.profitKrw),
                                 onClick = { onOpenAccount(account.account.id) },
                                 leading = { AccountKindBadge(account.account.kind) },

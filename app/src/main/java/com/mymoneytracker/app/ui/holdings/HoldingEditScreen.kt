@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.common.DeleteButton
 import com.mymoneytracker.app.ui.common.ChipSelector
 import com.mymoneytracker.app.ui.common.ConfirmDialog
 import com.mymoneytracker.app.ui.common.DateField
@@ -179,7 +180,7 @@ private fun HoldingForm(
         ) { Text("저장") }
 
         if (onDelete != null) {
-            OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) { Text("종목 삭제") }
+            DeleteButton("종목 삭제", onClick = { confirmDelete = true })
         }
     }
 

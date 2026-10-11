@@ -26,6 +26,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mymoneytracker.app.ui.common.WarningText
+import com.mymoneytracker.app.ui.common.MoneyField
+import com.mymoneytracker.app.ui.common.DeleteButton
 import com.mymoneytracker.app.ui.common.ChipSelector
 import com.mymoneytracker.app.ui.common.ConfirmDialog
 import com.mymoneytracker.app.ui.common.DateField
@@ -99,8 +102,14 @@ private fun GoalForm(
 
     val amount = MoneyFormat.parseDecimal(amountText)
     val interval = intervalText.toIntOrNull()
-    val valid = name.isNotBlank() && amount != null && amount > 0 &&
-        (type == GoalType.ONE_TIME || (interval != null && interval in 1..600))
+    // 저장 버튼이 꺼져 있으면 무엇을 입력해야 하는지 보여준다
+    val problem = when {
+        name.isBlank() -> "목표 이름을 입력하세요."
+        amount == null || amount <= 0 -> "목표 금액을 입력하세요."
+        type == GoalType.RECURRING && (interval == null || interval !in 1..600) -> "반복 주기(1~600개월)를 입력하세요."
+        else -> null
+    }
+    val valid = problem == null
 
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp),
@@ -108,9 +117,9 @@ private fun GoalForm(
     ) {
         TextInput("목표 이름 (예: 노트북, 휴대폰)", name, { name = it }, maxLength = 40)
         ChipSelector("종류", GoalType.entries, type, { it.label }, { type = it })
-        NumberField("목표 금액 (원)", amountText, { amountText = it }, allowDecimal = false, preview = { MoneyFormat.manwon(it) })
+        MoneyField("목표 금액 (원)", amountText, { amountText = it }, quick = true)
         DateField(
-            if (type == GoalType.ONE_TIME) "목표일" else "다음(또는 지난) 지출일",
+            if (type == GoalType.ONE_TIME) "목표일" else "다음 지출일",
             LocalDate.ofEpochDay(day),
             { day = it.toEpochDay() },
         )
@@ -128,6 +137,7 @@ private fun GoalForm(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        problem?.let { WarningText(it) }
         Button(
             onClick = {
                 onSave(
@@ -147,7 +157,7 @@ private fun GoalForm(
             modifier = Modifier.fillMaxWidth(),
         ) { Text("저장") }
         if (onDelete != null) {
-            OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) { Text("목표 삭제") }
+            DeleteButton("목표 삭제", onClick = { confirmDelete = true })
         }
     }
 

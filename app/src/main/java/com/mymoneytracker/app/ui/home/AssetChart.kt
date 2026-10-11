@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,11 +23,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
@@ -44,7 +45,7 @@ import com.mymoneytracker.core.chart.ChartInterval
 import com.mymoneytracker.core.chart.ChartPoint
 import com.mymoneytracker.core.model.InvestmentAccount
 
-/** 자산 추이 그래프: 평가금(실선)과 투자금(점선). 그래프를 누르거나 끌면 그 날짜의 값을 보여준다. */
+/** 자산 추이 그래프: 평가금(진녹색 실선)과 투자금(황색 점선). 그래프를 누르거나 끌면 그 날짜의 값을 보여준다. */
 @Composable
 fun AssetChartCard(
     state: ChartState,
@@ -74,8 +75,8 @@ fun AssetChartCard(
             LineChart(state.points)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Legend(MaterialTheme.colorScheme.primary, "평가금")
-            Legend(MaterialTheme.colorScheme.outline, "투자금")
+            Legend(chartValueColor(), dashed = false, label = "평가금")
+            Legend(chartInvestedColor(), dashed = true, label = "투자금")
             if (state.loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
         }
         if (state.hasEarlier) {
@@ -85,10 +86,27 @@ fun AssetChartCard(
     }
 }
 
+/** 그래프 색 (웹과 같은 값, 색각 이상 구분 검사 통과): 평가금 진녹색, 투자금 황색. */
 @Composable
-private fun Legend(color: Color, label: String) {
+private fun chartValueColor(): Color = if (isSystemInDarkTheme()) Color(0xFF27957A) else Color(0xFF007A5E)
+
+@Composable
+private fun chartInvestedColor(): Color = if (isSystemInDarkTheme()) Color(0xFFC4851C) else Color(0xFFB5770A)
+
+/** 범례: 그래프와 같은 선 모양(실선/점선)으로 보여준다. */
+@Composable
+private fun Legend(color: Color, dashed: Boolean, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Canvas(Modifier.size(10.dp).clip(CircleShape)) { drawCircle(color) }
+        Canvas(Modifier.size(width = 22.dp, height = 8.dp)) {
+            drawLine(
+                color,
+                Offset(2f, size.height / 2),
+                Offset(size.width - 2f, size.height / 2),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round,
+                pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx())) else null,
+            )
+        }
         Spacer(Modifier.width(4.dp))
         Text(label, style = MaterialTheme.typography.bodySmall)
     }
@@ -97,8 +115,8 @@ private fun Legend(color: Color, label: String) {
 @Composable
 private fun LineChart(points: List<ChartPoint>) {
     var selected by remember(points) { mutableStateOf(points.lastIndex) }
-    val valueColor = MaterialTheme.colorScheme.primary
-    val investedColor = MaterialTheme.colorScheme.outline
+    val valueColor = chartValueColor()
+    val investedColor = chartInvestedColor()
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val markerColor = MaterialTheme.colorScheme.onSurface
 
@@ -145,11 +163,15 @@ private fun LineChart(points: List<ChartPoint>) {
             val investedPath = Path().apply {
                 points.forEachIndexed { i, p -> if (i == 0) moveTo(x(i), y(p.investedKrw)) else lineTo(x(i), y(p.investedKrw)) }
             }
-            drawPath(investedPath, investedColor, style = Stroke(width = 4f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f))))
+            drawPath(
+                investedPath,
+                investedColor,
+                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))),
+            )
             val valuePath = Path().apply {
                 points.forEachIndexed { i, p -> if (i == 0) moveTo(x(i), y(p.valueKrw)) else lineTo(x(i), y(p.valueKrw)) }
             }
-            drawPath(valuePath, valueColor, style = Stroke(width = 6f))
+            drawPath(valuePath, valueColor, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
 
             val si = selected.coerceIn(0, points.lastIndex)
             drawLine(markerColor.copy(alpha = 0.4f), Offset(x(si), 0f), Offset(x(si), h), strokeWidth = 2f)

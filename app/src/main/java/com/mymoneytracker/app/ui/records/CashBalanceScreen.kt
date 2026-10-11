@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.common.MoneyField
 import com.mymoneytracker.app.ui.common.DateField
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.NumberField
@@ -102,7 +103,7 @@ private fun CashBalanceForm(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        NumberField("원화 예수금", krwText, { krwText = it }, allowDecimal = false, allowNegative = true, preview = { MoneyFormat.manwon(it) })
+        MoneyField("원화 예수금", krwText, { krwText = it }, allowNegative = true)
         if (showUsd) {
             NumberField("달러 예수금", usdText, { usdText = it }, allowNegative = true, preview = { MoneyFormat.usd(it) })
         }
