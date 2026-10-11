@@ -131,8 +131,13 @@ private fun HoldingDetailContent(
     val position = valuation.position
     val currency = holding.currency
     val records = data.recordsOfHolding(holding.id)
-    // 원화 보기의 해외 종목은 현재 환율로 단순 환산한다 (수익률은 그대로).
+    // 원화 보기의 해외 종목: 매매일 환율이 모두 있으면 환차익을 반영하고, 없으면 오늘 환율로 단순 환산한다.
     val conversion = DisplayConversion.of(currency, displayCurrency, data.usdKrw)
+    val krw = if (displayCurrency == DisplayCurrency.KRW) data.krwView(valuation) else null
+    val missingTradeFx = displayCurrency == DisplayCurrency.KRW && currency == Currency.USD && data.usdKrw != null && krw == null
+    val unrealized = krw?.unrealizedProfitKrw ?: valuation.unrealizedProfit?.let { conversion.convert(it) }
+    val returnRate = krw?.returnRate ?: valuation.returnRate
+    val returnRateWithDividends = krw?.returnRateWithDividends ?: valuation.returnRateWithDividends
     fun shown(value: Double): String = conversion.convert(value)?.let { MoneyFormat.amount(conversion.currency, it) } ?: "환율 필요"
     fun shownSigned(value: Double): String = conversion.convert(value)?.let { MoneyFormat.signedAmount(conversion.currency, it) } ?: "환율 필요"
 
@@ -165,22 +170,33 @@ private fun HoldingDetailContent(
                 }
                 LabeledValue(
                     "평가손익",
-                    valuation.unrealizedProfit?.let(::shownSigned) ?: "-",
-                    valueColor = profitColor(valuation.unrealizedProfit),
+                    unrealized?.let { MoneyFormat.signedAmount(conversion.currency, it) } ?: "-",
+                    valueColor = profitColor(unrealized),
                 )
-                LabeledValue("수익률 (배당 미포함)", MoneyFormat.percent(valuation.returnRate), valueColor = profitColor(valuation.returnRate))
+                if (krw != null) {
+                    LabeledValue("└ 주가 손익", krw.stockProfitKrw?.let { MoneyFormat.signedWon(it) } ?: "-", valueColor = profitColor(krw.stockProfitKrw))
+                    LabeledValue("└ 환차익", MoneyFormat.signedWon(krw.fxProfitKrw), valueColor = profitColor(krw.fxProfitKrw))
+                }
+                val rateLabel = if (displayCurrency == DisplayCurrency.KRW && currency == Currency.USD && krw != null) "원화 수익률" else "수익률"
+                LabeledValue("$rateLabel (배당 미포함)", MoneyFormat.percent(returnRate), valueColor = profitColor(returnRate))
                 LabeledValue(
-                    "수익률 (배당 포함)",
-                    MoneyFormat.percent(valuation.returnRateWithDividends),
-                    valueColor = profitColor(valuation.returnRateWithDividends),
+                    "$rateLabel (배당 포함)",
+                    MoneyFormat.percent(returnRateWithDividends),
+                    valueColor = profitColor(returnRateWithDividends),
                 )
+                if (missingTradeFx) {
+                    Text(
+                        "매매일 환율이 아직 없어 오늘 환율로 단순 환산했습니다 (환율 인증키가 있으면 자동으로 받아 옵니다).",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
         item {
             SectionCard {
                 LabeledValue("보유 수량", MoneyFormat.decimal(position.quantity))
-                LabeledValue("평균단가", shown(position.averagePrice))
-                LabeledValue("매입금액", shown(position.costBasis))
+                LabeledValue("평균단가", krw?.let { MoneyFormat.won(it.averagePriceKrw) + " (매수일 환율)" } ?: shown(position.averagePrice))
+                LabeledValue("매입금액", krw?.let { MoneyFormat.won(it.costBasisKrw) } ?: shown(position.costBasis))
                 LabeledValue(
                     "현재가",
                     valuation.price?.let { p ->
@@ -188,9 +204,14 @@ private fun HoldingDetailContent(
                     } ?: "없음",
                 )
                 TextButton(onClick = onEditPrice) { Text("현재가 직접 입력") }
-                LabeledValue("누적 배당", shown(position.dividends))
-                LabeledValue("실현손익", shownSigned(position.realizedProfit), valueColor = profitColor(position.realizedProfit))
-                LabeledValue("수수료·세금 합계", shown(position.feesAndTaxes))
+                LabeledValue("누적 배당", krw?.let { MoneyFormat.won(it.dividendsKrw) } ?: shown(position.dividends))
+                val realized = krw?.realizedProfitKrw
+                LabeledValue(
+                    "실현손익",
+                    realized?.let { MoneyFormat.signedWon(it) } ?: shownSigned(position.realizedProfit),
+                    valueColor = profitColor(realized ?: position.realizedProfit),
+                )
+                LabeledValue("수수료·세금 합계", krw?.let { MoneyFormat.won(it.feesAndTaxesKrw) } ?: shown(position.feesAndTaxes))
             }
         }
         item {

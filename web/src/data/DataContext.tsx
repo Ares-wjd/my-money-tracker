@@ -1,8 +1,8 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { today } from '../core/dates';
 import { summarizeSavings, type SavingsSummary } from '../core/goals';
-import { currentPrice, latestUsdKrw } from '../core/market';
-import { compareRecords, summarize, type DisplayCurrency, type PortfolioSummary } from '../core/portfolio';
+import { currentPrice, latestUsdKrw, tradeUsdKrw } from '../core/market';
+import { compareRecords, krwHoldingView, summarize, type DisplayCurrency, type HoldingValuation, type KrwHoldingView, type PortfolioSummary } from '../core/portfolio';
 import { linkedAccountIds, type Holding, type InvestmentAccount, type Record } from '../model';
 import type { RecordLookup } from '../records/recordText';
 import { latestQuoteDate } from './mappers';
@@ -20,6 +20,8 @@ export interface AppData extends UserData {
   lookup: RecordLookup;
   recordsOf: (accountId: string) => Record[];
   recordsOfHolding: (holdingId: string) => Record[];
+  /** 원화 보기의 해외 종목 숫자 (매매일 환율로 환차익 반영). 매매일 환율이 하나라도 없으면 null. */
+  krwView: (valuation: HoldingValuation) => KrwHoldingView | null;
 }
 
 interface DataState {
@@ -67,6 +69,7 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       recordsOf: (accountId) =>
         raw.records.filter((r) => r.accountId === accountId || r.toAccountId === accountId).sort(newestFirst),
       recordsOfHolding: (holdingId) => raw.records.filter((r) => r.holdingId === holdingId).sort(newestFirst),
+      krwView: (valuation) => krwHoldingView(valuation, raw.records, usdKrw, (d) => tradeUsdKrw(raw.market, d, day)),
     };
   }, [raw]);
 

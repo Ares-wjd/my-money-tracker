@@ -295,6 +295,9 @@ private fun AccountDetailContent(
                         val holding = valuation.holding
                         val position = valuation.position
                         val conversion = DisplayConversion.of(holding.currency, displayCurrency, summary.usdKrw)
+                        // 원화 보기: 매매일 환율이 모두 있으면 환차익을 반영한 원화 수익률
+                        val krw = if (displayCurrency == DisplayCurrency.KRW) data.krwView(valuation) else null
+                        val rate = krw?.returnRate ?: valuation.returnRate
                         if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         ListRow(
                             title = holding.name,
@@ -302,8 +305,8 @@ private fun AccountDetailContent(
                             value = valuation.marketValue?.let { value ->
                                 conversion.convert(value)?.let { MoneyFormat.amount(conversion.currency, it) } ?: "환율 필요"
                             } ?: "가격 입력 필요",
-                            subValue = valuation.returnRate?.let { MoneyFormat.percent(it) },
-                            subValueColor = profitColor(valuation.returnRate),
+                            subValue = rate?.let { MoneyFormat.percent(it) },
+                            subValueColor = profitColor(rate),
                             onClick = { onOpenHolding(holding.id) },
                             leading = { TickerBadge(holding.code, holding.name) },
                         )
@@ -385,7 +388,7 @@ fun HoldingCurrencyToggle(selected: DisplayCurrency, usdKrw: Double?, onSelect: 
         )
         if (selected == DisplayCurrency.KRW) {
             Text(
-                usdKrw?.let { "1달러 ${MoneyFormat.decimal(it, 2)}원으로 환산" } ?: "환율이 없어 환산할 수 없습니다",
+                usdKrw?.let { "평가는 오늘 환율(${MoneyFormat.decimal(it, 2)}원), 매입은 매수한 날 환율" } ?: "환율이 없어 환산할 수 없습니다",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

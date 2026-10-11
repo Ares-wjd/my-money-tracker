@@ -1,7 +1,7 @@
 // core PortfolioCalculatorTest · DisplayCurrencyTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
 import type { Record, RecordType } from '../model';
-import { convert, displayConversion, position, quantityAt, summarize } from './portfolio';
+import { convert, displayConversion, krwHoldingView, position, quantityAt, summarize } from './portfolio';
 import { account, holding, record } from './testData';
 
 const day1 = '2026-01-02';
@@ -156,5 +156,46 @@ describe('해외 종목 원화/외화 보기 (DisplayCurrencyTest)', () => {
   it('환율이 없으면 환산할 수 없다', () => {
     expect(convert(displayConversion('USD', 'KRW', null), 100)).toBeNull();
     expect(convert(displayConversion('USD', 'FOREIGN', null), 100)).toBe(100);
+  });
+});
+
+describe('원화 보기 환차익 반영 (DisplayCurrencyTest)', () => {
+  const d1 = '2026-01-05';
+  const d2 = '2026-03-05';
+  const d3 = '2026-06-05';
+  const fx: { [d: string]: number } = { [d1]: 1_300, [d2]: 1_400, [d3]: 1_350 };
+  const valuationOf = (records: Record[], usdKrw: number | null) => summarize([us], [apple], records, usdKrw).accounts[0].holdings[0];
+
+  it('매수한 날 환율로 매입금액을 쌓는다', () => {
+    const records = [
+      rec('us', 'BUY', d1, { holdingId: 'a', quantity: 10, price: 100 }),
+      rec('us', 'BUY', d2, { holdingId: 'a', quantity: 10, price: 150 }),
+    ];
+    const v = krwHoldingView(valuationOf(records, 1_500), records, 1_500, (d) => fx[d] ?? null)!;
+    expect(v.costBasisKrw).toBeCloseTo(3_400_000, 6);
+    expect(v.averagePriceKrw).toBeCloseTo(170_000, 6);
+    expect(v.marketValueKrw!).toBeCloseTo(6_000_000, 6);
+    expect(v.unrealizedProfitKrw!).toBeCloseTo(2_600_000, 6);
+    expect(v.stockProfitKrw!).toBeCloseTo(2_250_000, 6);
+    expect(v.fxProfitKrw).toBeCloseTo(350_000, 6);
+    expect(v.returnRate!).toBeCloseTo(2_600_000 / 3_400_000, 9);
+  });
+
+  it('매도한 날 환율로 실현, 배당은 받은 날 환율', () => {
+    const records = [
+      rec('us', 'BUY', d1, { holdingId: 'a', quantity: 10, price: 100 }),
+      rec('us', 'SELL', d2, { holdingId: 'a', quantity: 4, price: 120, fee: 1 }),
+      rec('us', 'DIVIDEND', d3, { holdingId: 'a', amount: 2 }),
+    ];
+    const v = krwHoldingView(valuationOf(records, 1_500), records, 1_500, (d) => fx[d] ?? null)!;
+    expect(v.realizedProfitKrw).toBeCloseTo(150_600, 6);
+    expect(v.costBasisKrw).toBeCloseTo(6 * 130_000, 6);
+    expect(v.dividendsKrw).toBeCloseTo(2 * 1_350, 6);
+  });
+
+  it('환율이 하나라도 없으면 null', () => {
+    const records = [rec('us', 'BUY', d1, { holdingId: 'a', quantity: 1, price: 100 })];
+    expect(krwHoldingView(valuationOf(records, 1_500), records, 1_500, () => null)).toBeNull();
+    expect(krwHoldingView(valuationOf(records, null), records, null, (d) => fx[d] ?? null)).toBeNull();
   });
 });

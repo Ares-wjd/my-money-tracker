@@ -247,3 +247,78 @@ export function displayConversion(holdingCurrency: Currency, mode: DisplayCurren
 }
 
 export const convert = (c: DisplayConversion, value: number): number | null => (c.rate === null ? null : value * c.rate);
+
+/**
+ * 원화 보기의 해외 종목 숫자 (환차익 반영, core 의 KrwHoldingView 와 같음). 매입금액·평균단가는 매수한 날의 환율로 쌓고(이동평균),
+ * 평가금은 오늘 환율로 환산한다. 실현손익은 매도한 날, 배당은 받은 날의 환율로 환산한다.
+ */
+export interface KrwHoldingView {
+  averagePriceKrw: number;
+  costBasisKrw: number;
+  marketValueKrw: number | null;
+  /** 원화 평가손익 = 주가 손익 + 환차익 */
+  unrealizedProfitKrw: number | null;
+  /** 주가 손익 = 달러 평가손익 × 오늘 환율 */
+  stockProfitKrw: number | null;
+  /** 환차익 = 달러 매입금액 × 오늘 환율 − 원화 매입금액 */
+  fxProfitKrw: number;
+  realizedProfitKrw: number;
+  dividendsKrw: number;
+  feesAndTaxesKrw: number;
+  returnRate: number | null;
+  returnRateWithDividends: number | null;
+}
+
+/** 달러 종목이 아니거나, 오늘 환율 또는 기록 중 하루라도 환율이 없으면 null (화면은 오늘 환율로 단순 환산한다). */
+export function krwHoldingView(
+  valuation: HoldingValuation,
+  records: readonly Record[],
+  usdKrw: number | null,
+  fxAt: (date: string) => number | null,
+): KrwHoldingView | null {
+  if (marketCurrency(valuation.holding.market) !== 'USD' || usdKrw === null) return null;
+  let quantity = 0;
+  let averageKrw = 0;
+  let realizedKrw = 0;
+  let dividendsKrw = 0;
+  let feesKrw = 0;
+  const own = records.filter((r) => r.holdingId === valuation.holding.id).sort(compareRecords);
+  for (const r of own) {
+    if (r.type !== 'BUY' && r.type !== 'SELL' && r.type !== 'DIVIDEND') continue;
+    const fx = fxAt(r.date);
+    if (fx === null) return null;
+    if (r.type === 'BUY') {
+      const newQuantity = quantity + r.quantity;
+      if (newQuantity > 0) averageKrw = (quantity * averageKrw + r.quantity * r.price * fx) / newQuantity;
+      quantity = newQuantity;
+      feesKrw += (r.fee + r.tax) * fx;
+    } else if (r.type === 'SELL') {
+      const sold = Math.min(r.quantity, quantity);
+      realizedKrw += sold * (r.price * fx - averageKrw) - (r.fee + r.tax) * fx;
+      quantity -= sold;
+      if (quantity <= EPSILON) {
+        quantity = 0;
+        averageKrw = 0;
+      }
+      feesKrw += (r.fee + r.tax) * fx;
+    } else {
+      dividendsKrw += r.amount * fx;
+    }
+  }
+  const costKrw = quantity * averageKrw;
+  const marketValueKrw = valuation.marketValue === null ? null : valuation.marketValue * usdKrw;
+  const unrealized = marketValueKrw === null ? null : marketValueKrw - costKrw;
+  return {
+    averagePriceKrw: averageKrw,
+    costBasisKrw: costKrw,
+    marketValueKrw,
+    unrealizedProfitKrw: unrealized,
+    stockProfitKrw: valuation.unrealizedProfit === null ? null : valuation.unrealizedProfit * usdKrw,
+    fxProfitKrw: valuation.position.costBasis * usdKrw - costKrw,
+    realizedProfitKrw: realizedKrw,
+    dividendsKrw,
+    feesAndTaxesKrw: feesKrw,
+    returnRate: unrealized === null ? null : rateOf(unrealized, costKrw),
+    returnRateWithDividends: unrealized === null ? null : rateOf(unrealized + dividendsKrw, costKrw),
+  };
+}

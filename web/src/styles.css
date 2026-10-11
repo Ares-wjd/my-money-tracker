@@ -277,3 +277,5 @@ button.primary.small-button { padding: 8px 14px; }
 .dot-invested { fill: var(--chart-invested); stroke: var(--card); stroke-width: 2; }
 .chart-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
 .chart-table { max-height: 320px; overflow-y: auto; }
+/* 반 폭 카드 안의 정보 칸은 좁아지지 않게 */
+.grid-2 .stats, .grid-2 .stats:has(> :nth-child(3):last-child) { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }

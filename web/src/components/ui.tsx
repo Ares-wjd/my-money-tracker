@@ -91,7 +91,7 @@ export function CurrencyToggle({ mode, usdKrw, onChange }: { mode: DisplayCurren
         ))}
       </div>
       {mode === 'KRW' && (
-        <span className="muted small">{usdKrw !== null ? `1달러 ${decimal(usdKrw, 2)}원으로 환산` : '환율이 없어 환산할 수 없습니다'}</span>
+        <span className="muted small">{usdKrw !== null ? `평가는 오늘 환율(${decimal(usdKrw, 2)}원), 매입은 매수한 날 환율` : '환율이 없어 환산할 수 없습니다'}</span>
       )}
     </div>
   );

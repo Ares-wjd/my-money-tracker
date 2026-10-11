@@ -122,6 +122,9 @@ export function AccountDetailPage() {
                     const converted = convert(c, value);
                     return converted === null ? '환율 필요' : amount(c.currency, converted);
                   };
+                  // 원화 보기: 매매일 환율이 모두 있으면 환차익을 반영한 원화 평균단가·수익률
+                  const krw = displayCurrency === 'KRW' ? data.krwView(v) : null;
+                  const rate = krw ? krw.returnRate : v.returnRate;
                   return (
                     // 행 어디를 눌러도 종목 화면으로 (키보드는 첫 칸의 링크로 이동)
                     <tr key={v.holding.id} className="clickable" onClick={() => navigate(`/holdings/${v.holding.id}`)}>
@@ -134,10 +137,10 @@ export function AccountDetailPage() {
                         />
                       </td>
                       <td className="num">{decimal(v.position.quantity)}</td>
-                      <td className="num optional">{shown(v.position.averagePrice)}</td>
+                      <td className="num optional">{krw ? won(krw.averagePriceKrw) : shown(v.position.averagePrice)}</td>
                       <td className="num optional">{v.price ? shown(v.price.price) : '없음'}</td>
                       <td className="num strong">{v.marketValue === null ? '가격 입력 필요' : shown(v.marketValue)}</td>
-                      <td className={`num ${profitClass(v.returnRate)}`}>{percent(v.returnRate)}</td>
+                      <td className={`num ${profitClass(rate)}`}>{percent(rate)}</td>
                     </tr>
                   );
                 })}

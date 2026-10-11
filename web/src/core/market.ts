@@ -1,5 +1,6 @@
 // core 의 MarketKeys · PriceLookup · MarketSnapshot 과 같은 규칙.
 import type { Holding, Market, MarketSnapshot, PriceHistory, PricePoint } from '../model';
+import { plusDays } from './dates';
 
 const MIN_DATE = '0000-00-00';
 
@@ -42,6 +43,22 @@ export function usdKrwAt(snapshot: MarketSnapshot, date: string): number | null 
   for (let i = dates.length - 1; i >= 0; i--) {
     const rate = snapshot.usdKrw.get(dates[i])!;
     if (rate > 0) return rate;
+  }
+  return null;
+}
+
+/**
+ * 매매일 환율 (원화 보기의 환차익 계산용): 그날 또는 직전 영업일(최대 7일 전)까지 받아 둔 환율.
+ * 그 사이에 아직 받지 않은 날이 있으면 null (멀리 떨어진 옛 환율을 쓰지 않도록). 오늘 이후는 최신 환율.
+ */
+export function tradeUsdKrw(snapshot: MarketSnapshot, date: string, today: string): number | null {
+  if (date >= today) return latestUsdKrw(snapshot)?.[1] ?? null;
+  let day = date;
+  for (let step = 0; step <= 7; step++) {
+    const rate = snapshot.usdKrw.get(day);
+    if (rate === undefined) return null;
+    if (rate > 0) return rate;
+    day = plusDays(day, -1);
   }
   return null;
 }

@@ -29,6 +29,21 @@ data class MarketSnapshot(
     /** [date] 당일 또는 그 이전의 가장 가까운 환율. */
     fun usdKrwAt(date: LocalDate): Double? =
         usdKrw.headMap(date, true).descendingMap().values.firstOrNull { it > 0 }
+
+    /**
+     * 매매일 환율 (원화 보기의 환차익 계산용): 그날 또는 직전 영업일(최대 7일 전)까지 받아 둔 환율.
+     * 그 사이에 아직 받지 않은 날이 있으면 null (멀리 떨어진 옛 환율을 쓰지 않도록). 오늘 이후는 최신 환율.
+     */
+    fun tradeUsdKrw(date: LocalDate, today: LocalDate): Double? {
+        if (!date.isBefore(today)) return latestUsdKrw()?.second
+        var day = date
+        for (step in 0..7) {
+            val rate = usdKrw[day] ?: return null
+            if (rate > 0) return rate
+            day = day.minusDays(1)
+        }
+        return null
+    }
 }
 
 object MarketKeys {

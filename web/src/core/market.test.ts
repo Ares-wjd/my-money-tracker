@@ -1,7 +1,7 @@
 // core MarketDataTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
 import type { MarketSnapshot, PricePoint } from '../model';
-import { currentPrice, keyOf, latestUsdKrw, marketKey, priceAt, usdKrwAt } from './market';
+import { currentPrice, keyOf, latestUsdKrw, marketKey, priceAt, tradeUsdKrw, usdKrwAt } from './market';
 import { holding } from './testData';
 
 const d1 = '2026-10-01';
@@ -44,5 +44,14 @@ describe('시세 (MarketDataTest)', () => {
   it('과거 가격이 없으면 직접 입력 가격', () => {
     const fund = { ...stock, code: '', assetType: 'FUND' as const, manualPrice: 1000, manualPriceDate: d5 };
     expect(priceAt(fund, { prices: new Map(), usdKrw: new Map() }, d1)?.price).toBe(1000);
+  });
+
+  it('매매일 환율은 받아 둔 날만 (옛 환율을 쓰지 않는다)', () => {
+    const today = '2026-10-09';
+    const s = { prices: new Map(), usdKrw: new Map([[d2, 1400], ['2026-10-03', -1], ['2026-10-04', -1], ['2026-10-08', 1410]]) };
+    expect(tradeUsdKrw(s, '2026-10-04', today)).toBe(1400);
+    expect(tradeUsdKrw(s, d2, today)).toBe(1400);
+    expect(tradeUsdKrw(s, '2026-10-05', today)).toBeNull();
+    expect(tradeUsdKrw(s, today, today)).toBe(1410);
   });
 });

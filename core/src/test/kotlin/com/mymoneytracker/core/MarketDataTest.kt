@@ -62,4 +62,17 @@ class MarketDataTest {
         val fund = stock.copy(code = "", assetType = AssetType.FUND, manualPrice = 1000.0, manualPriceDate = d5)
         assertEquals(1000.0, PriceLookup.at(fund, MarketSnapshot(), d1)!!.price, 1e-9)
     }
+
+    @Test
+    fun tradeRateNeedsFetchedDays() {
+        val today = LocalDate.of(2026, 10, 9)
+        // 10/3(토)·10/4(일)은 데이터 없음(-1), 10/2(금) 1,400
+        val s = MarketSnapshot(usdKrw = TreeMap(mapOf(d2 to 1400.0, LocalDate.of(2026, 10, 3) to -1.0, LocalDate.of(2026, 10, 4) to -1.0, LocalDate.of(2026, 10, 8) to 1410.0)))
+        assertEquals(1400.0, s.tradeUsdKrw(LocalDate.of(2026, 10, 4), today)!!, 1e-9)
+        assertEquals(1400.0, s.tradeUsdKrw(d2, today)!!, 1e-9)
+        // 10/5 는 아직 받지 않았다 → 옛 환율을 쓰지 않는다
+        assertNull(s.tradeUsdKrw(LocalDate.of(2026, 10, 5), today))
+        // 오늘은 최신 환율
+        assertEquals(1410.0, s.tradeUsdKrw(today, today)!!, 1e-9)
+    }
 }

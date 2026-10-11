@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatDate } from '../core/dates';
-import { amount, decimal, percent, signedAmount, usd, won } from '../core/format';
+import { amount, decimal, percent, signedAmount, signedWon, usd, won } from '../core/format';
 import { convert, displayConversion } from '../core/portfolio';
 import { useAppData, useData } from '../data/DataContext';
 import { Card, CurrencyToggle, NotFound, Row, profitClass } from '../components/ui';
@@ -34,6 +34,13 @@ export function HoldingDetailPage() {
     return converted === null ? '환율 필요' : signedAmount(c.currency, converted);
   };
   const p = v.position;
+  // 원화 보기의 해외 종목: 매매일 환율이 모두 있으면 환차익 반영, 없으면 오늘 환율로 단순 환산
+  const krw = displayCurrency === 'KRW' ? data.krwView(v) : null;
+  const missingTradeFx = displayCurrency === 'KRW' && currency === 'USD' && data.usdKrw !== null && krw === null;
+  const unrealized = krw ? krw.unrealizedProfitKrw : v.unrealizedProfit === null ? null : convert(c, v.unrealizedProfit);
+  const rate = krw ? krw.returnRate : v.returnRate;
+  const rateWithDividends = krw ? krw.returnRateWithDividends : v.returnRateWithDividends;
+  const rateLabel = krw ? '원화 수익률' : '수익률';
   const records = data.recordsOfHolding(holdingId);
   const linked = data.linked.has(holding.accountId);
 
@@ -66,27 +73,44 @@ export function HoldingDetailPage() {
           <div className="stats">
             <div className="stat">
               <span className="stat-label">평가손익</span>
-              <span className="stat-value">{v.unrealizedProfit === null ? '-' : shownSigned(v.unrealizedProfit)}</span>
+              <span className="stat-value">{unrealized === null ? '-' : signedAmount(c.currency, unrealized)}</span>
             </div>
             <div className="stat">
-              <span className="stat-label">수익률 (배당 미포함)</span>
-              <span className="stat-value">{percent(v.returnRate)}</span>
+              <span className="stat-label">{rateLabel} (배당 미포함)</span>
+              <span className="stat-value">{percent(rate)}</span>
             </div>
             <div className="stat">
-              <span className="stat-label">수익률 (배당 포함)</span>
-              <span className="stat-value">{percent(v.returnRateWithDividends)}</span>
+              <span className="stat-label">{rateLabel} (배당 포함)</span>
+              <span className="stat-value">{percent(rateWithDividends)}</span>
             </div>
+            {krw && (
+              <>
+                <div className="stat">
+                  <span className="stat-label">주가 손익</span>
+                  <span className="stat-value">{krw.stockProfitKrw === null ? '-' : signedWon(krw.stockProfitKrw)}</span>
+                </div>
+                <div className="stat">
+                  <span className="stat-label">환차익</span>
+                  <span className="stat-value">{signedWon(krw.fxProfitKrw)}</span>
+                </div>
+              </>
+            )}
           </div>
         </Card>
         <Card>
           <Row label="보유 수량" value={decimal(p.quantity)} />
-          <Row label="평균단가" value={shown(p.averagePrice)} />
-          <Row label="매입금액" value={shown(p.costBasis)} />
+          <Row label="평균단가" value={krw ? `${won(krw.averagePriceKrw)} (매수일 환율)` : shown(p.averagePrice)} />
+          <Row label="매입금액" value={krw ? won(krw.costBasisKrw) : shown(p.costBasis)} />
           <Row label="현재가" value={v.price ? shown(v.price.price) + (v.price.date ? ` (${formatDate(v.price.date)})` : '') : '없음'} />
           <button className="text-button align-start" onClick={() => setDialog({ kind: 'price' })}>현재가 직접 입력</button>
-          <Row label="누적 배당" value={shown(p.dividends)} />
-          <Row label="실현손익" value={shownSigned(p.realizedProfit)} valueClass={profitClass(p.realizedProfit)} />
-          <Row label="수수료·세금 합계" value={shown(p.feesAndTaxes)} />
+          <Row label="누적 배당" value={krw ? won(krw.dividendsKrw) : shown(p.dividends)} />
+          <Row
+            label="실현손익"
+            value={krw ? signedWon(krw.realizedProfitKrw) : shownSigned(p.realizedProfit)}
+            valueClass={profitClass(krw ? krw.realizedProfitKrw : p.realizedProfit)}
+          />
+          <Row label="수수료·세금 합계" value={krw ? won(krw.feesAndTaxesKrw) : shown(p.feesAndTaxes)} />
+          {missingTradeFx && <p className="warning">매매일 환율이 아직 없어 오늘 환율로 단순 환산했습니다. 폰 앱을 열면 환율을 받아 와 반영됩니다.</p>}
         </Card>
       </div>
 

@@ -29,6 +29,9 @@ import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.DisplayCurrency
+import com.mymoneytracker.core.portfolio.HoldingValuation
+import com.mymoneytracker.core.portfolio.KrwHoldingCalculator
+import com.mymoneytracker.core.portfolio.KrwHoldingView
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.PortfolioSummary
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +73,10 @@ data class PortfolioData(
     fun recordsOf(accountId: String): List<Record> =
         records.filter { it.accountId == accountId || it.toAccountId == accountId }
             .sortedWith(PortfolioCalculator.recordOrder.reversed())
+
+    /** 원화 보기의 해외 종목 숫자 (매매일 환율로 환차익 반영). 매매일 환율이 하나라도 없으면 null. */
+    fun krwView(valuation: HoldingValuation): KrwHoldingView? =
+        KrwHoldingCalculator.view(valuation, records, usdKrw) { market.tradeUsdKrw(it, LocalDate.now()) }
 
     fun recordsOfHolding(holdingId: String): List<Record> =
         records.filter { it.holdingId == holdingId }.sortedWith(PortfolioCalculator.recordOrder.reversed())
@@ -209,6 +216,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             data.filterNotNull().first()
             refreshQuotes(silent = true)
             loadChartHistory()
+            ensureTradeFx()
         }
     }
 
@@ -365,6 +373,22 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         }
     }
 
+    /**
+     * 해외 종목의 매매·배당 날짜 환율을 받아 둔다 (원화 보기의 환차익 계산용). 이미 받은 날짜는 다시 묻지 않는다.
+     * 받은 환율은 Firestore 에 저장되어 PC 웹에서도 쓴다.
+     */
+    private fun ensureTradeFx() {
+        val current = data.value ?: return
+        if (!_apiStatus.value.hasExim) return
+        val usdHoldings = current.holdings.filter { it.currency == Currency.USD }.map { it.id }.toSet()
+        val dates = current.records
+            .filter { it.holdingId in usdHoldings && (it.type == RecordType.BUY || it.type == RecordType.SELL || it.type == RecordType.DIVIDEND) }
+            .map { it.date }
+            .distinct()
+        if (dates.isEmpty()) return
+        viewModelScope.launch { runCatching { marketRepository.ensureFx(dates) } }
+    }
+
     // ---------------------------------------------------------------- API 설정
 
     private fun readApiStatus(): ApiStatus = ApiStatus(
@@ -495,6 +519,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             // 새로 만든 종목·기록이 화면 데이터에 반영된 뒤 나머지 시세·환율을 받는다.
             delay(1_500)
             refreshQuotes(silent = true)
+            ensureTradeFx()
         }
     }
 
