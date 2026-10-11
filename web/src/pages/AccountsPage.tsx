@@ -28,7 +28,7 @@ export function AccountsPage() {
               .filter(Boolean)
               .join(' · ')}
             value={won(a.valueKrw)}
-            subValue={`투자금 ${won(a.investedKrw)} · ${rate(a.returnRate)}`}
+            subValue={`투자금 ${won(a.investedKrw)}` + (a.returnRate === null ? '' : ` · ${rate(a.returnRate)}`)}
             subValueClass={profitClass(a.returnRate)}
           />
         ))}

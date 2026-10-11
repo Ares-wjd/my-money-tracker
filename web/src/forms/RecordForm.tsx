@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Choice, DateField, FormActions, Modal, NumberField, TextField, numberText } from '../components/form';
+import { Choice, DateField, FormActions, Modal, NumberField, TextField, WonField, numberText } from '../components/form';
 import { Row } from '../components/ui';
 import { formatDate, today } from '../core/dates';
 import { amount as formatAmount, amountPreview, decimal, manwon, parseDecimal, usd, won } from '../core/format';
@@ -71,14 +71,25 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
               <Choice label="받는 계좌" options={others.map((a) => a.id)} value={toAccountId} text={(id) => data.lookup.account(id)?.name ?? ''} onChange={setToAccountId} />
             ))}
           <Choice label="통화" options={CURRENCIES} value={currency} text={(c) => CURRENCY_LABEL[c]} onChange={setCurrency} />
-          <NumberField
-            label={recordType === 'CASH_ADJUST' ? '조정 금액 (+ 증가 / − 감소)' : recordType === 'CASH_BALANCE' ? '그날의 예수금' : '금액'}
-            value={amountText}
-            onChange={setAmountText}
-            allowDecimal={currency === 'USD'}
-            allowNegative={recordType === 'CASH_ADJUST' || recordType === 'CASH_BALANCE'}
-            preview={(n) => amountPreview(currency, n)}
-          />
+          {currency === 'KRW' ? (
+            <WonField
+              label={recordType === 'CASH_ADJUST' ? '조정 금액 (+ 증가 / − 감소)' : recordType === 'CASH_BALANCE' ? '그날의 예수금' : '금액'}
+              value={amountText}
+              onChange={setAmountText}
+              allowNegative={recordType === 'CASH_ADJUST' || recordType === 'CASH_BALANCE'}
+              preview={manwon}
+              // 딱 떨어지는 금액을 적는 입금·출금·이체에만 빠른 입력 버튼
+              quick={recordType === 'DEPOSIT' || recordType === 'WITHDRAW' || recordType === 'TRANSFER'}
+            />
+          ) : (
+            <NumberField
+              label={recordType === 'CASH_ADJUST' ? '조정 금액 (+ 증가 / − 감소)' : recordType === 'CASH_BALANCE' ? '그날의 예수금' : '금액'}
+              value={amountText}
+              onChange={setAmountText}
+              allowNegative={recordType === 'CASH_ADJUST' || recordType === 'CASH_BALANCE'}
+              preview={usd}
+            />
+          )}
           {currency === 'USD' && recordType !== 'CASH_ADJUST' && recordType !== 'CASH_BALANCE' && (
             <>
               <NumberField label="적용 환율 (원/달러, 투자금 원화 환산용)" value={rateText} onChange={setRateText} preview={(n) => `1달러 = ${decimal(n, 2)}원`} />
@@ -91,7 +102,7 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
       {recordType === 'EXCHANGE' && (
         <>
           <Choice label="방향" options={CURRENCIES} value={currency} text={(c) => (c === 'KRW' ? '원화 → 달러' : '달러 → 원화')} onChange={setCurrency} />
-          <NumberField label="원화 금액" value={krwText} onChange={setKrwText} allowDecimal={false} preview={manwon} />
+          <WonField label="원화 금액" value={krwText} onChange={setKrwText} preview={manwon} />
           <NumberField label="달러 금액" value={amountText} onChange={setAmountText} preview={usd} />
           {input.krw !== null && input.amount !== null && input.amount > 0 && <Row label="적용 환율" value={`${decimal(input.krw / input.amount, 2)}원`} />}
         </>

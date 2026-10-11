@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { formatDate, formatShortDate } from '../core/dates';
-import { decimal, won } from '../core/format';
+import { decimal, shortWon, won } from '../core/format';
 import type { GoalProgress } from '../core/goals';
 import { useAppData } from '../data/DataContext';
 import { Card } from '../components/ui';
@@ -12,7 +12,7 @@ type Dialog = { kind: 'account'; existing: SavingsAccount | null } | { kind: 'go
 function goalSchedule(g: GoalProgress): string {
   const interval = g.goal.intervalMonths;
   const every = g.goal.type === 'ONE_TIME'
-    ? '1회'
+    ? '1회성'
     : interval % 12 === 0 ? `${interval / 12}년마다` : `${interval}개월마다`;
   return `${every} · ${formatDate(g.nextDueDate)}`;
 }
@@ -67,7 +67,7 @@ export function GoalsPage() {
               >
                 <p className="muted small">
                   연 {decimal(s.account.annualRate * 100, 2)}% · 잔액 {won(savingsBalance(s.account))}
-                  {s.account.balanceDate ? ` (${formatShortDate(s.account.balanceDate)})` : ''}
+                  {s.account.balanceDate ? ` · ${formatShortDate(s.account.balanceDate)} 기준` : ''}
                 </p>
                 {(s.account.subAccounts.length > 1 || s.account.subAccounts.some((x) => x.number.trim() !== '')) && (
                   <div className="chips">
@@ -92,7 +92,7 @@ export function GoalsPage() {
                     </span>
                     <span className="goal-foot">
                       <span className="muted small">
-                        {won(g.allocated).replace(/원$/, '')} / {won(g.goal.amount)} · {goalStatus(g)}
+                        {shortWon(g.allocated).replace(/원$/, '')} / {shortWon(g.goal.amount)} · {goalStatus(g)}
                       </span>
                       <span className="strong small">월 {won(g.monthlyPayment)}</span>
                     </span>

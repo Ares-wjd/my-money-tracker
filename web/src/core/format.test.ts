@@ -1,6 +1,6 @@
 // core MoneyFormatTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
-import { amountPreview, decimal, manwon, rate, parseDecimal, percent, signedAmount, signedWon, usd, won } from './format';
+import { amountPreview, decimal, manwon, shortWon, rate, parseDecimal, percent, signedAmount, signedWon, usd, won } from './format';
 
 describe('금액 표시 (MoneyFormatTest)', () => {
   it('천 단위 쉼표', () => {
@@ -45,12 +45,20 @@ describe('금액 표시 (MoneyFormatTest)', () => {
 
   it('입력 미리보기는 만원 단위', () => {
     expect(manwon(6_000_000)).toBe('600만원');
-    expect(manwon(1_055_000)).toBe('105.5만원');
-    expect(manwon(2_000_000)).toBe('200만원');
-    expect(manwon(123_456_789)).toBe('12,345.6789만원');
+    expect(manwon(1_055_000)).toBe('105만 5,000원');
+    expect(manwon(1_315_979)).toBe('131만 5,979원');
+    expect(manwon(123_456_789)).toBe('1억 2,345만 6,789원');
+    expect(manwon(150_000_000)).toBe('1억 5,000만원');
+    expect(manwon(300_000_000)).toBe('3억원');
+    expect(manwon(100_000_005)).toBe('1억 5원');
     expect(manwon(10_000)).toBe('1만원');
     expect(manwon(5_000)).toBe('5,000원');
+    expect(manwon(0)).toBe('0원');
     expect(manwon(-3_500_000)).toBe('-350만원');
+    expect(shortWon(1_315_979)).toBe('131.6만원');
+    expect(shortWon(6_000_000)).toBe('600만원');
+    expect(shortWon(150_000_000)).toBe('1.5억원');
+    expect(shortWon(5_000)).toBe('5,000원');
     expect(amountPreview('USD', 12.5)).toBe('$12.50');
   });
 

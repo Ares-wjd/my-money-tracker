@@ -90,13 +90,35 @@ export function parseDecimal(input: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** 입력 미리보기용 만원 단위: 6000000 → "600만원", 1055000 → "105.5만원", 5000 → "5,000원" */
+/**
+ * 입력 미리보기용 한글 단위: 1315979 → "131만 5,979원", 6000000 → "600만원",
+ * 131595979 → "1억 3,159만 5,979원", 5000 → "5,000원"
+ */
 export function manwon(value: number): string {
-  if (Math.abs(value) < 10_000) return won(value);
-  return decimal(value / 10_000, 4) + '만원';
+  const n = Math.round(value);
+  if (n === 0) return won(0);
+  const sign = n < 0 ? '-' : '';
+  let rest = Math.abs(n);
+  const parts: string[] = [];
+  for (const [unit, label] of [[1e12, '조'], [1e8, '억'], [1e4, '만']] as const) {
+    const q = Math.floor(rest / unit);
+    if (q > 0) parts.push(group(String(q)) + label);
+    rest -= q * unit;
+  }
+  if (rest > 0) parts.push(group(String(rest)));
+  return sign + parts.join(' ') + '원';
 }
 
-/** 입력칸 아래 미리보기: 원화는 만원 단위, 달러는 그대로. */
+/** 좁은 곳에 쓰는 짧은 금액: 1315979 → "131.6만원", 150000000 → "1.5억원", 5000 → "5,000원" */
+export function shortWon(value: number): string {
+  const a = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+  if (a < 1e4) return won(value);
+  if (a < 1e8) return sign + decimal(a / 1e4, 1) + '만원';
+  return sign + decimal(a / 1e8, 2) + '억원';
+}
+
+/** 입력칸 아래 미리보기: 원화는 한글 단위, 달러는 그대로. */
 export function amountPreview(currency: Currency, value: number): string {
   return currency === 'KRW' ? manwon(value) : usd(value);
 }

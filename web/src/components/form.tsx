@@ -71,6 +71,60 @@ export function NumberField(props: {
   );
 }
 
+/** 쉼표를 붙인 정수 문자열: "1315979" → "1,315,979" (빈 값·"-" 는 그대로). */
+export function withCommas(text: string): string {
+  const negative = text.startsWith('-');
+  const digits = text.replace(/[^0-9]/g, '').replace(/^0+(?=\d)/, '');
+  if (digits === '') return negative ? '-' : '';
+  return (negative ? '-' : '') + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+const QUICK_AMOUNTS = [10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000] as const;
+
+/**
+ * 원화 금액 입력 (정수, 쓰는 동안 쉼표). [quick] 이면 +1만~+500만 버튼과 ✕(비우기)를 둔다.
+ * 빠른 입력 버튼은 딱 떨어지는 금액을 적는 곳(입금·출금, 목표 금액)에만 쓴다.
+ */
+export function WonField(props: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  preview?: (n: number) => string;
+  allowNegative?: boolean;
+  quick?: boolean;
+}) {
+  const parsed = parseDecimal(props.value);
+  const add = (n: number) => props.onChange(withCommas(String(Math.max(0, (parsed ?? 0) + n))));
+  return (
+    <div className="field">
+      <label className="field">
+        <span className="field-label">{props.label}</span>
+        <span className="input-clear">
+          <input
+            inputMode="numeric"
+            value={withCommas(props.value)}
+            onChange={(e) => {
+              const raw = e.target.value.replace(props.allowNegative ? /[^0-9-]/g : /[^0-9]/g, '');
+              props.onChange(withCommas(raw).slice(0, 24));
+            }}
+          />
+          {props.quick && props.value !== '' && (
+            <button type="button" className="clear-button" aria-label="금액 지우기" onClick={() => props.onChange('')}>✕</button>
+          )}
+        </span>
+        {parsed !== null && props.preview && <span className="field-hint">{props.preview(parsed)}</span>}
+      </label>
+      {props.quick && (
+        <div className="quick-amounts" aria-label="금액 빠르게 더하기">
+          {QUICK_AMOUNTS.map((n) => (
+            <button type="button" key={n} onClick={() => add(n)}>+{n / 10_000}만</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <Field label={label}>
@@ -86,6 +140,7 @@ export function Choice<T extends string>(props: { label: string; options: readon
       <div className="choices" role="radiogroup" aria-label={props.label}>
         {props.options.map((o) => (
           <button type="button" key={o} role="radio" aria-checked={props.value === o} className={props.value === o ? 'choice on' : 'choice'} onClick={() => props.onChange(o)}>
+            {props.value === o && <span aria-hidden="true">✓ </span>}
             {props.text(o)}
           </button>
         ))}

@@ -26,7 +26,8 @@ export function HomePage() {
         <span className="hero-label">투자 자산 평가금</span>
         <span className="hero-value">{won(summary.valueKrw)}</span>
         <span className="pill">
-          {signedWon(summary.profitKrw)} · {rate(summary.returnRate)}
+          {signedWon(summary.profitKrw)}
+          {summary.returnRate !== null && ` · ${rate(summary.returnRate)}`}
         </span>
         <div className="stats">
           <Stat label="투자금" value={won(summary.investedKrw)} />
@@ -63,7 +64,7 @@ export function HomePage() {
             title={a.account.name}
             subtitle={accountDescription(a.account, data.linked.has(a.account.id)) || undefined}
             value={won(a.valueKrw)}
-            subValue={rate(a.returnRate)}
+            subValue={a.returnRate === null ? undefined : rate(a.returnRate)}
             subValueClass={profitClass(a.returnRate)}
           />
         ))}

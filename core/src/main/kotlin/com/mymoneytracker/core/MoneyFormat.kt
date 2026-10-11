@@ -47,11 +47,37 @@ object MoneyFormat {
         Currency.USD -> signedUsd(value)
     }
 
-    /** 입력 미리보기용 만원 단위: 6000000 -> "600만원", 1055000 -> "105.5만원", 5000 -> "5,000원" */
-    fun manwon(value: Double): String =
-        if (abs(value) < 10_000) won(value) else decimal(value / 10_000, 4) + "만원"
+    /**
+     * 입력 미리보기용 한글 단위: 1315979 -> "131만 5,979원", 6000000 -> "600만원",
+     * 131595979 -> "1억 3,159만 5,979원", 5000 -> "5,000원"
+     */
+    fun manwon(value: Double): String {
+        val n = value.roundToLong()
+        if (n == 0L) return won(0)
+        val sign = if (n < 0) "-" else ""
+        var rest = abs(n)
+        val parts = mutableListOf<String>()
+        for ((unit, label) in listOf(1_0000_0000_0000L to "조", 1_0000_0000L to "억", 1_0000L to "만")) {
+            val q = rest / unit
+            if (q > 0) parts += formatter.format(q) + label
+            rest %= unit
+        }
+        if (rest > 0) parts += formatter.format(rest)
+        return sign + parts.joinToString(" ") + "원"
+    }
 
-    /** 입력칸 아래 미리보기: 원화는 만원 단위, 달러는 그대로. */
+    /** 좁은 곳에 쓰는 짧은 금액: 1315979 -> "131.6만원", 600000000 -> "6억원", 5000 -> "5,000원" */
+    fun shortWon(value: Double): String {
+        val a = abs(value)
+        val sign = if (value < 0) "-" else ""
+        return when {
+            a < 1_0000 -> won(value)
+            a < 1_0000_0000 -> sign + decimal(a / 1_0000, 1) + "만원"
+            else -> sign + decimal(a / 1_0000_0000, 2) + "억원"
+        }
+    }
+
+    /** 입력칸 아래 미리보기: 원화는 한글 단위, 달러는 그대로. */
     fun amountPreview(currency: Currency, value: Double): String = when (currency) {
         Currency.KRW -> manwon(value)
         Currency.USD -> usd(value)

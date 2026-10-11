@@ -300,3 +300,13 @@ button.primary.small-button { padding: 8px 14px; }
 .holdings-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
 .ticker-legend { margin: 0; }
 .sub-line { margin-top: 8px; font-size: 14px; }
+
+/* 원화 금액 입력: 지우기 버튼, 빠른 입력 버튼 */
+.input-clear { position: relative; display: block; }
+.input-clear input { width: 100%; padding-right: 40px; }
+.clear-button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: var(--muted); padding: 4px 8px; }
+.quick-amounts { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0; scrollbar-width: none; }
+.quick-amounts button { flex: none; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--soft); border: 1px solid var(--line); color: var(--ink); }
+.quick-amounts button:hover { border-color: var(--green); }
+.text-button.inline { padding: 0; }
+.sold-out-toggle td { padding-top: 10px; }

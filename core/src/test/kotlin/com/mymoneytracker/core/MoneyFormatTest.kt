@@ -45,12 +45,20 @@ class MoneyFormatTest {
     @Test
     fun previewsInManwon() {
         assertEquals("600만원", MoneyFormat.manwon(6_000_000.0))
-        assertEquals("105.5만원", MoneyFormat.manwon(1_055_000.0))
-        assertEquals("200만원", MoneyFormat.manwon(2_000_000.0))
-        assertEquals("12,345.6789만원", MoneyFormat.manwon(123_456_789.0))
+        assertEquals("105만 5,000원", MoneyFormat.manwon(1_055_000.0))
+        assertEquals("131만 5,979원", MoneyFormat.manwon(1_315_979.0))
+        assertEquals("1억 2,345만 6,789원", MoneyFormat.manwon(123_456_789.0))
+        assertEquals("1억 5,000만원", MoneyFormat.manwon(150_000_000.0))
+        assertEquals("3억원", MoneyFormat.manwon(300_000_000.0))
+        assertEquals("1억 5원", MoneyFormat.manwon(100_000_005.0))
         assertEquals("1만원", MoneyFormat.manwon(10_000.0))
         assertEquals("5,000원", MoneyFormat.manwon(5_000.0))
+        assertEquals("0원", MoneyFormat.manwon(0.0))
         assertEquals("-350만원", MoneyFormat.manwon(-3_500_000.0))
+        assertEquals("131.6만원", MoneyFormat.shortWon(1_315_979.0))
+        assertEquals("600만원", MoneyFormat.shortWon(6_000_000.0))
+        assertEquals("1.5억원", MoneyFormat.shortWon(150_000_000.0))
+        assertEquals("5,000원", MoneyFormat.shortWon(5_000.0))
         assertEquals("$12.50", MoneyFormat.amountPreview(Currency.USD, 12.5))
     }
 
