@@ -116,7 +116,7 @@ private fun LineChart(points: List<ChartPoint>) {
         LabeledValue(
             "수익금",
             MoneyFormat.signedWon(point.profitKrw) +
-                (if (point.investedKrw > 0) " (${MoneyFormat.percent(point.profitKrw / point.investedKrw)})" else ""),
+                (if (point.investedKrw > 0) " · ${MoneyFormat.rate(point.profitKrw / point.investedKrw)}" else ""),
             valueColor = profitColor(point.profitKrw),
         )
         Spacer(Modifier.height(8.dp))

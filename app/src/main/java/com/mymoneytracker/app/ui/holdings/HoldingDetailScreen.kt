@@ -157,6 +157,7 @@ private fun HoldingDetailContent(
             item { HoldingCurrencyToggle(displayCurrency, data.usdKrw, onSelectDisplayCurrency) }
         }
         item {
+            // 초록 바탕 위에서는 빨강·파랑 대신 카드 글자색과 ▲▼ 로 수익/손실을 나타낸다 (글자 대비 확보)
             SectionCard(highlighted = true) {
                 LabeledValue(
                     "평가금",
@@ -171,19 +172,20 @@ private fun HoldingDetailContent(
                 LabeledValue(
                     "평가손익",
                     unrealized?.let { MoneyFormat.signedAmount(conversion.currency, it) } ?: "-",
-                    valueColor = profitColor(unrealized),
                 )
                 if (krw != null) {
-                    LabeledValue("└ 주가 손익", krw.stockProfitKrw?.let { MoneyFormat.signedWon(it) } ?: "-", valueColor = profitColor(krw.stockProfitKrw))
-                    LabeledValue("└ 환차익", MoneyFormat.signedWon(krw.fxProfitKrw), valueColor = profitColor(krw.fxProfitKrw))
+                    LabeledValue("└ 주가 손익", krw.stockProfitKrw?.let { MoneyFormat.signedWon(it) } ?: "-")
+                    LabeledValue("└ 환차익", MoneyFormat.signedWon(krw.fxProfitKrw))
                 }
                 val rateLabel = if (displayCurrency == DisplayCurrency.KRW && currency == Currency.USD && krw != null) "원화 수익률" else "수익률"
-                LabeledValue("$rateLabel (배당 미포함)", MoneyFormat.percent(returnRate), valueColor = profitColor(returnRate))
+                LabeledValue("$rateLabel (배당 미포함)", MoneyFormat.rate(returnRate))
                 LabeledValue(
                     "$rateLabel (배당 포함)",
-                    MoneyFormat.percent(returnRateWithDividends),
-                    valueColor = profitColor(returnRateWithDividends),
+                    MoneyFormat.rate(returnRateWithDividends),
                 )
+                data.todayRate(valuation)?.let { today ->
+                    LabeledValue("오늘 수익률", MoneyFormat.rate(today))
+                }
                 if (missingTradeFx) {
                     Text(
                         "매매일 환율이 아직 없어 오늘 환율로 단순 환산했습니다 (환율 인증키가 있으면 자동으로 받아 옵니다).",

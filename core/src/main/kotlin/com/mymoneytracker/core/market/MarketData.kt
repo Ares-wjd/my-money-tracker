@@ -12,6 +12,8 @@ data class PriceHistory(
     val closes: TreeMap<LocalDate, Double> = TreeMap(),
     /** 가장 최근에 받은 현재가와 그 날짜. */
     val latest: PricePoint? = null,
+    /** [latest] 의 전일 종가 (오늘 수익률 계산용). */
+    val prevClose: Double? = null,
 )
 
 /** 앱이 받아 둔 시세·환율 전체. */
@@ -88,6 +90,18 @@ object PriceLookup {
         val lastClose = history?.closes?.lastEntry()?.let { PricePoint(it.value, it.key) }
         val auto = newerAuto(history?.latest, lastClose)
         return newer(holding.manualPrice?.let { PricePoint(it, holding.manualPriceDate) }, auto)
+    }
+
+    /**
+     * 오늘 수익률 = 현재가 ÷ 전일 종가 − 1. 자동 시세(최신 현재가)를 쓰는 종목만 계산한다
+     * (직접 입력 가격을 쓰거나 전일 종가가 없으면 null).
+     */
+    fun dailyChangeRate(holding: Holding, snapshot: MarketSnapshot): Double? {
+        val history = snapshot.history(holding) ?: return null
+        val prev = history.prevClose?.takeIf { it > 0 } ?: return null
+        val latest = history.latest ?: return null
+        if (current(holding, snapshot) != latest) return null
+        return latest.price / prev - 1
     }
 
     /** 과거 [date] 기준 가격: 그날 이전 종가, 없으면 그날 이전에 직접 입력한 가격, 그것도 없으면 직접 입력 가격. */

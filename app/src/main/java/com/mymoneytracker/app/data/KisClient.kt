@@ -16,6 +16,9 @@ import java.time.format.DateTimeFormatter
 /** 종가 한 개. */
 data class DailyClose(val date: LocalDate, val close: Double)
 
+/** 현재가와 전일 종가 (오늘 수익률 계산용). */
+data class Quote(val price: Double, val prevClose: Double?)
+
 /** 한투 체결 내역 한 건. */
 data class KisExecution(
     val date: LocalDate,
@@ -160,13 +163,21 @@ class KisClient(private val store: SecureStore) {
 
     // ---------------------------------------------------------------- 시세
 
-    suspend fun domesticPrice(code: String): Double {
+    suspend fun domesticPrice(code: String): Double = domesticQuote(code).price
+
+    /** 국내 현재가와 전일 종가(기준가). */
+    suspend fun domesticQuote(code: String): Quote {
         val r = call(
             "/uapi/domestic-stock/v1/quotations/inquire-price",
             "FHKST01010100",
             mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to code),
         )
-        return r.json.optJSONObject("output")?.num("stck_prpr") ?: throw ApiException("$code 현재가가 없습니다.")
+        val output = r.json.optJSONObject("output")
+        val price = output?.num("stck_prpr") ?: throw ApiException("$code 현재가가 없습니다.")
+        // 기준가(stck_sdpr) = 전일 종가. 없으면 현재가 − 전일 대비.
+        val prevClose = output.num("stck_sdpr")?.takeIf { it > 0 }
+            ?: output.num("prdy_vrss")?.let { price - it }?.takeIf { it > 0 }
+        return Quote(price, prevClose)
     }
 
     /** 국내 일별 종가 (수정주가). 한 번에 최대 100 영업일. */
@@ -190,13 +201,16 @@ class KisClient(private val store: SecureStore) {
         }
     }
 
-    suspend fun overseasPrice(market: Market, symbol: String): Double {
+    /** 해외 현재가와 전일 종가(base). */
+    suspend fun overseasQuote(market: Market, symbol: String): Quote {
         val r = call(
             "/uapi/overseas-price/v1/quotations/price",
             "HHDFS00000300",
             mapOf("AUTH" to "", "EXCD" to quoteExchange(market), "SYMB" to symbol),
         )
-        return r.json.optJSONObject("output")?.num("last")?.takeIf { it > 0 } ?: throw ApiException("$symbol 현재가가 없습니다.")
+        val output = r.json.optJSONObject("output")
+        val price = output?.num("last")?.takeIf { it > 0 } ?: throw ApiException("$symbol 현재가가 없습니다.")
+        return Quote(price, output.num("base")?.takeIf { it > 0 })
     }
 
     /** 해외 일별 종가. [until] 이전 최대 100 영업일. */

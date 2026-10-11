@@ -47,6 +47,8 @@ import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.SegmentedPills
 import com.mymoneytracker.app.ui.common.StatTile
 import com.mymoneytracker.app.ui.common.TickerBadge
+import com.mymoneytracker.app.ui.common.TickerLegend
+import com.mymoneytracker.app.ui.common.tickerGroup
 import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.app.ui.common.accountDescription
 import com.mymoneytracker.app.ui.common.formatDate
@@ -60,6 +62,8 @@ import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.AccountSummary
 import com.mymoneytracker.core.portfolio.DisplayConversion
 import com.mymoneytracker.core.portfolio.DisplayCurrency
+import com.mymoneytracker.core.portfolio.HoldingSort
+import com.mymoneytracker.core.portfolio.HoldingSorter
 
 /** 기록 추가 메뉴에 보여줄 유형 (예수금은 예수금 카드의 "예수금 입력" 으로 따로 넣는다). */
 private val addableTypes = listOf(
@@ -90,6 +94,7 @@ fun AccountDetailScreen(
     val syncing by viewModel.syncing.collectAsStateWithLifecycle()
     val refresh by viewModel.refresh.collectAsStateWithLifecycle()
     val displayCurrency by viewModel.displayCurrency.collectAsStateWithLifecycle()
+    val holdingSort by viewModel.holdingSort.collectAsStateWithLifecycle()
     val current = data
     val summary = current?.accountSummary(accountId)
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -149,6 +154,8 @@ fun AccountDetailScreen(
                 apiStatus = apiStatus,
                 lastRefreshedAt = refresh.lastRefreshedAt,
                 displayCurrency = displayCurrency,
+                holdingSort = holdingSort,
+                onSelectHoldingSort = viewModel::setHoldingSort,
                 onSelectDisplayCurrency = viewModel::setDisplayCurrency,
                 syncing = syncing,
                 onSync = { viewModel.syncKisAccount() },
@@ -172,6 +179,8 @@ private fun AccountDetailContent(
     lastRefreshedAt: Long?,
     displayCurrency: DisplayCurrency,
     onSelectDisplayCurrency: (DisplayCurrency) -> Unit,
+    holdingSort: HoldingSort,
+    onSelectHoldingSort: (HoldingSort) -> Unit,
     syncing: Boolean,
     onSync: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -183,7 +192,10 @@ private fun AccountDetailContent(
     val accountId = summary.account.id
     val records = data.recordsOf(accountId)
     var visibleRecords by rememberSaveable(accountId) { mutableStateOf(30) }
-    val holdings = summary.holdings.sortedByDescending { it.marketValueKrw ?: 0.0 }
+    // 총 수익률은 보기를 따른다 (원화 보기: 매매일 환율이 모두 있으면 환차익 반영 원화 수익률)
+    fun totalRate(v: com.mymoneytracker.core.portfolio.HoldingValuation): Double? =
+        (if (displayCurrency == DisplayCurrency.KRW) data.krwView(v)?.returnRate else null) ?: v.returnRate
+    val holdings = HoldingSorter.sort(summary.holdings, holdingSort, ::totalRate) { data.todayRate(it) }
 
     LazyColumn(
         modifier = Modifier.padding(padding),
@@ -203,31 +215,20 @@ private fun AccountDetailContent(
         }
         item {
             SectionCard {
+                // 핵심 3개(투자금·수익금·수익률)를 크게, 나머지는 아래 한 줄로
                 Text("평가금", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(MoneyFormat.won(summary.valueKrw), style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    "${MoneyFormat.signedWon(summary.profitKrw)} · ${MoneyFormat.percent(summary.returnRate)}",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = profitColor(summary.profitKrw),
-                )
+                Text(MoneyFormat.won(summary.valueKrw), style = MaterialTheme.typography.headlineMedium)
                 Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatTile("투자금", MoneyFormat.won(summary.investedKrw), Modifier.weight(1f))
-                    StatTile(
-                        "배당 미포함",
-                        MoneyFormat.percent(summary.returnRateExDividends),
-                        Modifier.weight(1f),
-                        valueColor = profitColor(summary.returnRateExDividends),
-                    )
+                    StatTile("수익금", MoneyFormat.signedWon(summary.profitKrw), Modifier.weight(1f), valueColor = profitColor(summary.profitKrw))
+                    StatTile("수익률", MoneyFormat.rate(summary.returnRate), Modifier.weight(0.8f), valueColor = profitColor(summary.returnRate))
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatTile("누적 배당", MoneyFormat.won(summary.dividendsKrw), Modifier.weight(1f))
-                    StatTile(
-                        "수익금 (배당 미포함)",
-                        MoneyFormat.signedWon(summary.profitExDividendsKrw),
-                        Modifier.weight(1f),
-                        valueColor = profitColor(summary.profitExDividendsKrw),
-                    )
-                }
+                Text(
+                    "배당 미포함 ${MoneyFormat.rate(summary.returnRateExDividends)} · 누적 배당 ${MoneyFormat.won(summary.dividendsKrw)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
                 if (summary.missingFx) WarningText("환율이 없어 달러 금액이 원화 합계에서 빠져 있습니다. 설정에서 환율을 입력하세요.")
                 if (summary.missingPrice) WarningText("현재가가 없는 종목이 있습니다. 종목을 눌러 가격을 입력하세요.")
             }
@@ -274,10 +275,18 @@ private fun AccountDetailContent(
                 OutlinedButton(onClick = onAddHolding) { Text("종목 추가") }
             }
         }
+        if (holdings.isNotEmpty()) {
+            item {
+                SegmentedPills(HoldingSort.entries, holdingSort, { it.label }, onSelectHoldingSort)
+            }
+        }
         if (holdings.any { it.holding.currency == Currency.USD }) {
             item {
                 HoldingCurrencyToggle(displayCurrency, summary.usdKrw, onSelectDisplayCurrency)
             }
+        }
+        if (holdings.isNotEmpty()) {
+            item { TickerLegend(holdings.map { tickerGroup(it.holding.market, it.holding.assetType) }.toSet()) }
         }
         if (holdings.isEmpty()) {
             item {
@@ -295,9 +304,8 @@ private fun AccountDetailContent(
                         val holding = valuation.holding
                         val position = valuation.position
                         val conversion = DisplayConversion.of(holding.currency, displayCurrency, summary.usdKrw)
-                        // 원화 보기: 매매일 환율이 모두 있으면 환차익을 반영한 원화 수익률
-                        val krw = if (displayCurrency == DisplayCurrency.KRW) data.krwView(valuation) else null
-                        val rate = krw?.returnRate ?: valuation.returnRate
+                        val rate = totalRate(valuation)
+                        val today = data.todayRate(valuation)
                         if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         ListRow(
                             title = holding.name,
@@ -305,10 +313,13 @@ private fun AccountDetailContent(
                             value = valuation.marketValue?.let { value ->
                                 conversion.convert(value)?.let { MoneyFormat.amount(conversion.currency, it) } ?: "환율 필요"
                             } ?: "가격 입력 필요",
-                            subValue = rate?.let { MoneyFormat.percent(it) },
-                            subValueColor = profitColor(rate),
+                            subValue = listOfNotNull(
+                                "총 ${MoneyFormat.rate(rate)}",
+                                today?.let { "오늘 ${MoneyFormat.rate(it)}" },
+                            ).joinToString(" · "),
+                            subValueColor = profitColor(if (holdingSort == HoldingSort.TODAY_RETURN) today else rate),
                             onClick = { onOpenHolding(holding.id) },
-                            leading = { TickerBadge(holding.code, holding.name) },
+                            leading = { TickerBadge(holding.code, holding.name, holding.market, holding.assetType) },
                         )
                     }
                 }

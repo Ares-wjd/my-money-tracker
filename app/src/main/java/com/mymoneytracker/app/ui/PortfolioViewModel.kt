@@ -29,6 +29,7 @@ import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.DisplayCurrency
+import com.mymoneytracker.core.portfolio.HoldingSort
 import com.mymoneytracker.core.portfolio.HoldingValuation
 import com.mymoneytracker.core.portfolio.KrwHoldingCalculator
 import com.mymoneytracker.core.portfolio.KrwHoldingView
@@ -73,6 +74,9 @@ data class PortfolioData(
     fun recordsOf(accountId: String): List<Record> =
         records.filter { it.accountId == accountId || it.toAccountId == accountId }
             .sortedWith(PortfolioCalculator.recordOrder.reversed())
+
+    /** 오늘 수익률 (전일 종가 대비). 자동 시세를 쓰지 않거나 전일 종가가 없으면 null. */
+    fun todayRate(valuation: HoldingValuation): Double? = PriceLookup.dailyChangeRate(valuation.holding, market)
 
     /** 원화 보기의 해외 종목 숫자 (매매일 환율로 환차익 반영). 매매일 환율이 하나라도 없으면 null. */
     fun krwView(valuation: HoldingValuation): KrwHoldingView? =
@@ -178,6 +182,17 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     fun setDisplayCurrency(mode: DisplayCurrency) {
         _displayCurrency.value = mode
         displayPrefs.edit().putString(KEY_DISPLAY_CURRENCY, mode.name).apply()
+    }
+
+    /** 보유 종목 정렬 기준 (평가금 / 총 수익률 / 오늘 수익률). 이 기기에만 기억한다. */
+    private val _holdingSort = MutableStateFlow(
+        HoldingSort.entries.firstOrNull { it.name == displayPrefs.getString(KEY_HOLDING_SORT, null) } ?: HoldingSort.VALUE,
+    )
+    val holdingSort: StateFlow<HoldingSort> = _holdingSort.asStateFlow()
+
+    fun setHoldingSort(sort: HoldingSort) {
+        _holdingSort.value = sort
+        displayPrefs.edit().putString(KEY_HOLDING_SORT, sort.name).apply()
     }
 
     private val _syncing = MutableStateFlow(false)
@@ -299,12 +314,10 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         viewModelScope.launch {
             val errors = mutableListOf<String>()
             val linked = status.linkedAccountId?.takeIf { status.hasKis && !status.linkedAccountNo.isNullOrBlank() }
-            val linkedKeys = mutableSetOf<String>()
             if (linked != null && current.account(linked) != null) {
                 try {
                     val snapshot = syncService.brokerSnapshot()
-                    snapshot.prices.forEach { (key, price) -> marketRepository.saveLatest(key, price) }
-                    linkedKeys += snapshot.prices.keys
+                    snapshot.prices.forEach { (key, price) -> marketRepository.saveLatest(key, price, persist = false) }
                     saveBrokerCash(linked, snapshot.cashKrw, snapshot.cashUsd)
                     errors += snapshot.warnings
                 } catch (e: ApiException) {
@@ -313,9 +326,8 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
                     errors += "한투 잔고: 네트워크 오류"
                 }
             }
-            // 잔고 조회로 가격을 받은 종목은 시세 조회를 건너뛴다 (호출 수 절약).
+            // 연결 계좌 종목도 시세 조회를 한다 (전일 종가 → 오늘 수익률). 잔고 가격은 시세 조회가 실패할 때를 대비한 값.
             val held = current.summary.accounts.flatMap { a -> a.holdings.filter { it.position.quantity > 0 }.map { it.holding } }
-                .filter { MarketKeys.of(it) !in linkedKeys }
             val needsFx = current.summary.accounts.any { a ->
                 a.cash.usd != 0.0 || a.holdings.any { it.holding.currency == Currency.USD && it.position.quantity > 0 }
             }
@@ -497,7 +509,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             _message.value = try {
                 val result = syncService.sync(account, current.holdings, current.records, status.syncStart, status.lastSync)
                 store.put(SecureStore.KIS_LAST_SYNC, LocalDate.now().toString())
-                result.currentPrices.forEach { (key, price) -> marketRepository.saveLatest(key, price) }
+                result.currentPrices.forEach { (key, price) -> marketRepository.saveLatest(key, price, persist = false) }
                 saveBrokerCash(account.id, result.brokerCashKrw, result.brokerCashUsd)
                 buildString {
                     append("한투에서 체결 ${result.importedTrades}건을 불러왔습니다.")
@@ -539,6 +551,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
 
     companion object {
         private const val KEY_DISPLAY_CURRENCY = "holding_currency"
+        private const val KEY_HOLDING_SORT = "holding_sort"
 
         fun factory(uid: String): ViewModelProvider.Factory = viewModelFactory {
             initializer { PortfolioViewModel(this[APPLICATION_KEY]!!, uid) }

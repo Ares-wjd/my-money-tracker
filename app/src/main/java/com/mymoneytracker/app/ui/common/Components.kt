@@ -1,5 +1,8 @@
 package com.mymoneytracker.app.ui.common
 
+import androidx.compose.ui.text.style.TextOverflow
+import com.mymoneytracker.core.model.Market
+import com.mymoneytracker.core.model.AssetType
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -60,8 +63,11 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val dateFormatter = DateTimeFormatter.ofPattern("yyyy.M.d (E)", Locale.KOREAN)
+private val shortDateFormatter = DateTimeFormatter.ofPattern("M.d (E)", Locale.KOREAN)
 
-fun formatDate(date: LocalDate): String = dateFormatter.format(date)
+/** 올해 날짜는 짧게 "10.9 (금)", 다른 해는 "2025.10.9 (목)". */
+fun formatDate(date: LocalDate): String =
+    (if (date.year == LocalDate.now().year) shortDateFormatter else dateFormatter).format(date)
 
 /** 수익은 빨강, 손실은 파랑 (국내 증권 앱 관례). 다크 모드에서는 밝은 톤. */
 @Composable
@@ -102,6 +108,9 @@ fun PlaceholderContent(
     }
 }
 
+/** 초록 강조 카드 안인지 (라벨 글자색을 카드 글자색 계열로 바꿔 대비를 확보한다). */
+val LocalOnHero = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 /** 흰 카드 (다크 모드에서는 한 단계 밝은 바탕). highlighted 면 브랜드 색 강조 카드. */
 @Composable
 fun SectionCard(
@@ -124,7 +133,7 @@ fun SectionCard(
             if (title != null) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
             }
-            content()
+            androidx.compose.runtime.CompositionLocalProvider(LocalOnHero provides highlighted) { content() }
         }
     }
 }
@@ -172,7 +181,7 @@ fun StatTile(
     valueColor: Color = Color.Unspecified,
     onHero: Boolean = false,
 ) {
-    val labelColor = if (onHero) LocalMoneyColors.current.onHero.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
+    val labelColor = if (onHero) LocalMoneyColors.current.onHero.copy(alpha = 0.92f) else MaterialTheme.colorScheme.onSurfaceVariant
     Column(
         modifier = modifier
             .then(
@@ -182,7 +191,7 @@ fun StatTile(
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = labelColor)
-        Text(value, style = MaterialTheme.typography.titleSmall, color = valueColor)
+        Text(value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = valueColor, maxLines = 1)
     }
 }
 
@@ -234,11 +243,46 @@ fun LabelBadge(text: String, container: Color, content: Color, modifier: Modifie
     }
 }
 
-/** 종목 티커 배지: 코드가 있으면 코드, 없으면 이름 앞 글자. */
+/** 티커 색 구분: 국내 주식 / 해외 주식 / ETF / 펀드·채권. */
+enum class TickerGroup(val label: String) { KR_STOCK("국내"), US_STOCK("해외"), ETF("ETF"), OTHER("펀드·채권") }
+
+fun tickerGroup(market: Market, assetType: AssetType): TickerGroup = when {
+    assetType == AssetType.ETF -> TickerGroup.ETF
+    assetType == AssetType.STOCK && market == Market.KR -> TickerGroup.KR_STOCK
+    assetType == AssetType.STOCK -> TickerGroup.US_STOCK
+    else -> TickerGroup.OTHER
+}
+
+/** 배지 바탕색 (흰 글자 대비 4.5:1 이상, 색각 이상 구분 검사 통과). 다크 모드는 다크 바탕에 맞춘 값. */
 @Composable
-fun TickerBadge(code: String, name: String) {
+fun tickerColor(group: TickerGroup): Color {
+    val dark = isSystemInDarkTheme()
+    return when (group) {
+        TickerGroup.KR_STOCK -> if (dark) Color(0xFF18805F) else Color(0xFF0B7A5E)
+        TickerGroup.US_STOCK -> if (dark) Color(0xFF6A5FD9) else Color(0xFF5A4FCF)
+        TickerGroup.ETF -> if (dark) Color(0xFFA85D0A) else Color(0xFFA35A08)
+        TickerGroup.OTHER -> if (dark) Color(0xFF5E6B65) else Color(0xFF5B6B64)
+    }
+}
+
+/** 종목 티커 배지: 코드가 있으면 코드, 없으면 이름 앞 글자. 색으로 국내·해외·ETF 를 구분한다. */
+@Composable
+fun TickerBadge(code: String, name: String, market: Market, assetType: AssetType) {
     val text = code.ifBlank { name.take(2) }.take(6)
-    LabelBadge(text, MaterialTheme.colorScheme.inverseSurface, MaterialTheme.colorScheme.inverseOnSurface, minWidth = 52)
+    LabelBadge(text, tickerColor(tickerGroup(market, assetType)), Color.White, minWidth = 52)
+}
+
+/** 티커 색 범례. [groups] 에 있는 것만 보여준다. */
+@Composable
+fun TickerLegend(groups: Set<TickerGroup>) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        TickerGroup.entries.filter { it in groups }.forEach { group ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Box(Modifier.size(10.dp).background(tickerColor(group), RoundedCornerShape(3.dp)))
+                Text(group.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
 }
 
 /** 계좌 종류 배지. */
@@ -310,7 +354,8 @@ fun LabeledValue(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val labelColor = if (LocalOnHero.current) LocalMoneyColors.current.onHero.copy(alpha = 0.92f) else MaterialTheme.colorScheme.onSurfaceVariant
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = labelColor)
         Text(
             value,
             style = MaterialTheme.typography.bodyLarge,
@@ -484,25 +529,32 @@ fun ListRow(
     onClick: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
 ) {
+    // 이름은 보통 굵기·한 줄 말줄임, 금액은 굵게 (금액이 먼저 눈에 들어오도록)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(vertical = 12.dp),
+            .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         leading?.invoke()
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (subtitle != null) {
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(value, style = MaterialTheme.typography.titleSmall)
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
             if (subValue != null) {
-                Text(subValue, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = subValueColor)
+                Text(subValue, style = MaterialTheme.typography.labelLarge, color = subValueColor, maxLines = 1)
             }
         }
     }

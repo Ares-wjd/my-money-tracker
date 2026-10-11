@@ -53,4 +53,13 @@ class MoneyFormatTest {
         assertEquals("-350만원", MoneyFormat.manwon(-3_500_000.0))
         assertEquals("$12.50", MoneyFormat.amountPreview(Currency.USD, 12.5))
     }
+
+    @Test
+    fun ratesWithArrows() {
+        assertEquals("▲12.35%", MoneyFormat.rate(0.12345))
+        assertEquals("▼5.00%", MoneyFormat.rate(-0.05))
+        assertEquals("0.00%", MoneyFormat.rate(0.0))
+        assertEquals("0.00%", MoneyFormat.rate(-0.00001))
+        assertEquals("-", MoneyFormat.rate(null))
+    }
 }

@@ -21,7 +21,7 @@ import java.util.TreeMap
 /**
  * 받아 온 시세·환율을 Firestore 에 캐시한다. 과거 종가와 환율은 바뀌지 않으므로 한 번 받으면 다시 받지 않는다.
  *
- * users/{uid}/marketData/price_{KR|US}_{코드}  { closes: {날짜: 종가}, latest, latestDate, historyFrom, historyTo }
+ * users/{uid}/marketData/price_{KR|US}_{코드}  { closes: {날짜: 종가}, latest, latestDate, prevClose, historyFrom, historyTo }
  * users/{uid}/marketData/fx_USD                 { rates: {날짜: 매매기준율, 데이터 없는 날은 -1} }
  */
 class MarketDataRepository(
@@ -35,7 +35,7 @@ class MarketDataRepository(
     private val docMeta = mutableMapOf<String, Pair<LocalDate?, LocalDate?>>()
 
     /** 자주 받는 현재가는 메모리에 두고, Firestore 에는 [PERSIST_INTERVAL_MS] 마다 한 번만 저장한다 (쓰기 횟수 절약). */
-    private val liveQuotes = MutableStateFlow<Map<String, PricePoint>>(emptyMap())
+    private val liveQuotes = MutableStateFlow<Map<String, LiveQuote>>(emptyMap())
     private val lastPersistedAt = mutableMapOf<String, Long>()
     private var lastFxAttemptAt = 0L
 
@@ -46,22 +46,35 @@ class MarketDataRepository(
         live.forEach { (key, quote) ->
             val history = prices[key] ?: PriceHistory()
             val latest = history.latest
-            val newer = latest == null || (quote.date ?: LocalDate.MIN) >= (latest.date ?: LocalDate.MIN)
-            prices[key] = if (newer) history.copy(latest = quote) else history
+            val newer = latest == null || (quote.point.date ?: LocalDate.MIN) >= (latest.date ?: LocalDate.MIN)
+            // 전일 종가가 없는 값(잔고 조회 가격)이면, 같은 날 저장된 전일 종가는 그대로 쓴다.
+            val prevClose = quote.prevClose ?: history.prevClose.takeIf { latest?.date == quote.point.date }
+            prices[key] = if (newer) history.copy(latest = quote.point, prevClose = prevClose) else history
         }
         stored.copy(prices = prices)
     }
 
-    /** 현재가 저장: 메모리에는 바로, Firestore 에는 가끔. */
-    fun saveLatest(key: String, price: Double) {
+    /**
+     * 현재가 저장: 메모리에는 바로, Firestore 에는 가끔.
+     * @param prevClose 전일 종가 (시세 조회에서 받은 값)
+     * @param persist false 면 메모리에만 둔다. 잔고 조회 가격은 전일 종가가 없어 저장된 전일 종가를 덮지 않도록 이렇게 하고,
+     *   곧이어 시세 조회가 전일 종가와 함께 저장한다.
+     */
+    fun saveLatest(key: String, price: Double, prevClose: Double? = null, persist: Boolean = true) {
         val today = LocalDate.now()
-        liveQuotes.value = liveQuotes.value + (key to PricePoint(price, today))
+        liveQuotes.value = liveQuotes.value + (key to LiveQuote(PricePoint(price, today), prevClose))
+        if (!persist) return
         val now = System.currentTimeMillis()
         if (now - (lastPersistedAt[key] ?: 0L) >= PERSIST_INTERVAL_MS) {
             lastPersistedAt[key] = now
-            col.document(PRICE_PREFIX + key).set(mapOf("latest" to price, "latestDate" to today.toString()), SetOptions.merge())
+            col.document(PRICE_PREFIX + key).set(
+                mapOf("latest" to price, "latestDate" to today.toString(), "prevClose" to prevClose),
+                SetOptions.merge(),
+            )
         }
     }
+
+    private data class LiveQuote(val point: PricePoint, val prevClose: Double?)
 
     private fun storedSnapshot(): Flow<MarketSnapshot> = callbackFlow {
         val registration = col.addSnapshotListener { snapshot, error ->
@@ -80,7 +93,7 @@ class MarketDataRepository(
                         val latest = doc.getDouble("latest")?.let { price ->
                             PricePoint(price, doc.getString("latestDate")?.let(::parseDate))
                         }
-                        prices[key] = PriceHistory(readDateMap(doc, "closes"), latest)
+                        prices[key] = PriceHistory(readDateMap(doc, "closes"), latest, doc.getDouble("prevClose"))
                         docMeta[key] = doc.getString("historyFrom")?.let(::parseDate) to doc.getString("historyTo")?.let(::parseDate)
                     }
                 }
@@ -100,12 +113,12 @@ class MarketDataRepository(
         if (kis.hasCredentials) {
             holdings.filter { MarketKeys.quotable(it) }.distinctBy { MarketKeys.of(it) }.forEach { holding ->
                 try {
-                    val price = if (holding.market == Market.KR) {
-                        kis.domesticPrice(holding.code)
+                    val quote = if (holding.market == Market.KR) {
+                        kis.domesticQuote(holding.code)
                     } else {
-                        kis.overseasPrice(holding.market, holding.code)
+                        kis.overseasQuote(holding.market, holding.code)
                     }
-                    MarketKeys.of(holding)?.let { saveLatest(it, price) }
+                    MarketKeys.of(holding)?.let { saveLatest(it, quote.price, quote.prevClose) }
                 } catch (e: ApiException) {
                     errors += "${holding.name}: ${e.message}"
                     if (e.message?.contains("App Key") == true || e.message?.contains("토큰") == true) return errors

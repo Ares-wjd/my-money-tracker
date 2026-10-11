@@ -72,7 +72,7 @@ fun AccountsScreen(
                                     "투자금 ${MoneyFormat.won(account.investedKrw)} · 종목 ${account.holdings.count { it.position.quantity > 0 }}개",
                                 ).filter { it.isNotBlank() }.joinToString("\n"),
                                 value = MoneyFormat.won(account.valueKrw),
-                                subValue = "${MoneyFormat.signedWon(account.profitKrw)} (${MoneyFormat.percent(account.returnRate)})",
+                                subValue = "${MoneyFormat.signedWon(account.profitKrw)} · ${MoneyFormat.rate(account.returnRate)}",
                                 subValueColor = profitColor(account.profitKrw),
                                 onClick = { onOpenAccount(account.account.id) },
                                 leading = { AccountKindBadge(account.account.kind) },

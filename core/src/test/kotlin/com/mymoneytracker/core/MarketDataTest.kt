@@ -75,4 +75,14 @@ class MarketDataTest {
         // 오늘은 최신 환율
         assertEquals(1410.0, s.tradeUsdKrw(today, today)!!, 1e-9)
     }
+
+    @Test
+    fun dailyChangeUsesPrevCloseOnlyForAutoPrice() {
+        val s = snapshot(latest = PricePoint(110.0, d5)).let { it.copy(prices = it.prices.mapValues { (_, h) -> h.copy(prevClose = 100.0) }) }
+        assertEquals(0.1, PriceLookup.dailyChangeRate(stock, s)!!, 1e-9)
+        // 직접 입력 가격이 더 최근이면 오늘 수익률을 보여주지 않는다
+        assertNull(PriceLookup.dailyChangeRate(stock.copy(manualPrice = 130.0, manualPriceDate = d5.plusDays(1)), s))
+        // 전일 종가가 없으면 없음
+        assertNull(PriceLookup.dailyChangeRate(stock, snapshot(latest = PricePoint(110.0, d5))))
+    }
 }

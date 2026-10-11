@@ -107,8 +107,9 @@ service cloud.firestore {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid)
           && id.size() <= 120
-          && onlyKeys(['latest', 'latestDate', 'closes', 'historyFrom', 'historyTo', 'rates'])
+          && onlyKeys(['latest', 'latestDate', 'prevClose', 'closes', 'historyFrom', 'historyTo', 'rates'])
           && optNum(data().get('latest', null))
+          && optNum(data().get('prevClose', null))
           && optDate(data().get('latestDate', null))
           && optDate(data().get('historyFrom', null))
           && optDate(data().get('historyTo', null))

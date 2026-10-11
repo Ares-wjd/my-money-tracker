@@ -68,6 +68,17 @@ object MoneyFormat {
         }
     }
 
+    /** 수익률을 ▲/▼ 와 함께: 0.1234 -> "▲12.34%", -0.05 -> "▼5.00%" (색만으로 구분하지 않도록). null 이면 "-" */
+    fun rate(rate: Double?): String {
+        if (rate == null || rate.isNaN() || rate.isInfinite()) return "-"
+        val text = DecimalFormat("#,##0.00", symbols).format(abs(rate * 100))
+        return when {
+            rate > 0 && text != "0.00" -> "▲$text%"
+            rate < 0 && text != "0.00" -> "▼$text%"
+            else -> "$text%"
+        }
+    }
+
     /** 수량·단가처럼 소수가 있을 수 있는 숫자. 불필요한 0 은 지운다. 12.5000 -> "12.5" */
     fun decimal(value: Double, maxFractionDigits: Int = 4): String {
         val rounded = BigDecimal(value).setScale(maxFractionDigits, RoundingMode.HALF_UP).stripTrailingZeros()

@@ -150,19 +150,18 @@ private fun HomeContent(
 
         item {
             SectionCard(highlighted = true) {
-                Text("투자 자산 평가금", style = MaterialTheme.typography.labelLarge, color = LocalContentColor.current.copy(alpha = 0.85f))
+                Text("투자 자산 평가금", style = MaterialTheme.typography.labelLarge, color = LocalContentColor.current.copy(alpha = 0.95f))
                 Text(
                     MoneyFormat.won(summary.valueKrw),
                     style = MaterialTheme.typography.headlineMedium,
                 )
                 ProfitPill(
-                    (if (summary.profitKrw >= 0) "▲ " else "▼ ") +
-                        MoneyFormat.won(kotlin.math.abs(summary.profitKrw)) + " · " + MoneyFormat.percent(summary.returnRate),
+                    MoneyFormat.signedWon(summary.profitKrw) + " · " + MoneyFormat.rate(summary.returnRate),
                     summary.profitKrw,
                 )
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatTile("투자금", MoneyFormat.won(summary.investedKrw), Modifier.weight(1f), onHero = true)
-                    StatTile("배당 미포함", MoneyFormat.percent(summary.returnRateExDividends), Modifier.weight(1f), onHero = true)
+                    StatTile("배당 미포함", MoneyFormat.rate(summary.returnRateExDividends), Modifier.weight(1f), onHero = true)
                     StatTile("누적 배당", MoneyFormat.won(summary.dividendsKrw), Modifier.weight(1f), onHero = true)
                 }
                 val footnote = listOfNotNull(
@@ -174,8 +173,8 @@ private fun HomeContent(
                 if (footnote.isNotEmpty()) {
                     Text(
                         footnote,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = LocalContentColor.current.copy(alpha = 0.75f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = LocalContentColor.current.copy(alpha = 0.9f),
                         modifier = Modifier.padding(top = 8.dp),
                     )
                 }
@@ -217,7 +216,7 @@ private fun HomeContent(
                         title = account.account.name,
                         subtitle = accountDescription(account.account.kind.label, account.account.number).ifBlank { null },
                         value = MoneyFormat.won(account.valueKrw),
-                        subValue = MoneyFormat.percent(account.returnRate),
+                        subValue = MoneyFormat.rate(account.returnRate),
                         subValueColor = profitColor(account.returnRate),
                         onClick = { onOpenAccount(account.account.id) },
                         leading = { AccountKindBadge(account.account.kind) },
