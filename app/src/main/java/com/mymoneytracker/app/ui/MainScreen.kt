@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -46,6 +47,8 @@ import com.mymoneytracker.app.ui.accounts.AccountDetailScreen
 import com.mymoneytracker.app.ui.accounts.AccountEditScreen
 import com.mymoneytracker.app.ui.accounts.AccountsScreen
 import com.mymoneytracker.app.ui.common.LoadingBox
+import com.mymoneytracker.app.ui.allocation.AllocationEditScreen
+import com.mymoneytracker.app.ui.allocation.AllocationScreen
 import com.mymoneytracker.app.ui.goals.GoalEditScreen
 import com.mymoneytracker.app.ui.goals.GoalsScreen
 import com.mymoneytracker.app.ui.goals.GoalsViewModel
@@ -66,6 +69,7 @@ private object Routes {
     const val HOME = "home"
     const val ACCOUNTS = "accounts"
     const val GOALS = "goals"
+    const val ALLOCATION = "allocation"
     const val SETTINGS = "settings"
 
     const val ACCOUNT_DETAIL = "account/{accountId}"
@@ -77,6 +81,7 @@ private object Routes {
     const val SAVINGS_DETAIL = "savings/{savingsId}"
     const val SAVINGS_EDIT = "savings-edit?savingsId={savingsId}"
     const val GOAL_EDIT = "goal-edit/{savingsId}?goalId={goalId}"
+    const val ALLOCATION_EDIT = "allocation-edit?targetId={targetId}"
 
     fun accountDetail(id: String) = "account/$id"
     fun accountEdit(id: String? = null) = if (id == null) "account-edit" else "account-edit?accountId=$id"
@@ -88,6 +93,7 @@ private object Routes {
         return "record-edit/$accountId/${type.name}" + if (query.isEmpty()) "" else "?" + query.joinToString("&")
     }
     fun cashBalance(accountId: String) = "cash-balance/$accountId"
+    fun allocationEdit(id: String? = null) = if (id == null) "allocation-edit" else "allocation-edit?targetId=$id"
     fun savingsDetail(id: String) = "savings/$id"
     fun savingsEdit(id: String? = null) = if (id == null) "savings-edit" else "savings-edit?savingsId=$id"
     fun goalEdit(savingsId: String, goalId: String? = null) =
@@ -99,6 +105,7 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val tabs = listOf(
     Tab(Routes.HOME, "홈", Icons.Filled.Home),
     Tab(Routes.ACCOUNTS, "계좌", Icons.Filled.AccountBalance),
+    Tab(Routes.ALLOCATION, "비중", Icons.Filled.PieChart),
     Tab(Routes.GOALS, "목표", Icons.Filled.Flag),
     Tab(Routes.SETTINGS, "설정", Icons.Filled.Settings),
 )
@@ -141,7 +148,7 @@ fun MainScreen(
     // 홈·계좌 화면을 보는 동안(앱이 화면에 있을 때만) 1분마다 현재가를 새로 받는다.
     // 한투 실전 한도는 초당 20건이라 종목 몇 개를 1분마다 조회하는 것은 여유가 있다.
     val lifecycleOwner = LocalLifecycleOwner.current
-    val liveRoute = currentRoute in setOf(Routes.HOME, Routes.ACCOUNTS, Routes.ACCOUNT_DETAIL, Routes.HOLDING_DETAIL)
+    val liveRoute = currentRoute in setOf(Routes.HOME, Routes.ACCOUNTS, Routes.ACCOUNT_DETAIL, Routes.HOLDING_DETAIL, Routes.ALLOCATION)
     LaunchedEffect(liveRoute) {
         if (!liveRoute) return@LaunchedEffect
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -205,6 +212,21 @@ fun MainScreen(
                     viewModel = portfolioViewModel,
                     onOpenAccount = { navController.navigate(Routes.accountDetail(it)) },
                     onAddAccount = { navController.navigate(Routes.accountEdit()) },
+                )
+            }
+            composable(Routes.ALLOCATION) {
+                AllocationScreen(
+                    viewModel = portfolioViewModel,
+                    onAdd = { navController.navigate(Routes.allocationEdit()) },
+                    onEdit = { navController.navigate(Routes.allocationEdit(it)) },
+                )
+            }
+            composable(Routes.ALLOCATION_EDIT, arguments = listOf(optionalString("targetId"))) { entry ->
+                AllocationEditScreen(
+                    viewModel = portfolioViewModel,
+                    targetId = entry.arguments?.getString("targetId"),
+                    onBack = { navController.popBackStack() },
+                    onDone = { navController.popBackStack() },
                 )
             }
             composable(Routes.GOALS) {

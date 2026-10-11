@@ -14,6 +14,7 @@ import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.AllocationTarget
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -44,6 +45,7 @@ class PortfolioRepository(
     private val accountsCol = userDoc.collection("accounts")
     private val holdingsCol = userDoc.collection("holdings")
     private val recordsCol = userDoc.collection("records")
+    private val targetsCol = userDoc.collection("allocationTargets")
     private val settingsDoc = userDoc.collection("settings").document("app")
 
     fun accounts(): Flow<List<InvestmentAccount>> = accountsCol.orderBy(F_CREATED_AT).listen { it.toAccount() }
@@ -51,6 +53,28 @@ class PortfolioRepository(
     fun holdings(): Flow<List<Holding>> = holdingsCol.orderBy(F_CREATED_AT).listen { it.toHolding() }
 
     fun records(): Flow<List<Record>> = recordsCol.listen { it.toRecord() }
+
+    /** 비중 설정 (종목·계좌 문서와 분리해 동기화·편집이 덮어쓰지 않게). */
+    fun allocationTargets(): Flow<List<AllocationTarget>> = targetsCol.orderBy(F_CREATED_AT).listen { it.toAllocationTarget() }
+
+    fun saveAllocationTarget(target: AllocationTarget): String {
+        val doc = if (target.id.isEmpty()) targetsCol.document() else targetsCol.document(target.id)
+        doc.set(
+            mapOf(
+                "name" to target.name,
+                "accountIds" to target.accountIds,
+                "targets" to target.targets,
+                "includeCash" to target.includeCash,
+                "threshold" to target.threshold,
+                F_CREATED_AT to if (target.createdAt > 0) target.createdAt else System.currentTimeMillis(),
+            ),
+        ).logFailure("비중 설정 저장")
+        return doc.id
+    }
+
+    fun deleteAllocationTarget(id: String) {
+        targetsCol.document(id).delete().logFailure("비중 설정 삭제")
+    }
 
     fun settings(): Flow<AppSettings> = callbackFlow {
         val registration = settingsDoc.addSnapshotListener { snapshot, error ->
@@ -211,6 +235,24 @@ class PortfolioRepository(
             initial = getBoolean("initial") ?: false,
             externalId = getString("externalId"),
             memo = getString("memo").orEmpty(),
+            createdAt = getLong(F_CREATED_AT) ?: 0L,
+        )
+    }
+
+    private fun DocumentSnapshot.toAllocationTarget(): AllocationTarget? {
+        val name = getString("name") ?: return null
+        val targets = (get("targets") as? Map<*, *>)?.mapNotNull { (k, v) ->
+            val key = k as? String ?: return@mapNotNull null
+            val value = (v as? Number)?.toDouble() ?: return@mapNotNull null
+            key to value
+        }?.toMap().orEmpty()
+        return AllocationTarget(
+            id = id,
+            name = name,
+            accountIds = (get("accountIds") as? List<*>)?.filterIsInstance<String>().orEmpty(),
+            targets = targets,
+            includeCash = getBoolean("includeCash") ?: false,
+            threshold = getDouble("threshold") ?: 3.0,
             createdAt = getLong(F_CREATED_AT) ?: 0L,
         )
     }

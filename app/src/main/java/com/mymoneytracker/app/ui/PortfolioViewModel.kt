@@ -29,6 +29,7 @@ import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.DisplayCurrency
+import com.mymoneytracker.core.portfolio.AllocationTarget
 import com.mymoneytracker.core.portfolio.HoldingSort
 import com.mymoneytracker.core.portfolio.HoldingValuation
 import com.mymoneytracker.core.portfolio.KrwHoldingCalculator
@@ -193,6 +194,31 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     fun setHoldingSort(sort: HoldingSort) {
         _holdingSort.value = sort
         displayPrefs.edit().putString(KEY_HOLDING_SORT, sort.name).apply()
+    }
+
+    /** 비중 설정들. */
+    val allocationTargets: StateFlow<List<AllocationTarget>?> = repository.allocationTargets()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun saveAllocationTarget(target: AllocationTarget): String = repository.saveAllocationTarget(target)
+
+    fun deleteAllocationTarget(id: String) = repository.deleteAllocationTarget(id)
+
+    /** 비중 탭에서 마지막으로 본 설정·도넛 보기. 이 기기에만 기억한다. */
+    private val _selectedAllocation = MutableStateFlow(displayPrefs.getString(KEY_ALLOCATION, null))
+    val selectedAllocation: StateFlow<String?> = _selectedAllocation.asStateFlow()
+
+    fun selectAllocation(id: String) {
+        _selectedAllocation.value = id
+        displayPrefs.edit().putString(KEY_ALLOCATION, id).apply()
+    }
+
+    private val _allocationRing = MutableStateFlow(displayPrefs.getString(KEY_ALLOCATION_RING, null) ?: "COMPARE")
+    val allocationRing: StateFlow<String> = _allocationRing.asStateFlow()
+
+    fun setAllocationRing(ring: String) {
+        _allocationRing.value = ring
+        displayPrefs.edit().putString(KEY_ALLOCATION_RING, ring).apply()
     }
 
     private val _syncing = MutableStateFlow(false)
@@ -552,6 +578,8 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     companion object {
         private const val KEY_DISPLAY_CURRENCY = "holding_currency"
         private const val KEY_HOLDING_SORT = "holding_sort"
+        private const val KEY_ALLOCATION = "allocation_selected"
+        private const val KEY_ALLOCATION_RING = "allocation_ring"
 
         fun factory(uid: String): ViewModelProvider.Factory = viewModelFactory {
             initializer { PortfolioViewModel(this[APPLICATION_KEY]!!, uid) }
