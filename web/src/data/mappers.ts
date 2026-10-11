@@ -204,5 +204,6 @@ export function toAllocationTarget(id: string, d: Data): AllocationTarget | null
     includeCash: d.includeCash === true,
     threshold: num(d.threshold) ?? 3,
     createdAt: num(d.createdAt) ?? 0,
+    excluded: Array.isArray(d.excluded) ? d.excluded.filter((x): x is string => typeof x === 'string') : [],
   };
 }

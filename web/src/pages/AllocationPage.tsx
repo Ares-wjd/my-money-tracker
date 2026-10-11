@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Card, TickerBadge, Warning } from '../components/ui';
 import { WonField } from '../components/form';
-import { allocationView, buyOnly, isHighlighted, rebalance, type AllocationRow, type AllocationView, type TradeSuggestion } from '../core/allocation';
+import { allocationView, buyOnly, isHighlighted, keyOf, rebalance, type AllocationRow, type AllocationView, type TradeSuggestion } from '../core/allocation';
 import { decimal, manwon, parseDecimal, usd, won } from '../core/format';
 import { useAppData } from '../data/DataContext';
 import { AllocationForm } from '../forms/AllocationForm';
-import { marketCurrency } from '../model';
+import { marketCurrency, type Holding } from '../model';
 import type { AllocationTarget } from '../core/allocation';
 
 type Ring = 'current' | 'target' | 'compare';
@@ -159,6 +159,11 @@ function manwonShort(value: number): string {
   return won(value);
 }
 
+/** 제외한 종목 키 → 종목 이름 (없으면 코드). */
+function excludedName(key: string, holdings: readonly Holding[]): string {
+  return holdings.find((h) => keyOf(h) === key)?.name ?? (key.includes(':') ? key.slice(key.indexOf(':') + 1) : key);
+}
+
 function tradeText(s: TradeSuggestion, usdKrw: number | null): string {
   const h = s.row.holding;
   const parts = [won(Math.abs(s.amountKrw))];
@@ -218,6 +223,9 @@ export function AllocationPage() {
               {selected.accountIds.map((id) => data.lookup.account(id)?.name).filter(Boolean).join(', ') || '대상 계좌 없음'}
               {' · '}합계 {won(view.totalKrw)}{selected.includeCash ? ' (예수금 포함)' : ''} · 강조 ±{decimal(selected.threshold, 2)}%p
             </p>
+            {selected.excluded.length > 0 && (
+              <p className="muted small">제외: {selected.excluded.map((k) => excludedName(k, data.holdings)).join(', ')}</p>
+            )}
             {view.missingPrice && <Warning>현재가가 없는 종목이 있어 비중에서 빠져 있습니다.</Warning>}
             <div className="segmented" role="radiogroup" aria-label="그래프 보기">
               {RINGS.map((r) => (

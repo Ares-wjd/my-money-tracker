@@ -135,6 +135,9 @@ fun AllocationScreen(
                     view = view,
                     names = list.map { it.id to it.name },
                     accountNames = selected.accountIds.mapNotNull { id -> current.accounts.firstOrNull { it.id == id }?.name },
+                    excludedNames = selected.excluded.map { key ->
+                        current.holdings.firstOrNull { AllocationCalculator.keyOf(it) == key }?.name ?: key.substringAfter(':')
+                    },
                     usdKrw = current.summary.usdKrw,
                     ring = ring,
                     padding = padding,
@@ -153,6 +156,7 @@ private fun AllocationContent(
     view: AllocationView,
     names: List<Pair<String, String>>,
     accountNames: List<String>,
+    excludedNames: List<String>,
     usdKrw: Double?,
     ring: Ring,
     padding: PaddingValues,
@@ -192,6 +196,9 @@ private fun AllocationContent(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (excludedNames.isNotEmpty()) {
+                    Text("제외: " + excludedNames.joinToString(", "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (view.missingPrice) WarningText("현재가가 없는 종목이 있어 비중에서 빠져 있습니다.")
                 SegmentedPills(Ring.entries, ring, { it.label }, onRing, Modifier.padding(top = 8.dp))
                 Donut(view, ring)

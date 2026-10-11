@@ -345,7 +345,9 @@ button.primary.small-button { padding: 8px 14px; }
 .ring-note { font-size: 12px; color: var(--muted); }
 tr.highlight td { background: var(--accent-soft); }
 .diff-tag { display: inline-block; margin-left: 6px; font-size: 12px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--soft); color: var(--ink); }
-.target-row { display: grid; grid-template-columns: 1fr 110px; gap: 10px; align-items: center; }
-.target-row input { text-align: right; }
+.target-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.target-inputs { display: flex; align-items: center; gap: 10px; }
+.target-inputs input[inputmode='decimal'] { width: 90px; text-align: right; }
+.target-row.excluded > span:first-child { opacity: 0.6; }
 .sum-line { font-weight: 600; }
 .sum-line.bad { color: var(--error); }

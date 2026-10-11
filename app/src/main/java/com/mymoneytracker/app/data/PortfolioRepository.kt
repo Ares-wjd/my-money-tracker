@@ -66,6 +66,7 @@ class PortfolioRepository(
                 "targets" to target.targets,
                 "includeCash" to target.includeCash,
                 "threshold" to target.threshold,
+                "excluded" to target.excluded,
                 F_CREATED_AT to if (target.createdAt > 0) target.createdAt else System.currentTimeMillis(),
             ),
         ).logFailure("비중 설정 저장")
@@ -254,6 +255,7 @@ class PortfolioRepository(
             includeCash = getBoolean("includeCash") ?: false,
             threshold = getDouble("threshold") ?: 3.0,
             createdAt = getLong(F_CREATED_AT) ?: 0L,
+            excluded = (get("excluded") as? List<*>)?.filterIsInstance<String>().orEmpty(),
         )
     }
 

@@ -13,6 +13,7 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
   const [accountIds, setAccountIds] = useState<string[]>(existing?.accountIds ?? (data.accounts.length === 1 ? [data.accounts[0].id] : []));
   const [includeCash, setIncludeCash] = useState(existing?.includeCash ?? false);
   const [thresholdText, setThresholdText] = useState(existing ? decimal(existing.threshold, 2).replace(/,/g, '') : '3');
+  const [excluded, setExcluded] = useState<string[]>(existing?.excluded ?? []);
   const [texts, setTexts] = useState<{ [key: string]: string }>(() =>
     Object.fromEntries(Object.entries(existing?.targets ?? {}).map(([k, v]) => [k, decimal(v, 2).replace(/,/g, '')])),
   );
@@ -28,10 +29,12 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
   }
   const keys = [...items.keys()];
   if (includeCash) keys.push(CASH_KEY);
-  const percent = (k: string) => parseDecimal(texts[k] ?? '') ?? 0;
+  // 제외한 종목은 목표 % 를 받지 않고 계산에서 뺀다
+  const isExcluded = (k: string) => excluded.includes(k);
+  const percent = (k: string) => (isExcluded(k) ? 0 : parseDecimal(texts[k] ?? '') ?? 0);
   const sum = keys.reduce((s, k) => s + percent(k), 0);
   const threshold = parseDecimal(thresholdText);
-  const invalid = keys.some((k) => (texts[k] ?? '').trim() !== '' && (parseDecimal(texts[k]) === null || percent(k) < 0 || percent(k) > 100));
+  const invalid = keys.some((k) => !isExcluded(k) && (texts[k] ?? '').trim() !== '' && (parseDecimal(texts[k]) === null || percent(k) < 0 || percent(k) > 100));
 
   const problem =
     name.trim() === '' ? '이름을 입력하세요.'
@@ -49,6 +52,8 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
     for (const k of keys) if (percent(k) > 0) targets[k] = percent(k);
     const id = await saveAllocationTarget(uid, {
       id: existing?.id ?? '', name: name.trim(), accountIds, targets, includeCash, threshold: threshold ?? 3, createdAt: existing?.createdAt ?? 0,
+      // 지금 대상 계좌에 있는 종목만 제외 목록에 남긴다
+      excluded: excluded.filter((k) => items.has(k)),
     });
     onSaved?.(id);
   };
@@ -73,19 +78,38 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
       <NumberField label="차이 강조 기준 (%p)" value={thresholdText} onChange={setThresholdText} preview={(n) => `목표와 ±${decimal(n, 2)}%p 이상 차이 나면 강조`} />
       <div className="field">
         <span className="field-label">목표 비중 (%)</span>
-        <span className="field-hint">아직 안 산 종목은 계좌에서 종목을 먼저 추가하면 여기에 나옵니다 (0주여도 됩니다).</span>
-        {keys.map((k) => (
-          <label key={k} className="target-row">
-            <span>{k === CASH_KEY ? '예수금' : items.get(k)} <span className="muted small">{k === CASH_KEY ? '' : k.replace(/^id:.*/, '')}</span></span>
-            <input
-              inputMode="decimal"
-              aria-label={`${k === CASH_KEY ? '예수금' : items.get(k)} 목표 %`}
-              value={texts[k] ?? ''}
-              placeholder="0"
-              onChange={(e) => setTexts({ ...texts, [k]: e.target.value.replace(/[^0-9.]/g, '').slice(0, 6) })}
-            />
-          </label>
-        ))}
+        <span className="field-hint">아직 안 산 종목은 계좌에서 종목을 먼저 추가하면 여기에 나옵니다 (0주여도 됩니다). 비중에서 뺄 종목은 [제외]를 고르세요.</span>
+        {keys.map((k) => {
+          const label = k === CASH_KEY ? '예수금' : items.get(k);
+          const off = isExcluded(k);
+          return (
+            <div key={k} className={off ? 'target-row excluded' : 'target-row'}>
+              <span>
+                {label} <span className="muted small">{k === CASH_KEY ? '' : k.replace(/^id:.*/, '')}</span>
+                {off && <span className="muted small"> · 제외</span>}
+              </span>
+              <span className="target-inputs">
+                {off ? (
+                  <span className="muted small">계산에서 뺌</span>
+                ) : (
+                  <input
+                    inputMode="decimal"
+                    aria-label={`${label} 목표 %`}
+                    value={texts[k] ?? ''}
+                    placeholder="0"
+                    onChange={(e) => setTexts({ ...texts, [k]: e.target.value.replace(/[^0-9.]/g, '').slice(0, 6) })}
+                  />
+                )}
+                {k !== CASH_KEY && (
+                  <label className="check small">
+                    <input type="checkbox" checked={off} onChange={() => setExcluded(off ? excluded.filter((x) => x !== k) : [...excluded, k])} />
+                    제외
+                  </label>
+                )}
+              </span>
+            </div>
+          );
+        })}
         {keys.length > 0 && (
           <span className={Math.abs(left) > 0.01 ? 'sum-line bad' : 'sum-line'}>
             합계 {decimal(sum, 2)}%{Math.abs(left) > 0.01 ? (left > 0 ? ` · ${decimal(left, 2)}% 남음` : ` · ${decimal(-left, 2)}% 넘음`) : ' ✓'}

@@ -100,4 +100,18 @@ class AllocationTest {
         assertEquals(250.0, trades.getValue("KR:AAA").amountKrw, 1e-9)
         assertFalse("CASH" in trades)
     }
+
+    @Test
+    fun excludedHoldingIsLeftOut() {
+        // 채권 ETF 를 빼면 S&P 1500 + 예수금 500 = 2000 으로 계산 (목표에 남아 있어도 무시)
+        val view = AllocationCalculator.view(
+            target.copy(targets = mapOf("KR:360750" to 80.0, AllocationCalculator.CASH to 20.0, "KR:AAA" to 30.0), excluded = listOf("KR:AAA")),
+            summary.accounts,
+            null,
+        )
+        assertEquals(2000.0, view.totalKrw, 1e-9)
+        assertEquals(listOf("KR:360750", "CASH"), view.rows.map { it.key })
+        assertEquals(0.75, view.rows.first().currentWeight, 1e-9)
+        assertFalse(AllocationCalculator.buyOnly(view, 1000.0).any { it.row.key == "KR:AAA" })
+    }
 }

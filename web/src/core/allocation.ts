@@ -17,6 +17,8 @@ export interface AllocationTarget {
   /** 차이 강조 기준 (%p) */
   threshold: number;
   createdAt: number;
+  /** 비중 계산에서 뺄 종목 키 */
+  excluded: string[];
 }
 
 /** 비중 표의 한 줄 (종목 하나 또는 예수금). 비중은 0~1. */
@@ -75,8 +77,11 @@ export function isHighlighted(view: AllocationView, row: AllocationRow): boolean
 export function allocationView(target: AllocationTarget, accounts: readonly AccountSummary[], usdKrw: number | null): AllocationView {
   const included = accounts.filter((a) => target.accountIds.includes(a.account.id));
   const byKey = new Map<string, AccountSummary['holdings']>();
+  const excluded = new Set(target.excluded);
   for (const v of included.flatMap((a) => a.holdings)) {
     const key = keyOf(v.holding);
+    // 제외한 종목은 합계·비중·계산기 모두에서 뺀다
+    if (excluded.has(key)) continue;
     byKey.set(key, [...(byKey.get(key) ?? []), v]);
   }
   let missingPrice = false;
@@ -99,7 +104,7 @@ export function allocationView(target: AllocationTarget, accounts: readonly Acco
   }
   // 목표에는 있는데 대상 계좌에 종목이 없는 키 (종목을 지웠거나 계좌를 뺐을 때)
   for (const [k, v] of Object.entries(target.targets)) {
-    if (v > 0 && k !== CASH_KEY && !raws.some((r) => r.key === k)) {
+    if (v > 0 && k !== CASH_KEY && !excluded.has(k) && !raws.some((r) => r.key === k)) {
       raws.push({ key: k, name: k.includes(':') ? k.slice(k.indexOf(':') + 1) : k, holding: null, qty: 0, value: 0, priceKrw: null, priceLocal: null });
     }
   }

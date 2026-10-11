@@ -21,6 +21,8 @@ data class AllocationTarget(
     /** 차이 강조 기준 (%p). */
     val threshold: Double = 3.0,
     val createdAt: Long = 0L,
+    /** 비중 계산에서 뺄 종목 키 (대상 계좌에 있어도 계산하지 않는다). */
+    val excluded: List<String> = emptyList(),
 ) {
     val targetSum: Double get() = targets.filterKeys { includeCash || it != AllocationCalculator.CASH }.values.sum()
 }
@@ -73,7 +75,8 @@ object AllocationCalculator {
     /** 대상 계좌들의 종목을 합쳐 실제·목표 비중을 계산한다. */
     fun view(target: AllocationTarget, accounts: List<AccountSummary>, usdKrw: Double?): AllocationView {
         val included = accounts.filter { it.account.id in target.accountIds }
-        val byKey = included.flatMap { it.holdings }.groupBy { keyOf(it.holding) }
+        // 제외한 종목은 합계·비중·계산기 모두에서 뺀다
+        val byKey = included.flatMap { it.holdings }.groupBy { keyOf(it.holding) }.filterKeys { it !in target.excluded }
         var missingPrice = false
 
         data class Raw(val key: String, val name: String, val holding: Holding?, val qty: Double, val value: Double, val priceKrw: Double?, val priceLocal: Double?)
@@ -95,7 +98,7 @@ object AllocationCalculator {
             raws += Raw(CASH, "예수금", null, 0.0, cash, null, null)
         }
         // 목표에는 있는데 대상 계좌에 종목이 없는 키 (종목을 지웠거나 계좌를 뺐을 때)
-        target.targets.filter { (k, v) -> v > 0 && k != CASH && raws.none { it.key == k } }.forEach { (k, _) ->
+        target.targets.filter { (k, v) -> v > 0 && k != CASH && k !in target.excluded && raws.none { it.key == k } }.forEach { (k, _) ->
             raws += Raw(k, k.substringAfter(':'), null, 0.0, 0.0, null, null)
         }
 

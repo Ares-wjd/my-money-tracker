@@ -117,6 +117,7 @@ private fun AllocationForm(
             initial?.targets?.forEach { (k, v) -> put(k, MoneyFormat.decimal(v, 2).replace(",", "")) }
         }
     }
+    val excluded = remember { mutableStateListOf<String>().apply { addAll(initial?.excluded.orEmpty()) } }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
     // 대상 계좌의 종목 (같은 종목은 하나로, 0주 포함 — 아직 안 산 종목도 목표에 넣을 수 있게)
@@ -125,10 +126,11 @@ private fun AllocationForm(
     // 이미 목표가 있는데 대상 계좌에 없는 종목(지웠거나 계좌를 뺐을 때)도 남겨 둔다
     initial?.targets?.keys?.filter { it != AllocationCalculator.CASH && it !in items }?.forEach { items[it] = it.substringAfter(':') }
     val keys = items.keys.toList() + if (includeCash) listOf(AllocationCalculator.CASH) else emptyList()
-    fun percent(k: String) = MoneyFormat.parseDecimal(texts[k].orEmpty()) ?: 0.0
+    // 제외한 종목은 목표 % 를 받지 않고 계산에서 뺀다
+    fun percent(k: String) = if (k in excluded) 0.0 else MoneyFormat.parseDecimal(texts[k].orEmpty()) ?: 0.0
     val sum = keys.sumOf { percent(it) }
     val threshold = MoneyFormat.parseDecimal(thresholdText)
-    val invalid = keys.any { k -> texts[k].orEmpty().isNotBlank() && (MoneyFormat.parseDecimal(texts[k].orEmpty()) == null || percent(k) !in 0.0..100.0) }
+    val invalid = keys.any { k -> k !in excluded && texts[k].orEmpty().isNotBlank() && (MoneyFormat.parseDecimal(texts[k].orEmpty()) == null || percent(k) !in 0.0..100.0) }
     val problem = when {
         name.isBlank() -> "이름을 입력하세요."
         accountIds.isEmpty() -> "대상 계좌를 고르세요."
@@ -165,28 +167,44 @@ private fun AllocationForm(
         )
         Text("목표 비중 (%)", style = MaterialTheme.typography.titleMedium)
         Text(
-            "아직 안 산 종목은 계좌에서 종목을 먼저 추가하면 여기에 나옵니다 (0주여도 됩니다).",
+            "아직 안 산 종목은 계좌에서 종목을 먼저 추가하면 여기에 나옵니다 (0주여도 됩니다). 비중에서 뺄 종목은 [제외]를 고르세요.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         keys.forEach { k ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val off = k in excluded
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (k == AllocationCalculator.CASH) "예수금" else items[k].orEmpty(), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        (if (k == AllocationCalculator.CASH) "예수금" else items[k].orEmpty()) + if (off) " (제외)" else "",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (off) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    )
                     if (k != AllocationCalculator.CASH && !k.startsWith("id:")) {
                         Text(k, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                OutlinedTextField(
-                    value = texts[k].orEmpty(),
-                    onValueChange = { v -> texts[k] = v.filter { it.isDigit() || it == '.' }.take(6) },
-                    placeholder = { Text("0") },
-                    suffix = { Text("%") },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(textAlign = TextAlign.End),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.width(110.dp),
-                )
+                if (!off) {
+                    OutlinedTextField(
+                        value = texts[k].orEmpty(),
+                        onValueChange = { v -> texts[k] = v.filter { it.isDigit() || it == '.' }.take(6) },
+                        placeholder = { Text("0") },
+                        suffix = { Text("%") },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(textAlign = TextAlign.End),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.width(100.dp),
+                    )
+                }
+                if (k != AllocationCalculator.CASH) {
+                    Row(
+                        Modifier.clickable { if (off) excluded.remove(k) else excluded.add(k) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = off, onCheckedChange = { if (it) excluded.add(k) else excluded.remove(k) })
+                        Text("제외", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
             }
         }
         if (keys.isNotEmpty()) {
@@ -214,6 +232,8 @@ private fun AllocationForm(
                         includeCash = includeCash,
                         threshold = threshold ?: 3.0,
                         createdAt = initial?.createdAt ?: 0L,
+                        // 지금 대상 계좌에 있는 종목만 제외 목록에 남긴다
+                        excluded = excluded.filter { it in items },
                     ),
                 )
             },

@@ -20,7 +20,7 @@ const records = [
 const accounts = summarize([isa, other], [sp1, bond, sp2, gold], records, null).accounts;
 const target: AllocationTarget = {
   id: '', name: '자산배분', accountIds: ['a', 'b'], targets: { 'KR:360750': 50, 'KR:AAA': 30, [CASH_KEY]: 20 },
-  includeCash: true, threshold: 3, createdAt: 0,
+  includeCash: true, threshold: 3, createdAt: 0, excluded: [],
 };
 const byKey = <T extends { key: string }>(rows: T[]) => new Map(rows.map((r) => [r.key, r]));
 
@@ -78,5 +78,13 @@ describe('비중 (AllocationTest)', () => {
     expect(trades.get('KR:360750')!.amountKrw).toBeCloseTo(-250, 9);
     expect(trades.get('KR:AAA')!.amountKrw).toBeCloseTo(250, 9);
     expect(trades.has('CASH')).toBe(false);
+  });
+
+  it('제외한 종목은 빼고 계산한다', () => {
+    const view = allocationView({ ...target, targets: { 'KR:360750': 80, [CASH_KEY]: 20, 'KR:AAA': 30 }, excluded: ['KR:AAA'] }, accounts, null);
+    expect(view.totalKrw).toBe(2000);
+    expect(view.rows.map((r) => r.key)).toEqual(['KR:360750', 'CASH']);
+    expect(view.rows[0].currentWeight).toBeCloseTo(0.75, 9);
+    expect(buyOnly(view, 1000).some((s) => s.row.key === 'KR:AAA')).toBe(false);
   });
 });

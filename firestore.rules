@@ -162,14 +162,15 @@ service cloud.firestore {
           && num(data().createdAt);
       }
 
-      // 비중 설정 (계좌별 목표 비중, 종목 키 → %)
+      // 비중 설정 (계좌별 목표 비중, 종목 키 → %, excluded: 계산에서 뺄 종목 키)
       match /allocationTargets/{id} {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid)
-          && onlyKeys(['name', 'accountIds', 'targets', 'includeCash', 'threshold', 'createdAt'])
+          && onlyKeys(['name', 'accountIds', 'targets', 'excluded', 'includeCash', 'threshold', 'createdAt'])
           && str(data().name, 100)
           && data().accountIds is list && data().accountIds.size() <= 20
           && data().targets is map && data().targets.size() <= 100
+          && (!('excluded' in data()) || (data().excluded is list && data().excluded.size() <= 200))
           && data().includeCash is bool
           && num(data().threshold) && data().threshold >= 0 && data().threshold <= 100
           && num(data().createdAt);

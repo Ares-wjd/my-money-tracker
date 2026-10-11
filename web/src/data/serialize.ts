@@ -101,5 +101,6 @@ export function allocationTargetDoc(t: AllocationTarget) {
     includeCash: t.includeCash,
     threshold: t.threshold,
     createdAt: createdAt(t.createdAt),
+    excluded: t.excluded,
   };
 }

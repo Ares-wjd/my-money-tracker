@@ -38,7 +38,7 @@ describe('Firestore 저장 형식', () => {
     const done = goal({ id: 'g2', accountId: 's1', name: 'PC', amount: 6_000_000, dueDate: '2028-11-30', createdAt: 5, groupId: 'grp', completedDate: '2026-10-11' });
     expect(toSavingsGoal('g2', savingsGoalDoc(done))).toEqual(done);
 
-    const t = { id: 't1', name: 'ISA 자산배분', accountIds: ['a1'], targets: { 'KR:360750': 40, CASH: 10 }, includeCash: true, threshold: 2.5, createdAt: 7 };
+    const t = { id: 't1', name: 'ISA 자산배분', accountIds: ['a1'], targets: { 'KR:360750': 40, CASH: 10 }, includeCash: true, threshold: 2.5, createdAt: 7, excluded: ['KR:005930'] };
     expect(toAllocationTarget('t1', allocationTargetDoc(t))).toEqual(t);
     const group = { id: 'grp', accountId: 's1', name: 'IT 세트', dueDate: '2028-11-30', combined: false, createdAt: 6 };
     expect(toSavingsGoalGroup('grp', savingsGoalGroupDoc(group))).toEqual(group);
