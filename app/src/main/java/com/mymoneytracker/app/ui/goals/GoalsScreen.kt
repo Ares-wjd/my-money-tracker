@@ -16,6 +16,7 @@ import com.mymoneytracker.app.ui.common.fabContentColor
 import com.mymoneytracker.app.ui.common.GoalProgressBar
 import com.mymoneytracker.app.ui.common.InkCard
 import com.mymoneytracker.app.ui.common.appCardColors
+import com.mymoneytracker.core.goals.GoalUnit
 import com.mymoneytracker.core.goals.SavingsSummary
 import kotlin.math.roundToLong
 import androidx.compose.foundation.layout.PaddingValues
@@ -135,24 +136,40 @@ private fun SavingsSummaryCard(summary: SavingsSummary, onClick: () -> Unit) {
                     }
                 }
             }
-            summary.goals.forEach { progress ->
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(progress.goal.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                        Text("${(progress.achievedRate * 100).roundToLong()}%", style = MaterialTheme.typography.labelLarge)
-                    }
-                    GoalProgressBar(progress.achievedRate.toFloat())
-                    Row {
-                        Text(
-                            "${MoneyFormat.won(progress.allocated)} / ${MoneyFormat.won(progress.goal.amount)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text("월 ${MoneyFormat.won(progress.monthlyPayment)}", style = MaterialTheme.typography.labelMedium)
+            // 목표 하나 또는 그룹 하나씩 (하나로 계산하는 그룹은 합계로)
+            summary.units.forEach { unit ->
+                when (unit) {
+                    is GoalUnit.Single -> GoalLine(unit.progress.goal.name, unit.progress.achievedRate, unit.progress.allocated, unit.progress.goal.amount, unit.progress.monthlyPayment)
+                    is GoalUnit.Group -> {
+                        val c = unit.combined
+                        if (c != null) {
+                            GoalLine("${unit.group.name} (그룹)", c.achievedRate, c.allocated, c.amount, c.monthlyPayment)
+                        } else {
+                            unit.members.forEach { m -> GoalLine(m.goal.name, m.achievedRate, m.allocated, m.goal.amount, m.monthlyPayment) }
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun GoalLine(name: String, rate: Double, allocated: Double, amount: Double, monthly: Double) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1)
+            Text("${(rate * 100).roundToLong()}%", style = MaterialTheme.typography.labelLarge)
+        }
+        GoalProgressBar(rate.toFloat())
+        Row {
+            Text(
+                "${MoneyFormat.shortWon(allocated).removeSuffix("원")} / ${MoneyFormat.shortWon(amount)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            Text("월 ${MoneyFormat.won(monthly)}", style = MaterialTheme.typography.labelMedium)
         }
     }
 }

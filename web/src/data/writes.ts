@@ -1,8 +1,8 @@
 // Firestore 쓰기. 삭제는 폰과 같이 딸린 문서(종목·기록·목표)를 한 번에 지운다.
 import { collection, deleteDoc, doc, setDoc, writeBatch, type DocumentReference } from 'firebase/firestore';
 import { firebase } from '../firebase';
-import type { Holding, InvestmentAccount, Record, SavingsAccount, SavingsGoal } from '../model';
-import { accountDoc, holdingDoc, recordDoc, savingsAccountDoc, savingsGoalDoc } from './serialize';
+import type { Holding, InvestmentAccount, Record, SavingsAccount, SavingsGoal, SavingsGoalGroup } from '../model';
+import { accountDoc, holdingDoc, recordDoc, savingsAccountDoc, savingsGoalDoc, savingsGoalGroupDoc } from './serialize';
 
 function db() {
   if (!firebase) throw new Error('Firebase 설정이 없습니다.');
@@ -29,6 +29,38 @@ export const saveSavingsGoal = (uid: string, g: SavingsGoal) => save(uid, 'savin
 export const deleteRecord = (uid: string, id: string) => deleteDoc(doc(col(uid, 'records'), id));
 export const deleteSavingsGoal = (uid: string, id: string) => deleteDoc(doc(col(uid, 'savingsGoals'), id));
 
+/**
+ * 그룹을 저장하고 목표를 넣고 뺀다 (한 번에). [memberIds] 에 있는 목표는 이 그룹으로, 원래 이 그룹이던 나머지는 그룹에서 뺀다.
+ */
+export async function saveGoalGroup(uid: string, group: SavingsGoalGroup, memberIds: readonly string[], goals: readonly SavingsGoal[]) {
+  const batch = writeBatch(db());
+  const r = ref(uid, 'savingsGoalGroups', group.id);
+  batch.set(r, savingsGoalGroupDoc(group));
+  const members = new Set(memberIds);
+  for (const g of goals) {
+    const shouldBeIn = members.has(g.id);
+    const isIn = g.groupId === r.id;
+    if (shouldBeIn !== isIn) batch.set(doc(col(uid, 'savingsGoals'), g.id), savingsGoalDoc({ ...g, groupId: shouldBeIn ? r.id : null }));
+  }
+  await batch.commit();
+  return r.id;
+}
+
+/** 그룹을 푼다: 그룹을 지우고 안의 목표는 그대로 (원래 날짜로) 남긴다. */
+export function deleteGoalGroup(uid: string, groupId: string, goals: readonly SavingsGoal[]) {
+  const batch = writeBatch(db());
+  batch.delete(doc(col(uid, 'savingsGoalGroups'), groupId));
+  goals.filter((g) => g.groupId === groupId).forEach((g) => batch.set(doc(col(uid, 'savingsGoals'), g.id), savingsGoalDoc({ ...g, groupId: null })));
+  return batch.commit();
+}
+
+/** 그룹 안 목표를 한꺼번에 구매 완료(또는 되돌리기). */
+export function completeGoals(uid: string, goals: readonly SavingsGoal[], completedDate: string | null) {
+  const batch = writeBatch(db());
+  goals.forEach((g) => batch.set(doc(col(uid, 'savingsGoals'), g.id), savingsGoalDoc({ ...g, completedDate })));
+  return batch.commit();
+}
+
 export function saveManualUsdKrw(uid: string, rate: number | null) {
   return setDoc(doc(db(), 'users', uid, 'settings', 'app'), { manualUsdKrw: rate }, { merge: true });
 }
@@ -52,10 +84,11 @@ export function deleteHolding(uid: string, holdingId: string, records: readonly 
   return batch.commit();
 }
 
-/** 목적통장과 그 목표를 함께 삭제한다. */
-export function deleteSavingsAccount(uid: string, accountId: string, goals: readonly SavingsGoal[]) {
+/** 목적통장과 그 목표·그룹을 함께 삭제한다. */
+export function deleteSavingsAccount(uid: string, accountId: string, goals: readonly SavingsGoal[], groups: readonly SavingsGoalGroup[] = []) {
   const batch = writeBatch(db());
   batch.delete(doc(col(uid, 'savingsAccounts'), accountId));
   goals.filter((g) => g.accountId === accountId).forEach((g) => batch.delete(doc(col(uid, 'savingsGoals'), g.id)));
+  groups.filter((g) => g.accountId === accountId).forEach((g) => batch.delete(doc(col(uid, 'savingsGoalGroups'), g.id)));
   return batch.commit();
 }

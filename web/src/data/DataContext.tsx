@@ -74,7 +74,12 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       ...raw,
       summary: summarize(raw.accounts, raw.holdings, raw.records, usdKrw, (h) => currentPrice(h, raw.market)),
       savings: raw.savingsAccounts.map((account) =>
-        summarizeSavings(account, raw.savingsGoals.filter((g) => g.accountId === account.id), day),
+        summarizeSavings(
+          account,
+          raw.savingsGoals.filter((g) => g.accountId === account.id),
+          day,
+          raw.savingsGoalGroups.filter((g) => g.accountId === account.id),
+        ),
       ),
       usdKrw,
       usdKrwDate: fx?.[0] ?? null,

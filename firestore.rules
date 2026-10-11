@@ -131,17 +131,47 @@ service cloud.firestore {
           && num(data().createdAt);
       }
 
-      // 목적통장의 목표
+      // 목적통장의 목표 (groupId: 그룹, lastSpentDate·spentDates: 반복 목표 소비 기록, completedDate: 1회성 구매 완료)
       match /savingsGoals/{id} {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid)
-          && onlyKeys(['accountId', 'name', 'type', 'amount', 'dueDate', 'intervalMonths', 'createdAt'])
+          && onlyKeys(['accountId', 'name', 'type', 'amount', 'dueDate', 'intervalMonths', 'createdAt',
+                       'groupId', 'lastSpentDate', 'spentDates', 'completedDate'])
           && str(data().accountId, 100)
           && str(data().name, 100)
           && data().type in ['ONE_TIME', 'RECURRING']
           && num(data().amount)
           && date(data().dueDate)
           && data().intervalMonths is int && data().intervalMonths >= 0 && data().intervalMonths <= 1200
+          && num(data().createdAt)
+          && optStr(data().get('groupId', null), 100)
+          && optDate(data().get('lastSpentDate', null))
+          && (!('spentDates' in data()) || (data().spentDates is list && data().spentDates.size() <= 50))
+          && optDate(data().get('completedDate', null));
+      }
+
+      // 목표 그룹 (함께 살 1회성 목표 묶음)
+      match /savingsGoalGroups/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && onlyKeys(['accountId', 'name', 'dueDate', 'combined', 'createdAt'])
+          && str(data().accountId, 100)
+          && str(data().name, 100)
+          && date(data().dueDate)
+          && data().combined is bool
+          && num(data().createdAt);
+      }
+
+      // 비중 설정 (계좌별 목표 비중, 종목 키 → %)
+      match /allocationTargets/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && onlyKeys(['name', 'accountIds', 'targets', 'includeCash', 'threshold', 'createdAt'])
+          && str(data().name, 100)
+          && data().accountIds is list && data().accountIds.size() <= 20
+          && data().targets is map && data().targets.size() <= 100
+          && data().includeCash is bool
+          && num(data().threshold) && data().threshold >= 0 && data().threshold <= 100
           && num(data().createdAt);
       }
     }

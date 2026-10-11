@@ -14,6 +14,7 @@ import {
   type Record,
   type SavingsAccount,
   type SavingsGoal,
+  type SavingsGoalGroup,
   type SavingsSubAccount,
 } from '../model';
 
@@ -118,6 +119,24 @@ export function toSavingsGoal(id: string, d: Data): SavingsGoal | null {
     amount: num(d.amount) ?? 0,
     dueDate,
     intervalMonths: num(d.intervalMonths) ?? 12,
+    createdAt: num(d.createdAt) ?? 0,
+    groupId: str(d.groupId) || null,
+    lastSpentDate: date(d.lastSpentDate),
+    spentDates: Array.isArray(d.spentDates) ? d.spentDates.map(date).filter((x): x is string => x !== null) : [],
+    completedDate: date(d.completedDate),
+  };
+}
+
+export function toSavingsGoalGroup(id: string, d: Data): SavingsGoalGroup | null {
+  const accountId = str(d.accountId);
+  const dueDate = date(d.dueDate);
+  if (accountId === null || dueDate === null) return null;
+  return {
+    id,
+    accountId,
+    name: str(d.name) ?? '',
+    dueDate,
+    combined: d.combined !== false,
     createdAt: num(d.createdAt) ?? 0,
   };
 }

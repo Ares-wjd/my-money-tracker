@@ -102,7 +102,29 @@ export interface SavingsGoal {
   dueDate: string;
   intervalMonths: number;
   createdAt: number;
+  /** 속한 그룹 (1회성만) */
+  groupId: string | null;
+  /** 반복 목표: 마지막으로 실제 소비한 날 */
+  lastSpentDate: string | null;
+  /** 반복 목표: 지난 소비 날짜들 (오래된 순, 최근 50개) */
+  spentDates: string[];
+  /** 1회성 목표: 구매 완료한 날 (있으면 배분·납입 계산에서 뺀다) */
+  completedDate: string | null;
 }
+
+/** 함께 살 1회성 목표들의 묶음. 목표는 groupId 로 연결한다. */
+export interface SavingsGoalGroup {
+  id: string;
+  accountId: string;
+  name: string;
+  /** 그룹 구매 날짜 (하나로 계산할 때 쓰는 날짜) */
+  dueDate: string;
+  /** true: 하나로 계산 (기본), false: 각자 날짜로 따로 계산 */
+  combined: boolean;
+  createdAt: number;
+}
+
+export const isCompleted = (g: SavingsGoal): boolean => g.type === 'ONE_TIME' && g.completedDate !== null;
 
 export interface AppSettings {
   manualUsdKrw: number | null;

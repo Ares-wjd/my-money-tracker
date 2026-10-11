@@ -310,3 +310,19 @@ button.primary.small-button { padding: 8px 14px; }
 .quick-amounts button:hover { border-color: var(--green); }
 .text-button.inline { padding: 0; }
 .sold-out-toggle td { padding-top: 10px; }
+
+/* 목표: 진행 막대 옆 %, 소비 기록·구매 완료 버튼, 그룹 */
+.bar-row { display: flex; align-items: center; gap: 10px; }
+.bar-row .bar { flex: 1; }
+.goal-item { border-top: 1px solid var(--line); padding-bottom: 8px; }
+.goal-item .goal { border-top: none; }
+.goal-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.goal-group { border-top: 1px solid var(--line); padding: 12px 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.group-members { display: flex; flex-direction: column; gap: 2px; padding-left: 12px; border-left: 3px solid var(--line); }
+.group-members .goal-item:first-child { border-top: none; }
+.member-row { display: flex; justify-content: space-between; gap: 12px; background: none; border: none; padding: 4px 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.member-row:hover span:first-child { text-decoration: underline; }
+.completed-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; }
+.check.small { font-size: 13px; font-weight: 600; }
+.field .check input[type='checkbox'], .check input[type='checkbox'] { width: auto; flex: none; padding: 0; margin: 0; }
+.field .check { font-weight: 400; }

@@ -1,6 +1,6 @@
 // 모델 → Firestore 문서. 폰(PortfolioRepository·SavingsRepository)이 저장하는 필드와 똑같이 맞춘다
 // (Firestore 보안 규칙이 필드 이름·형식을 검사한다).
-import type { Holding, InvestmentAccount, Record, SavingsAccount, SavingsGoal } from '../model';
+import type { Holding, InvestmentAccount, Record, SavingsAccount, SavingsGoal, SavingsGoalGroup } from '../model';
 import { savingsBalance } from '../model';
 
 const createdAt = (value: number) => (value > 0 ? value : Date.now());
@@ -64,6 +64,20 @@ export function savingsGoalDoc(g: SavingsGoal) {
     amount: g.amount,
     dueDate: g.dueDate,
     intervalMonths: Math.round(g.intervalMonths),
+    createdAt: createdAt(g.createdAt),
+    groupId: g.groupId,
+    lastSpentDate: g.lastSpentDate,
+    spentDates: g.spentDates,
+    completedDate: g.completedDate,
+  };
+}
+
+export function savingsGoalGroupDoc(g: SavingsGoalGroup) {
+  return {
+    accountId: g.accountId,
+    name: g.name,
+    dueDate: g.dueDate,
+    combined: g.combined,
     createdAt: createdAt(g.createdAt),
   };
 }

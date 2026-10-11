@@ -9,6 +9,7 @@ import type {
   Record,
   SavingsAccount,
   SavingsGoal,
+  SavingsGoalGroup,
 } from '../model';
 import {
   toAccount,
@@ -17,6 +18,7 @@ import {
   toRecord,
   toSavingsAccount,
   toSavingsGoal,
+  toSavingsGoalGroup,
   toSettings,
 } from './mappers';
 
@@ -29,10 +31,11 @@ export interface UserData {
   market: MarketSnapshot;
   savingsAccounts: SavingsAccount[];
   savingsGoals: SavingsGoal[];
+  savingsGoalGroups: SavingsGoalGroup[];
 }
 
 type Key = keyof UserData;
-const KEYS: readonly Key[] = ['accounts', 'holdings', 'records', 'settings', 'market', 'savingsAccounts', 'savingsGoals'];
+const KEYS: readonly Key[] = ['accounts', 'holdings', 'records', 'settings', 'market', 'savingsAccounts', 'savingsGoals', 'savingsGoalGroups'];
 
 export interface UserDataState {
   /** 모든 컬렉션의 첫 응답이 오기 전에는 null */
@@ -72,6 +75,7 @@ export function useUserData(uid: string): UserDataState {
       listen('기록', query(collection(user, 'records')), toRecord, 'records'),
       listen('목적통장', createdAt('savingsAccounts'), toSavingsAccount, 'savingsAccounts'),
       listen('목표', createdAt('savingsGoals'), toSavingsGoal, 'savingsGoals'),
+      listen('목표 그룹', createdAt('savingsGoalGroups'), toSavingsGoalGroup, 'savingsGoalGroups'),
       onSnapshot(doc(user, 'settings', 'app'), (snapshot) => set('settings', toSettings(snapshot.data())), fail('설정')),
       onSnapshot(
         collection(user, 'marketData'),

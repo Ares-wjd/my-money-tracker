@@ -1,8 +1,8 @@
 // 저장한 문서를 다시 읽으면 같은 값이 나오는지 (폰 형식과 같은 필드).
 import { describe, expect, it } from 'vitest';
 import { account, goal, holding, record, savingsAccount } from '../core/testData';
-import { toAccount, toHolding, toRecord, toSavingsAccount, toSavingsGoal } from './mappers';
-import { accountDoc, cashRecordId, holdingDoc, recordDoc, roundCash, savingsAccountDoc, savingsGoalDoc } from './serialize';
+import { toAccount, toHolding, toRecord, toSavingsAccount, toSavingsGoal, toSavingsGoalGroup } from './mappers';
+import { accountDoc, cashRecordId, holdingDoc, recordDoc, roundCash, savingsAccountDoc, savingsGoalDoc, savingsGoalGroupDoc } from './serialize';
 
 describe('Firestore 저장 형식', () => {
   it('계좌·종목·기록은 저장 후 다시 읽어도 같다', () => {
@@ -33,6 +33,13 @@ describe('Firestore 저장 형식', () => {
     const g = goal({ id: 'g1', accountId: 's1', name: '휴대폰', type: 'RECURRING', amount: 2_000_000, dueDate: '2027-04-08', intervalMonths: 24, createdAt: 4 });
     expect(toSavingsGoal('g1', savingsGoalDoc(g))).toEqual(g);
     expect(Number.isInteger(savingsGoalDoc({ ...g, intervalMonths: 12.0 }).intervalMonths)).toBe(true);
+    const spent = { ...g, lastSpentDate: '2026-10-20', spentDates: ['2024-01-02', '2026-10-20'], groupId: null };
+    expect(toSavingsGoal('g1', savingsGoalDoc(spent))).toEqual(spent);
+    const done = goal({ id: 'g2', accountId: 's1', name: 'PC', amount: 6_000_000, dueDate: '2028-11-30', createdAt: 5, groupId: 'grp', completedDate: '2026-10-11' });
+    expect(toSavingsGoal('g2', savingsGoalDoc(done))).toEqual(done);
+
+    const group = { id: 'grp', accountId: 's1', name: 'IT 세트', dueDate: '2028-11-30', combined: false, createdAt: 6 };
+    expect(toSavingsGoalGroup('grp', savingsGoalGroupDoc(group))).toEqual(group);
   });
 
   it('예수금 문서 ID 와 반올림', () => {

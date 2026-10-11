@@ -19,5 +19,5 @@ export const savingsAccount = (p: Partial<SavingsAccount> & { id: string; name: 
 });
 
 export const goal = (p: Partial<SavingsGoal> & Pick<SavingsGoal, 'accountId' | 'name' | 'amount' | 'dueDate'>): SavingsGoal => ({
-  id: '', type: 'ONE_TIME', intervalMonths: 12, createdAt: 0, ...p,
+  id: '', type: 'ONE_TIME', intervalMonths: 12, createdAt: 0, groupId: null, lastSpentDate: null, spentDates: [], completedDate: null, ...p,
 });

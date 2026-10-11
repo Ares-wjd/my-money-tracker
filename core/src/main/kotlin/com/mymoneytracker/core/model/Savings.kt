@@ -45,4 +45,26 @@ data class SavingsGoal(
     /** 반복 주기 (개월). 반복 목표에서만 사용. */
     val intervalMonths: Int = 12,
     val createdAt: Long = 0L,
+    /** 속한 그룹 (1회성만). 없으면 null. */
+    val groupId: String? = null,
+    /** 반복 목표: 마지막으로 실제 소비한 날. */
+    val lastSpentDate: LocalDate? = null,
+    /** 반복 목표: 지난 소비 날짜들 (오래된 순, 최근 50개). */
+    val spentDates: List<LocalDate> = emptyList(),
+    /** 1회성 목표: 구매 완료한 날. 있으면 배분·납입 계산에서 뺀다. */
+    val completedDate: LocalDate? = null,
+) {
+    val completed: Boolean get() = type == GoalType.ONE_TIME && completedDate != null
+}
+
+/** 함께 살 1회성 목표들의 묶음 (예: IT 세트 = PC + NAS). 목표는 [SavingsGoal.groupId] 로 연결한다. */
+data class SavingsGoalGroup(
+    val id: String = "",
+    val accountId: String,
+    val name: String,
+    /** 그룹 구매 날짜 (하나로 계산할 때 쓰는 날짜). */
+    val dueDate: LocalDate,
+    /** true: 하나로 계산 (기본), false: 그룹 안 목표를 각자 날짜로 따로 계산. */
+    val combined: Boolean = true,
+    val createdAt: Long = 0L,
 )
