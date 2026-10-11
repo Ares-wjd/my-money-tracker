@@ -5,11 +5,12 @@ import { useAuth } from '../auth';
 import { useData } from '../data/DataContext';
 import { Logo } from '../Logo';
 import { ThemeSwitch } from '../theme';
-import { AccountIcon, GoalIcon, HomeIcon, SettingsIcon } from './icons';
+import { AccountIcon, GoalIcon, HomeIcon, PieIcon, SettingsIcon } from './icons';
 
 const NAV: { to: string; label: string; end: boolean; icon: ReactNode }[] = [
   { to: '/', label: '홈', end: true, icon: <HomeIcon /> },
   { to: '/accounts', label: '계좌', end: false, icon: <AccountIcon /> },
+  { to: '/allocation', label: '비중', end: false, icon: <PieIcon /> },
   { to: '/goals', label: '목표', end: false, icon: <GoalIcon /> },
   { to: '/settings', label: '설정', end: false, icon: <SettingsIcon /> },
 ];

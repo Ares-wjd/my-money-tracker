@@ -2,7 +2,8 @@
 import { collection, deleteDoc, doc, setDoc, writeBatch, type DocumentReference } from 'firebase/firestore';
 import { firebase } from '../firebase';
 import type { Holding, InvestmentAccount, Record, SavingsAccount, SavingsGoal, SavingsGoalGroup } from '../model';
-import { accountDoc, holdingDoc, recordDoc, savingsAccountDoc, savingsGoalDoc, savingsGoalGroupDoc } from './serialize';
+import type { AllocationTarget } from '../core/allocation';
+import { allocationTargetDoc, accountDoc, holdingDoc, recordDoc, savingsAccountDoc, savingsGoalDoc, savingsGoalGroupDoc } from './serialize';
 
 function db() {
   if (!firebase) throw new Error('Firebase 설정이 없습니다.');
@@ -25,6 +26,9 @@ export const saveHolding = (uid: string, h: Holding) => save(uid, 'holdings', h.
 export const saveRecord = (uid: string, r: Record) => save(uid, 'records', r.id, recordDoc(r));
 export const saveSavingsAccount = (uid: string, a: SavingsAccount) => save(uid, 'savingsAccounts', a.id, savingsAccountDoc(a));
 export const saveSavingsGoal = (uid: string, g: SavingsGoal) => save(uid, 'savingsGoals', g.id, savingsGoalDoc(g));
+
+export const saveAllocationTarget = (uid: string, t: AllocationTarget) => save(uid, 'allocationTargets', t.id, allocationTargetDoc(t));
+export const deleteAllocationTarget = (uid: string, id: string) => deleteDoc(doc(col(uid, 'allocationTargets'), id));
 
 export const deleteRecord = (uid: string, id: string) => deleteDoc(doc(col(uid, 'records'), id));
 export const deleteSavingsGoal = (uid: string, id: string) => deleteDoc(doc(col(uid, 'savingsGoals'), id));

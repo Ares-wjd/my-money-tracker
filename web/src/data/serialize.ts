@@ -1,6 +1,7 @@
 // 모델 → Firestore 문서. 폰(PortfolioRepository·SavingsRepository)이 저장하는 필드와 똑같이 맞춘다
 // (Firestore 보안 규칙이 필드 이름·형식을 검사한다).
 import type { Holding, InvestmentAccount, Record, SavingsAccount, SavingsGoal, SavingsGoalGroup } from '../model';
+import type { AllocationTarget } from '../core/allocation';
 import { savingsBalance } from '../model';
 
 const createdAt = (value: number) => (value > 0 ? value : Date.now());
@@ -90,4 +91,15 @@ export function cashRecordId(accountId: string, date: string, currency: string):
 /** 원화는 원 단위, 달러는 센트 단위로 반올림 (폰과 같음). */
 export function roundCash(currency: 'KRW' | 'USD', value: number): number {
   return currency === 'KRW' ? Math.round(value) : Math.round(value * 100) / 100;
+}
+
+export function allocationTargetDoc(t: AllocationTarget) {
+  return {
+    name: t.name,
+    accountIds: t.accountIds,
+    targets: t.targets,
+    includeCash: t.includeCash,
+    threshold: t.threshold,
+    createdAt: createdAt(t.createdAt),
+  };
 }

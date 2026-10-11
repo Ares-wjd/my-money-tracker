@@ -17,6 +17,7 @@ import {
   type SavingsGoalGroup,
   type SavingsSubAccount,
 } from '../model';
+import type { AllocationTarget } from '../core/allocation';
 
 type Data = { [key: string]: unknown };
 
@@ -183,4 +184,25 @@ export function latestQuoteDate(snapshot: MarketSnapshot): string | null {
     if (d !== null && (result === null || d > result)) result = d;
   }
   return result;
+}
+
+export function toAllocationTarget(id: string, d: Data): AllocationTarget | null {
+  const name = str(d.name);
+  if (name === null) return null;
+  const targets: { [key: string]: number } = {};
+  if (d.targets && typeof d.targets === 'object' && !Array.isArray(d.targets)) {
+    for (const [k, v] of Object.entries(d.targets as Data)) {
+      const n = num(v);
+      if (n !== null) targets[k] = n;
+    }
+  }
+  return {
+    id,
+    name,
+    accountIds: Array.isArray(d.accountIds) ? d.accountIds.filter((x): x is string => typeof x === 'string') : [],
+    targets,
+    includeCash: d.includeCash === true,
+    threshold: num(d.threshold) ?? 3,
+    createdAt: num(d.createdAt) ?? 0,
+  };
 }

@@ -22,6 +22,7 @@
   --shadow: 0 1px 2px rgba(22, 32, 28, 0.06);
   /* 그래프 색 (dataviz 검사 통과: 밝게 #007a5e/#b5770a, 어둡게 #27957a/#c4851c) */
   --chart-value: #007a5e;
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; --series-5: #e87ba4; --series-6: #008300; --series-other: #9aa5a0;
   --chart-invested: #b5770a;
   color-scheme: light;
 }
@@ -47,6 +48,7 @@
   --logo-bg: #34443d;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   --chart-value: #27957a;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-other: #5e6b65;
   --chart-invested: #c4851c;
   color-scheme: dark;
   }
@@ -71,6 +73,7 @@
   --logo-bg: #34443d;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   --chart-value: #27957a;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-other: #5e6b65;
   --chart-invested: #c4851c;
   color-scheme: dark;
 }
@@ -326,3 +329,23 @@ button.primary.small-button { padding: 8px 14px; }
 .check.small { font-size: 13px; font-weight: 600; }
 .field .check input[type='checkbox'], .check input[type='checkbox'] { width: auto; flex: none; padding: 0; margin: 0; }
 .field .check { font-weight: 400; }
+
+/* 비중 (도넛·표·계산기). 색은 검증한 범주 팔레트 순서대로, 7번째부터는 "기타" */
+.allocation-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+.donut-wrap { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+.donut { width: 220px; height: 220px; flex: none; }
+.donut path { stroke: var(--card); stroke-width: 2; cursor: default; }
+.donut path.dim { opacity: 0.35; }
+.donut-center-label { font-size: 12px; fill: var(--muted); }
+.donut-center-value { font-size: 20px; font-weight: 700; fill: var(--ink); }
+.donut-legend { display: flex; flex-direction: column; gap: 6px; min-width: 220px; flex: 1; }
+.donut-legend-row { display: grid; grid-template-columns: 12px 1fr auto auto; gap: 10px; align-items: center; font-size: 14px; }
+.donut-legend-row .swatch { width: 12px; height: 12px; border-radius: 3px; }
+.donut-legend-row .num { min-width: 56px; text-align: right; }
+.ring-note { font-size: 12px; color: var(--muted); }
+tr.highlight td { background: var(--accent-soft); }
+.diff-tag { display: inline-block; margin-left: 6px; font-size: 12px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--soft); color: var(--ink); }
+.target-row { display: grid; grid-template-columns: 1fr 110px; gap: 10px; align-items: center; }
+.target-row input { text-align: right; }
+.sum-line { font-weight: 600; }
+.sum-line.bad { color: var(--error); }

@@ -6,6 +6,7 @@ import { DataProvider } from './data/DataContext';
 import { firebase } from './firebase';
 import { AccountDetailPage } from './pages/AccountDetailPage';
 import { AccountsPage } from './pages/AccountsPage';
+import { AllocationPage } from './pages/AllocationPage';
 import { GoalsPage } from './pages/GoalsPage';
 import { HoldingDetailPage } from './pages/HoldingDetailPage';
 import { HomePage } from './pages/HomePage';
@@ -35,6 +36,7 @@ function Gate() {
             <Route path="accounts" element={<AccountsPage />} />
             <Route path="accounts/:accountId" element={<AccountDetailPage />} />
             <Route path="holdings/:holdingId" element={<HoldingDetailPage />} />
+            <Route path="allocation" element={<AllocationPage />} />
             <Route path="goals" element={<GoalsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFound what="페이지" />} />

@@ -19,8 +19,10 @@ import {
   toSavingsAccount,
   toSavingsGoal,
   toSavingsGoalGroup,
+  toAllocationTarget,
   toSettings,
 } from './mappers';
+import type { AllocationTarget } from '../core/allocation';
 
 /** 로그인한 사용자의 전체 데이터 (users/{uid} 이하). 폰과 같은 문서를 실시간으로 받는다. */
 export interface UserData {
@@ -32,10 +34,11 @@ export interface UserData {
   savingsAccounts: SavingsAccount[];
   savingsGoals: SavingsGoal[];
   savingsGoalGroups: SavingsGoalGroup[];
+  allocationTargets: AllocationTarget[];
 }
 
 type Key = keyof UserData;
-const KEYS: readonly Key[] = ['accounts', 'holdings', 'records', 'settings', 'market', 'savingsAccounts', 'savingsGoals', 'savingsGoalGroups'];
+const KEYS: readonly Key[] = ['accounts', 'holdings', 'records', 'settings', 'market', 'savingsAccounts', 'savingsGoals', 'savingsGoalGroups', 'allocationTargets'];
 
 export interface UserDataState {
   /** 모든 컬렉션의 첫 응답이 오기 전에는 null */
@@ -76,6 +79,7 @@ export function useUserData(uid: string): UserDataState {
       listen('목적통장', createdAt('savingsAccounts'), toSavingsAccount, 'savingsAccounts'),
       listen('목표', createdAt('savingsGoals'), toSavingsGoal, 'savingsGoals'),
       listen('목표 그룹', createdAt('savingsGoalGroups'), toSavingsGoalGroup, 'savingsGoalGroups'),
+      listen('비중 설정', createdAt('allocationTargets'), toAllocationTarget, 'allocationTargets'),
       onSnapshot(doc(user, 'settings', 'app'), (snapshot) => set('settings', toSettings(snapshot.data())), fail('설정')),
       onSnapshot(
         collection(user, 'marketData'),
