@@ -32,10 +32,10 @@
   --on-green: #00382b;
   --ink: #e3e8e5;
   --ground: #0f1412;
-  --card: #171d1a;
-  --soft: #1e2522;
-  --muted: #a3b0aa;
-  --line: #2c3531;
+  --card: #1b2420;
+  --soft: #242e2a;
+  --muted: #b4c0ba;
+  --line: #3a4540;
   --error: #ffb4ab;
   --up: #ff6b7a;
   --down: #7aa7ff;
@@ -56,10 +56,10 @@
   --on-green: #00382b;
   --ink: #e3e8e5;
   --ground: #0f1412;
-  --card: #171d1a;
-  --soft: #1e2522;
-  --muted: #a3b0aa;
-  --line: #2c3531;
+  --card: #1b2420;
+  --soft: #242e2a;
+  --muted: #b4c0ba;
+  --line: #3a4540;
   --error: #ffb4ab;
   --up: #ff6b7a;
   --down: #7aa7ff;
@@ -132,9 +132,9 @@ button:disabled { opacity: 0.6; cursor: default; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
 .big { font-size: 28px; font-weight: 700; }
 .hero { background: var(--hero); color: var(--on-hero); }
-.hero-label { font-size: 13px; opacity: 0.85; display: block; }
+.hero-label { font-size: 13px; opacity: 0.95; display: block; }
 .hero-value { font-size: 34px; font-weight: 700; display: block; letter-spacing: -0.01em; }
-.hero-foot { font-size: 12px; opacity: 0.8; margin-top: 6px; }
+.hero-foot { font-size: 13px; opacity: 0.9; margin-top: 6px; }
 .pill { align-self: flex-start; background: rgba(255, 255, 255, 0.16); border-radius: 999px; padding: 4px 12px; font-weight: 600; font-size: 14px; }
 .ink { background: var(--ink-card); color: var(--on-ink); }
 .ink-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -151,18 +151,18 @@ button:disabled { opacity: 0.6; cursor: default; }
 .stat { background: var(--soft); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
 .hero .stat { background: rgba(255, 255, 255, 0.12); }
 .stat-label { font-size: 12px; color: var(--muted); }
-.hero .stat-label { color: inherit; opacity: 0.8; }
-.stat-value { font-size: 15px; font-weight: 600; }
+.hero .stat-label { color: inherit; opacity: 0.92; }
+.stat-value { font-size: 17px; font-weight: 700; white-space: nowrap; }
 
 .row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; }
-.list-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); color: inherit; }
+.list-row { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); color: inherit; }
 .list-row:first-of-type { border-top: none; }
 a.list-row:hover .list-title { text-decoration: underline; }
-.list-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.list-title { font-weight: 600; }
-.list-sub { font-size: 12px; color: var(--muted); }
+.list-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.list-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-sub { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list-end { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
-.list-value { font-weight: 600; }
+.list-value { font-weight: 700; font-size: 16px; white-space: nowrap; }
 
 .table-wrap { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; }
@@ -279,3 +279,24 @@ button.primary.small-button { padding: 8px 14px; }
 .chart-table { max-height: 320px; overflow-y: auto; }
 /* 반 폭 카드 안의 정보 칸은 좁아지지 않게 */
 .grid-2 .stats, .grid-2 .stats:has(> :nth-child(3):last-child) { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+
+/* 티커 색 (폰과 같음: 국내 주식·해외 주식·ETF·펀드채권, 흰 글자 대비·색각 검사 통과) */
+.ticker { color: #ffffff; }
+.ticker-KR_STOCK { background: #0b7a5e; }
+.ticker-US_STOCK { background: #5a4fcf; }
+.ticker-ETF { background: #a35a08; }
+.ticker-OTHER { background: #5b6b64; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ticker-KR_STOCK { background: #18805f; }
+  :root:not([data-theme="light"]) .ticker-US_STOCK { background: #6a5fd9; }
+  :root:not([data-theme="light"]) .ticker-ETF { background: #a85d0a; }
+  :root:not([data-theme="light"]) .ticker-OTHER { background: #5e6b65; }
+}
+:root[data-theme="dark"] .ticker-KR_STOCK { background: #18805f; }
+:root[data-theme="dark"] .ticker-US_STOCK { background: #6a5fd9; }
+:root[data-theme="dark"] .ticker-ETF { background: #a85d0a; }
+:root[data-theme="dark"] .ticker-OTHER { background: #5e6b65; }
+.legend-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.holdings-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.ticker-legend { margin: 0; }
+.sub-line { margin-top: 8px; font-size: 14px; }

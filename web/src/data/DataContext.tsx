@@ -1,8 +1,8 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { today } from '../core/dates';
 import { summarizeSavings, type SavingsSummary } from '../core/goals';
-import { currentPrice, latestUsdKrw, tradeUsdKrw } from '../core/market';
-import { compareRecords, krwHoldingView, summarize, type DisplayCurrency, type HoldingValuation, type KrwHoldingView, type PortfolioSummary } from '../core/portfolio';
+import { currentPrice, dailyChangeRate, latestUsdKrw, tradeUsdKrw } from '../core/market';
+import { compareRecords, krwHoldingView, summarize, type DisplayCurrency, type HoldingSort, type HoldingValuation, type KrwHoldingView, type PortfolioSummary } from '../core/portfolio';
 import { linkedAccountIds, type Holding, type InvestmentAccount, type Record } from '../model';
 import type { RecordLookup } from '../records/recordText';
 import { latestQuoteDate } from './mappers';
@@ -22,6 +22,8 @@ export interface AppData extends UserData {
   recordsOfHolding: (holdingId: string) => Record[];
   /** 원화 보기의 해외 종목 숫자 (매매일 환율로 환차익 반영). 매매일 환율이 하나라도 없으면 null. */
   krwView: (valuation: HoldingValuation) => KrwHoldingView | null;
+  /** 오늘 수익률 (전일 종가 대비). 자동 시세를 쓰지 않거나 전일 종가가 없으면 null. */
+  todayRate: (valuation: HoldingValuation) => number | null;
 }
 
 interface DataState {
@@ -30,10 +32,22 @@ interface DataState {
   errors: string[];
   displayCurrency: DisplayCurrency;
   setDisplayCurrency: (mode: DisplayCurrency) => void;
+  holdingSort: HoldingSort;
+  setHoldingSort: (sort: HoldingSort) => void;
 }
 
 const DataContext = createContext<DataState | null>(null);
 const DISPLAY_KEY = 'holding_currency';
+const SORT_KEY = 'holding_sort';
+
+function readHoldingSort(): HoldingSort {
+  try {
+    const v = localStorage.getItem(SORT_KEY);
+    return v === 'TOTAL_RETURN' || v === 'TODAY_RETURN' ? v : 'VALUE';
+  } catch {
+    return 'VALUE';
+  }
+}
 
 function readDisplayCurrency(): DisplayCurrency {
   try {
@@ -46,6 +60,7 @@ function readDisplayCurrency(): DisplayCurrency {
 export function DataProvider({ uid, children }: { uid: string; children: ReactNode }) {
   const { data: raw, errors } = useUserData(uid);
   const [displayCurrency, setMode] = useState<DisplayCurrency>(readDisplayCurrency);
+  const [holdingSort, setSort] = useState<HoldingSort>(readHoldingSort);
 
   const data = useMemo<AppData | null>(() => {
     if (raw === null) return null;
@@ -70,6 +85,7 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
         raw.records.filter((r) => r.accountId === accountId || r.toAccountId === accountId).sort(newestFirst),
       recordsOfHolding: (holdingId) => raw.records.filter((r) => r.holdingId === holdingId).sort(newestFirst),
       krwView: (valuation) => krwHoldingView(valuation, raw.records, usdKrw, (d) => tradeUsdKrw(raw.market, d, day)),
+      todayRate: (valuation) => dailyChangeRate(valuation.holding, raw.market),
     };
   }, [raw]);
 
@@ -82,7 +98,20 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     }
   };
 
-  return <DataContext.Provider value={{ uid, data, errors, displayCurrency, setDisplayCurrency }}>{children}</DataContext.Provider>;
+  const setHoldingSort = (sort: HoldingSort) => {
+    setSort(sort);
+    try {
+      localStorage.setItem(SORT_KEY, sort);
+    } catch {
+      // 저장할 수 없는 환경이면 이번 화면에서만 적용한다.
+    }
+  };
+
+  return (
+    <DataContext.Provider value={{ uid, data, errors, displayCurrency, setDisplayCurrency, holdingSort, setHoldingSort }}>
+      {children}
+    </DataContext.Provider>
+  );
 }
 
 export function useData(): DataState {

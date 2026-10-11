@@ -322,3 +322,25 @@ export function krwHoldingView(
     returnRateWithDividends: unrealized === null ? null : rateOf(unrealized + dividendsKrw, costKrw),
   };
 }
+
+/** 보유 종목 정렬 기준 (모두 높은 순). core 의 HoldingSort 와 같음. */
+export type HoldingSort = 'VALUE' | 'TOTAL_RETURN' | 'TODAY_RETURN';
+export const HOLDING_SORTS: readonly HoldingSort[] = ['VALUE', 'TOTAL_RETURN', 'TODAY_RETURN'];
+export const HOLDING_SORT_LABEL: { [K in HoldingSort]: string } = { VALUE: '평가금', TOTAL_RETURN: '총 수익률', TODAY_RETURN: '오늘 수익률' };
+
+/** [sort] 기준 높은 순. 값이 없는 종목은 맨 뒤, 같으면 평가금이 큰 순. */
+export function sortHoldings(
+  holdings: readonly HoldingValuation[],
+  sort: HoldingSort,
+  totalRate: (v: HoldingValuation) => number | null,
+  todayRate: (v: HoldingValuation) => number | null,
+): HoldingValuation[] {
+  const key = sort === 'VALUE' ? (v: HoldingValuation) => v.marketValueKrw : sort === 'TOTAL_RETURN' ? totalRate : todayRate;
+  return [...holdings].sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    if ((ka === null) !== (kb === null)) return ka === null ? 1 : -1;
+    if (ka !== null && kb !== null && ka !== kb) return kb - ka;
+    return (b.marketValueKrw ?? 0) - (a.marketValueKrw ?? 0);
+  });
+}

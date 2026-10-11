@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { formatShortDate } from '../core/dates';
-import { decimal, percent, signedWon, won } from '../core/format';
+import { decimal, rate, signedWon, won } from '../core/format';
 import { useAppData } from '../data/DataContext';
 import { AssetChart } from '../components/AssetChart';
 import { Badge, Card, ListLink, Stat, Warning, profitClass } from '../components/ui';
@@ -26,13 +26,12 @@ export function HomePage() {
         <span className="hero-label">투자 자산 평가금</span>
         <span className="hero-value">{won(summary.valueKrw)}</span>
         <span className="pill">
-          {summary.profitKrw >= 0 ? '▲ ' : '▼ '}
-          {won(Math.abs(summary.profitKrw))} · {percent(summary.returnRate)}
+          {signedWon(summary.profitKrw)} · {rate(summary.returnRate)}
         </span>
         <div className="stats">
           <Stat label="투자금" value={won(summary.investedKrw)} />
           <Stat label="수익금 (배당 미포함)" value={signedWon(summary.profitExDividendsKrw)} />
-          <Stat label="배당 미포함 수익률" value={percent(summary.returnRateExDividends)} />
+          <Stat label="배당 미포함 수익률" value={rate(summary.returnRateExDividends)} />
           <Stat label="누적 배당" value={won(summary.dividendsKrw)} />
         </div>
         <span className="hero-foot">
@@ -64,7 +63,7 @@ export function HomePage() {
             title={a.account.name}
             subtitle={accountDescription(a.account, data.linked.has(a.account.id)) || undefined}
             value={won(a.valueKrw)}
-            subValue={percent(a.returnRate)}
+            subValue={rate(a.returnRate)}
             subValueClass={profitClass(a.returnRate)}
           />
         ))}

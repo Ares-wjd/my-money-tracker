@@ -97,6 +97,15 @@ export function currentPrice(holding: Holding, snapshot: MarketSnapshot): PriceP
   return newer(manualPoint(holding), auto);
 }
 
+/** 오늘 수익률 = 현재가 ÷ 전일 종가 − 1. 자동 시세(최신 현재가)를 쓰는 종목만 (직접 입력 가격이거나 전일 종가가 없으면 null). */
+export function dailyChangeRate(holding: Holding, snapshot: MarketSnapshot): number | null {
+  const history = historyOf(snapshot, holding);
+  if (!history || history.latest === null || history.prevClose === null || history.prevClose <= 0) return null;
+  const current = currentPrice(holding, snapshot);
+  if (current === null || current.price !== history.latest.price || current.date !== history.latest.date) return null;
+  return history.latest.price / history.prevClose - 1;
+}
+
 /** 과거 [date] 기준 가격: 그날 이전 종가, 없으면 그날 이전에 직접 입력한 가격, 그것도 없으면 직접 입력 가격. */
 export function priceAt(holding: Holding, snapshot: MarketSnapshot, date: string): PricePoint | null {
   const close = closeOnOrBefore(historyOf(snapshot, holding), date);

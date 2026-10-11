@@ -18,6 +18,7 @@ describe('날짜 (java.time 과 같은 규칙)', () => {
     expect(plusDays('2026-12-31', 1)).toBe('2027-01-01');
     expect(plusDays('2026-03-01', -1)).toBe('2026-02-28');
     expect(today(new Date(2026, 9, 9, 23, 59))).toBe('2026-10-09');
-    expect(formatDate('2026-10-09')).toBe('2026.10.9 (금)');
+    expect(formatDate('2026-10-09', '2026-12-01')).toBe('10.9 (금)');
+    expect(formatDate('2025-10-09', '2026-12-01')).toBe('2025.10.9 (목)');
   });
 });

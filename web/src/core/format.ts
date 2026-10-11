@@ -100,3 +100,12 @@ export function manwon(value: number): string {
 export function amountPreview(currency: Currency, value: number): string {
   return currency === 'KRW' ? manwon(value) : usd(value);
 }
+
+/** 수익률을 ▲/▼ 와 함께: 0.1234 → "▲12.34%", -0.05 → "▼5.00%" (색만으로 구분하지 않도록). null 이면 "-" */
+export function rate(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '-';
+  const text = grouped2(value * 100);
+  if (value > 0 && text !== '0.00') return `▲${text}%`;
+  if (value < 0 && text !== '0.00') return `▼${text}%`;
+  return `${text}%`;
+}

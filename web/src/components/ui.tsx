@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { DisplayCurrency } from '../core/portfolio';
 import { decimal } from '../core/format';
+import type { AssetType, Market } from '../model';
 
 /** 수익은 빨강, 손실은 파랑 (국내 증권 앱 관례). */
 export function profitClass(value: number | null | undefined): string {
@@ -73,10 +74,35 @@ export function Badge({ children, dark = false }: { children: ReactNode; dark?: 
   return <span className={dark ? 'badge badge-dark' : 'badge'}>{children}</span>;
 }
 
-/** 종목 티커 배지 (코드가 없으면 이름 앞 글자). */
-export function TickerBadge({ code, name }: { code: string; name: string }) {
+/** 티커 색 구분: 국내 주식 / 해외 주식 / ETF / 펀드·채권 (폰과 같음). */
+export type TickerGroup = 'KR_STOCK' | 'US_STOCK' | 'ETF' | 'OTHER';
+const TICKER_GROUPS: readonly TickerGroup[] = ['KR_STOCK', 'US_STOCK', 'ETF', 'OTHER'];
+const TICKER_LABEL: { [K in TickerGroup]: string } = { KR_STOCK: '국내', US_STOCK: '해외', ETF: 'ETF', OTHER: '펀드·채권' };
+
+export function tickerGroup(market: Market, assetType: AssetType): TickerGroup {
+  if (assetType === 'ETF') return 'ETF';
+  if (assetType === 'STOCK') return market === 'KR' ? 'KR_STOCK' : 'US_STOCK';
+  return 'OTHER';
+}
+
+/** 종목 티커 배지 (코드가 없으면 이름 앞 글자). 색으로 국내·해외·ETF 를 구분한다. */
+export function TickerBadge({ code, name, market, assetType }: { code: string; name: string; market: Market; assetType: AssetType }) {
   const text = (code.trim() || name.trim()).slice(0, 6).toUpperCase() || '?';
-  return <Badge dark>{text}</Badge>;
+  return <span className={`badge ticker ticker-${tickerGroup(market, assetType)}`}>{text}</span>;
+}
+
+/** 티커 색 범례 ([groups] 에 있는 것만). */
+export function TickerLegend({ groups }: { groups: Set<TickerGroup> }) {
+  return (
+    <div className="legend ticker-legend">
+      {TICKER_GROUPS.filter((g) => groups.has(g)).map((g) => (
+        <span key={g} className="legend-item">
+          <span className={`legend-swatch ticker-${g}`} aria-hidden="true" />
+          {TICKER_LABEL[g]}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 /** 해외 종목 금액 보기 전환 (외화 / 원화). */

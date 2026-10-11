@@ -1,7 +1,7 @@
 // core MarketDataTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
 import type { MarketSnapshot, PricePoint } from '../model';
-import { currentPrice, keyOf, latestUsdKrw, marketKey, priceAt, tradeUsdKrw, usdKrwAt } from './market';
+import { currentPrice, dailyChangeRate, keyOf, latestUsdKrw, marketKey, priceAt, tradeUsdKrw, usdKrwAt } from './market';
 import { holding } from './testData';
 
 const d1 = '2026-10-01';
@@ -10,7 +10,7 @@ const d5 = '2026-10-05';
 const stock = holding({ id: 's', accountId: 'a', name: '삼성전자', code: '005930', market: 'KR' });
 
 const snapshot = (latest: PricePoint | null = null): MarketSnapshot => ({
-  prices: new Map([[marketKey('KR', '005930'), { closes: new Map([[d1, 100], [d2, 110]]), latest }]]),
+  prices: new Map([[marketKey('KR', '005930'), { closes: new Map([[d1, 100], [d2, 110]]), latest, prevClose: null }]]),
   usdKrw: new Map([[d1, 1400], [d2, -1]]),
 });
 
@@ -53,5 +53,13 @@ describe('시세 (MarketDataTest)', () => {
     expect(tradeUsdKrw(s, d2, today)).toBe(1400);
     expect(tradeUsdKrw(s, '2026-10-05', today)).toBeNull();
     expect(tradeUsdKrw(s, today, today)).toBe(1410);
+  });
+
+  it('오늘 수익률은 자동 시세일 때만 (MarketDataTest)', () => {
+    const base = snapshot({ price: 110, date: d5 });
+    const s = { ...base, prices: new Map([...base.prices].map(([k, h]) => [k, { ...h, prevClose: 100 }])) };
+    expect(dailyChangeRate(stock, s)).toBeCloseTo(0.1, 9);
+    expect(dailyChangeRate({ ...stock, manualPrice: 130, manualPriceDate: '2026-10-06' }, s)).toBeNull();
+    expect(dailyChangeRate(stock, snapshot({ price: 110, date: d5 }))).toBeNull();
   });
 });

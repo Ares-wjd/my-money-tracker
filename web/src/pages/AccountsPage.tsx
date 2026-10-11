@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { percent, won } from '../core/format';
+import { rate, won } from '../core/format';
 import { AccountForm } from '../forms/AccountForm';
 import { useAppData } from '../data/DataContext';
 import { Badge, Card, ListLink, profitClass } from '../components/ui';
@@ -28,7 +28,7 @@ export function AccountsPage() {
               .filter(Boolean)
               .join(' · ')}
             value={won(a.valueKrw)}
-            subValue={`투자금 ${won(a.investedKrw)} · ${percent(a.returnRate)}`}
+            subValue={`투자금 ${won(a.investedKrw)} · ${rate(a.returnRate)}`}
             subValueClass={profitClass(a.returnRate)}
           />
         ))}

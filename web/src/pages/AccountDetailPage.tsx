@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { formatDate } from '../core/dates';
-import { amount, decimal, percent, signedWon, usd, won } from '../core/format';
-import { convert, displayConversion } from '../core/portfolio';
+import { amount, decimal, rate as formatRate, signedWon, usd, won } from '../core/format';
+import { HOLDING_SORTS, HOLDING_SORT_LABEL, convert, displayConversion, sortHoldings, type HoldingValuation } from '../core/portfolio';
 import { useAppData, useData } from '../data/DataContext';
-import { Card, CurrencyToggle, ListLink, NotFound, Row, Stat, TickerBadge, Warning, profitClass } from '../components/ui';
+import { Card, CurrencyToggle, ListLink, NotFound, Row, Stat, TickerBadge, TickerLegend, Warning, profitClass, tickerGroup } from '../components/ui';
 import { ASSET_TYPE_LABEL, RECORD_TYPE_LABEL, marketCurrency, type Record, type RecordType } from '../model';
 import { AccountForm } from '../forms/AccountForm';
 import { CashForm } from '../forms/CashForm';
@@ -28,7 +28,7 @@ const ADDABLE: readonly RecordType[] = ['DEPOSIT', 'WITHDRAW', 'TRANSFER', 'BUY'
 export function AccountDetailPage() {
   const { accountId = '' } = useParams();
   const data = useAppData();
-  const { displayCurrency, setDisplayCurrency } = useData();
+  const { displayCurrency, setDisplayCurrency, holdingSort, setHoldingSort } = useData();
   const [visible, setVisible] = useState(PAGE);
   const [dialog, setDialog] = useState<Dialog>(null);
   const navigate = useNavigate();
@@ -37,7 +37,9 @@ export function AccountDetailPage() {
 
   const linked = data.linked.has(accountId);
   const records = data.recordsOf(accountId);
-  const holdings = [...summary.holdings].sort((a, b) => (b.marketValueKrw ?? 0) - (a.marketValueKrw ?? 0));
+  // 총 수익률은 보기를 따른다 (원화 보기: 매매일 환율이 모두 있으면 환차익 반영 원화 수익률)
+  const totalRate = (v: HoldingValuation) => (displayCurrency === 'KRW' ? data.krwView(v)?.returnRate : null) ?? v.returnRate;
+  const holdings = sortHoldings(summary.holdings, holdingSort, totalRate, data.todayRate);
   const hasUsd = holdings.some((h) => marketCurrency(h.holding.market) === 'USD');
   const showUsdCash = summary.cash.usd !== 0 || hasUsd;
 
@@ -54,17 +56,17 @@ export function AccountDetailPage() {
       </div>
 
       <Card>
+        {/* 핵심 3개(투자금·수익금·수익률)를 크게, 나머지는 아래 한 줄로 */}
         <span className="muted">평가금</span>
         <span className="big">{won(summary.valueKrw)}</span>
-        <span className={profitClass(summary.profitKrw)}>
-          {signedWon(summary.profitKrw)} · {percent(summary.returnRate)}
-        </span>
         <div className="stats">
           <Stat label="투자금" value={won(summary.investedKrw)} />
-          <Stat label="배당 미포함" value={percent(summary.returnRateExDividends)} valueClass={profitClass(summary.returnRateExDividends)} />
-          <Stat label="누적 배당" value={won(summary.dividendsKrw)} />
-          <Stat label="수익금 (배당 미포함)" value={signedWon(summary.profitExDividendsKrw)} valueClass={profitClass(summary.profitExDividendsKrw)} />
+          <Stat label="수익금" value={signedWon(summary.profitKrw)} valueClass={profitClass(summary.profitKrw)} />
+          <Stat label="수익률" value={formatRate(summary.returnRate)} valueClass={profitClass(summary.returnRate)} />
         </div>
+        <p className="muted sub-line">
+          배당 미포함 {formatRate(summary.returnRateExDividends)} · 누적 배당 {won(summary.dividendsKrw)}
+        </p>
         {summary.missingFx && <Warning>환율이 없어 달러 금액이 원화 합계에서 빠져 있습니다.</Warning>}
         {summary.missingPrice && <Warning>현재가가 없는 종목이 있습니다.</Warning>}
       </Card>
@@ -100,6 +102,18 @@ export function AccountDetailPage() {
           </div>
         }
       >
+        {holdings.length > 0 && (
+          <div className="holdings-tools">
+            <div className="segmented" role="radiogroup" aria-label="정렬">
+              {HOLDING_SORTS.map((s) => (
+                <button key={s} role="radio" aria-checked={holdingSort === s} className={holdingSort === s ? 'on' : ''} onClick={() => setHoldingSort(s)}>
+                  {HOLDING_SORT_LABEL[s]}
+                </button>
+              ))}
+            </div>
+            <TickerLegend groups={new Set(holdings.map((v) => tickerGroup(v.holding.market, v.holding.assetType)))} />
+          </div>
+        )}
         {holdings.length === 0 ? (
           <p className="muted">종목이 없습니다. 종목을 추가한 뒤 매수 기록을 남기세요.</p>
         ) : (
@@ -112,7 +126,8 @@ export function AccountDetailPage() {
                   <th className="num optional">평균단가</th>
                   <th className="num optional">현재가</th>
                   <th className="num">평가금</th>
-                  <th className="num">수익률</th>
+                  <th className="num">총 수익률</th>
+                  <th className="num">오늘</th>
                 </tr>
               </thead>
               <tbody>
@@ -124,14 +139,15 @@ export function AccountDetailPage() {
                   };
                   // 원화 보기: 매매일 환율이 모두 있으면 환차익을 반영한 원화 평균단가·수익률
                   const krw = displayCurrency === 'KRW' ? data.krwView(v) : null;
-                  const rate = krw ? krw.returnRate : v.returnRate;
+                  const rate = totalRate(v);
+                  const today = data.todayRate(v);
                   return (
                     // 행 어디를 눌러도 종목 화면으로 (키보드는 첫 칸의 링크로 이동)
                     <tr key={v.holding.id} className="clickable" onClick={() => navigate(`/holdings/${v.holding.id}`)}>
                       <td>
                         <ListLink
                           to={`/holdings/${v.holding.id}`}
-                          leading={<TickerBadge code={v.holding.code} name={v.holding.name} />}
+                          leading={<TickerBadge code={v.holding.code} name={v.holding.name} market={v.holding.market} assetType={v.holding.assetType} />}
                           title={v.holding.name}
                           subtitle={ASSET_TYPE_LABEL[v.holding.assetType]}
                         />
@@ -140,7 +156,8 @@ export function AccountDetailPage() {
                       <td className="num optional">{krw ? won(krw.averagePriceKrw) : shown(v.position.averagePrice)}</td>
                       <td className="num optional">{v.price ? shown(v.price.price) : '없음'}</td>
                       <td className="num strong">{v.marketValue === null ? '가격 입력 필요' : shown(v.marketValue)}</td>
-                      <td className={`num ${profitClass(rate)}`}>{percent(rate)}</td>
+                      <td className={`num ${profitClass(rate)}`}>{formatRate(rate)}</td>
+                      <td className={`num ${profitClass(today)}`}>{formatRate(today)}</td>
                     </tr>
                   );
                 })}

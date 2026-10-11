@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatDate } from '../core/dates';
-import { amount, decimal, percent, signedAmount, signedWon, usd, won } from '../core/format';
+import { amount, decimal, rate as formatRate, signedAmount, signedWon, usd, won } from '../core/format';
 import { convert, displayConversion } from '../core/portfolio';
 import { useAppData, useData } from '../data/DataContext';
 import { Card, CurrencyToggle, NotFound, Row, profitClass } from '../components/ui';
@@ -41,6 +41,7 @@ export function HoldingDetailPage() {
   const rate = krw ? krw.returnRate : v.returnRate;
   const rateWithDividends = krw ? krw.returnRateWithDividends : v.returnRateWithDividends;
   const rateLabel = krw ? '원화 수익률' : '수익률';
+  const today = data.todayRate(v);
   const records = data.recordsOfHolding(holdingId);
   const linked = data.linked.has(holding.accountId);
 
@@ -77,12 +78,18 @@ export function HoldingDetailPage() {
             </div>
             <div className="stat">
               <span className="stat-label">{rateLabel} (배당 미포함)</span>
-              <span className="stat-value">{percent(rate)}</span>
+              <span className="stat-value">{formatRate(rate)}</span>
             </div>
             <div className="stat">
               <span className="stat-label">{rateLabel} (배당 포함)</span>
-              <span className="stat-value">{percent(rateWithDividends)}</span>
+              <span className="stat-value">{formatRate(rateWithDividends)}</span>
             </div>
+            {today !== null && (
+              <div className="stat">
+                <span className="stat-label">오늘 수익률</span>
+                <span className="stat-value">{formatRate(today)}</span>
+              </div>
+            )}
             {krw && (
               <>
                 <div className="stat">

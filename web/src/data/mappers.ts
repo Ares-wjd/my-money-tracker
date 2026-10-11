@@ -149,6 +149,7 @@ export function toMarketSnapshot(docs: readonly { id: string; data: Data }[]): M
       prices.set(id.slice(PRICE_PREFIX.length), {
         closes: dateMap(data.closes),
         latest: latest === null ? null : { price: latest, date: date(data.latestDate) },
+        prevClose: num(data.prevClose),
       });
     }
   }

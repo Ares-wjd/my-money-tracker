@@ -43,10 +43,11 @@ export function monthsBetween(start: string, end: string): number {
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
-/** 폰과 같은 표시: "2026.10.9 (금)" */
-export function formatDate(date: string): string {
+/** 폰과 같은 표시: 올해는 "10.9 (금)", 다른 해는 "2025.10.9 (목)". */
+export function formatDate(date: string, todayDate: string = today()): string {
   const [y, m, d] = parts(date);
-  return `${y}.${m}.${d} (${WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]})`;
+  const weekday = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return y === Number(todayDate.slice(0, 4)) ? `${m}.${d} (${weekday})` : `${y}.${m}.${d} (${weekday})`;
 }
 
 /** 짧은 표시: "10.9" */

@@ -32,7 +32,7 @@ describe('자산 추이 (ChartCalculatorTest)', () => {
       record({ id: '2', accountId: 'a', type: 'BUY', date: '2026-09-02', holdingId: 'h', quantity: 10, price: 100, createdAt: 1 }),
     ];
     const snapshot = {
-      prices: new Map([['KR_005930', { closes: new Map([['2026-09-29', 120], ['2026-10-08', 150]]), latest: null }]]),
+      prices: new Map([['KR_005930', { closes: new Map([['2026-09-29', 120], ['2026-10-08', 150]]), latest: null, prevClose: null }]]),
       usdKrw: new Map<string, number>(),
     };
     const points = series(['2026-09-30', today], today, [a], [h], records, snapshot, null);

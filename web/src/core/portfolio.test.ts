@@ -1,7 +1,7 @@
 // core PortfolioCalculatorTest · DisplayCurrencyTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
 import type { Record, RecordType } from '../model';
-import { convert, displayConversion, krwHoldingView, position, quantityAt, summarize } from './portfolio';
+import { convert, displayConversion, krwHoldingView, position, quantityAt, sortHoldings, summarize } from './portfolio';
 import { account, holding, record } from './testData';
 
 const day1 = '2026-01-02';
@@ -197,5 +197,26 @@ describe('원화 보기 환차익 반영 (DisplayCurrencyTest)', () => {
     const records = [rec('us', 'BUY', d1, { holdingId: 'a', quantity: 1, price: 100 })];
     expect(krwHoldingView(valuationOf(records, 1_500), records, 1_500, () => null)).toBeNull();
     expect(krwHoldingView(valuationOf(records, null), records, null, (d) => fx[d] ?? null)).toBeNull();
+  });
+});
+
+describe('보유 종목 정렬 (HoldingSortTest)', () => {
+  it('높은 순, 값이 없으면 맨 뒤', () => {
+    const a = account({ id: 'a', name: '국내' });
+    const big = holding({ id: 'big', accountId: 'a', name: '큰 종목', manualPrice: 110 });
+    const small = holding({ id: 'small', accountId: 'a', name: '작은 종목', manualPrice: 30 });
+    const none = holding({ id: 'none', accountId: 'a', name: '가격 없음' });
+    const records = [
+      rec('a', 'BUY', day1, { holdingId: 'big', quantity: 10, price: 100 }),
+      rec('a', 'BUY', day1, { holdingId: 'small', quantity: 10, price: 20 }),
+      rec('a', 'BUY', day1, { holdingId: 'none', quantity: 1, price: 5 }),
+    ];
+    const vs = summarize([a], [none, small, big], records, null).accounts[0].holdings;
+    const today: { [id: string]: number } = { big: -0.01, small: 0.02 };
+    const ids = (s: 'VALUE' | 'TOTAL_RETURN' | 'TODAY_RETURN') =>
+      sortHoldings(vs, s, (v) => v.returnRate, (v) => today[v.holding.id] ?? null).map((v) => v.holding.id);
+    expect(ids('VALUE')).toEqual(['big', 'small', 'none']);
+    expect(ids('TOTAL_RETURN')).toEqual(['small', 'big', 'none']);
+    expect(ids('TODAY_RETURN')).toEqual(['small', 'big', 'none']);
   });
 });

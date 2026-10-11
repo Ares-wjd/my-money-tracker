@@ -118,6 +118,8 @@ export interface PriceHistory {
   /** 날짜 → 종가 */
   closes: Map<string, number>;
   latest: PricePoint | null;
+  /** latest 의 전일 종가 (오늘 수익률 계산용) */
+  prevClose: number | null;
 }
 
 /** 폰이 Firestore(marketData)에 저장해 둔 시세·환율. */
