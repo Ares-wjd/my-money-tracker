@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -109,6 +110,7 @@ fun AllocationScreen(
     val targets by viewModel.allocationTargets.collectAsStateWithLifecycle()
     val selectedId by viewModel.selectedAllocation.collectAsStateWithLifecycle()
     val ringName by viewModel.allocationRing.collectAsStateWithLifecycle()
+    val useCash by viewModel.allocationUseCash.collectAsStateWithLifecycle()
     val ring = Ring.entries.firstOrNull { it.name == ringName } ?: Ring.COMPARE
 
     Scaffold(
@@ -143,6 +145,8 @@ fun AllocationScreen(
                     padding = padding,
                     onSelect = viewModel::selectAllocation,
                     onRing = { viewModel.setAllocationRing(it.name) },
+                    useCash = useCash,
+                    onUseCash = viewModel::setAllocationUseCash,
                     onEdit = { onEdit(selected.id) },
                 )
             }
@@ -162,6 +166,8 @@ private fun AllocationContent(
     padding: PaddingValues,
     onSelect: (String) -> Unit,
     onRing: (Ring) -> Unit,
+    useCash: Boolean,
+    onUseCash: (Boolean) -> Unit,
     onEdit: () -> Unit,
 ) {
     var amountText by rememberSaveable { mutableStateOf("") }
@@ -226,8 +232,21 @@ private fun AllocationContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 MoneyField("이번에 넣을 돈", amountText, { amountText = it }, quick = true, modifier = Modifier.padding(top = 4.dp))
-                val plan = AllocationCalculator.buyOnly(view, amount)
-                if (amount > 0 && plan.trades.isEmpty()) Text("목표 비중이 있는 종목이 없습니다.", style = MaterialTheme.typography.bodySmall)
+                if (view.cashKrw > 0) {
+                    Row(Modifier.fillMaxWidth().clickable { onUseCash(!useCash) }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = useCash, onCheckedChange = onUseCash)
+                        Text("현재 예수금도 함께 쓰기 (${MoneyFormat.won(view.cashKrw)})", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                val plan = AllocationCalculator.buyOnly(view, amount, useCash)
+                if (plan.poolKrw > 0 && plan.cashUsedKrw > 0) {
+                    Text(
+                        "사용할 돈: 넣을 돈 ${MoneyFormat.won(amount)} + 예수금 ${MoneyFormat.won(plan.cashUsedKrw)} = ${MoneyFormat.won(plan.poolKrw)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (plan.poolKrw > 0 && plan.trades.isEmpty()) Text("목표 비중이 있는 종목이 없습니다.", style = MaterialTheme.typography.bodySmall)
                 plan.trades.forEach { TradeLine(it, usdKrw, prefix = "") }
                 if (target.noBuy.isNotEmpty()) {
                     Text(
@@ -236,7 +255,7 @@ private fun AllocationContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (amount > 0 && plan.leftoverKrw >= 1) {
+                if (plan.poolKrw > 0 && plan.leftoverKrw >= 1) {
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                         Text("남는 돈 (매수 단위 때문에)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                         Text(MoneyFormat.won(plan.leftoverKrw), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

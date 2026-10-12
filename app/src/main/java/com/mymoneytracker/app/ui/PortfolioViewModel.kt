@@ -221,6 +221,15 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         displayPrefs.edit().putString(KEY_ALLOCATION_RING, ring).apply()
     }
 
+    /** 비중 매수 계산기에서 현재 예수금도 함께 쓸지 (기본 켬). 이 기기에만 기억한다. */
+    private val _allocationUseCash = MutableStateFlow(displayPrefs.getBoolean(KEY_ALLOCATION_USE_CASH, true))
+    val allocationUseCash: StateFlow<Boolean> = _allocationUseCash.asStateFlow()
+
+    fun setAllocationUseCash(use: Boolean) {
+        _allocationUseCash.value = use
+        displayPrefs.edit().putBoolean(KEY_ALLOCATION_USE_CASH, use).apply()
+    }
+
     private val _syncing = MutableStateFlow(false)
     val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
 
@@ -580,6 +589,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         private const val KEY_HOLDING_SORT = "holding_sort"
         private const val KEY_ALLOCATION = "allocation_selected"
         private const val KEY_ALLOCATION_RING = "allocation_ring"
+        private const val KEY_ALLOCATION_USE_CASH = "allocation_use_cash"
 
         fun factory(uid: String): ViewModelProvider.Factory = viewModelFactory {
             initializer { PortfolioViewModel(this[APPLICATION_KEY]!!, uid) }

@@ -243,4 +243,27 @@ class AllocationTest {
         assertTrue(plan.leftoverKrw < 7.0)
         assertEquals(1000.0, plan.trades.sumOf { it.amountKrw } + plan.leftoverKrw, 1e-6)
     }
+
+    @Test
+    fun usesCurrentCashWhenAsked() {
+        // 예수금 500원(비중 미포함)도 함께 쓰기: 넣을 돈 0원이어도 예수금으로 산다
+        val t = target.copy(includeCash = false, targets = mapOf("KR:360750" to 60.0, "KR:AAA" to 40.0), units = mapOf("KR:360750" to 1.0, "KR:AAA" to 1.0))
+        val view = AllocationCalculator.view(t, summary.accounts, null)
+        assertEquals(500.0, view.cashKrw, 1e-9)
+        val plan = AllocationCalculator.buyOnly(view, 0.0, useCash = true)
+        assertEquals(500.0, plan.poolKrw, 1e-9)
+        assertEquals(500.0, plan.cashUsedKrw, 1e-9)
+        assertTrue(plan.leftoverKrw < 1.0)
+        assertEquals(500.0, plan.trades.sumOf { it.amountKrw } + plan.leftoverKrw, 1e-6)
+        // 끄면 넣을 돈만
+        assertTrue(AllocationCalculator.buyOnly(view, 0.0, useCash = false).trades.isEmpty())
+
+        // 예수금을 비중에 넣고 목표 20%: 예수금도 계산에 쓰되 목표 쪽으로 남는다 (합계는 그대로 2500)
+        val withCash = AllocationCalculator.view(target.copy(units = mapOf("KR:AAA" to 0.01)), summary.accounts, null)
+        val p2 = AllocationCalculator.buyOnly(withCash, 0.0, useCash = true)
+        val byKey = p2.trades.associateBy { it.row.key }
+        // 부족분: AAA 750-500=250, 예수금 500-0=500 → 500 원을 250:500 으로 → AAA 166.67, 예수금 333.33 남김
+        assertEquals(500.0 * 250 / 750, byKey.getValue("KR:AAA").amountKrw, 0.02)
+        assertEquals(500.0 - byKey.getValue("KR:AAA").amountKrw, byKey.getValue("CASH").amountKrw, 1e-6)
+    }
 }

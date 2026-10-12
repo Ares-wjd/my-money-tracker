@@ -56,6 +56,8 @@ export interface AllocationView {
   rows: AllocationRow[];
   totalKrw: number;
   missingPrice: boolean;
+  /** 대상 계좌들의 현재 예수금 (원화, 달러는 환율로). 비중에 넣지 않아도 계산기에서 쓸 수 있다 */
+  cashKrw: number;
 }
 
 /**
@@ -69,10 +71,12 @@ export interface TradeSuggestion {
   fractional: boolean;
 }
 
-/** 매수 계산기 결과: 종목별 살 금액과 단위 때문에 남는 돈 */
+/** 매수 계산기 결과: 종목별 살 금액, 단위 때문에 남는 돈, 계산에 쓴 돈(넣을 돈 + 쓴 예수금)과 그중 예수금 */
 export interface BuyPlan {
   trades: TradeSuggestion[];
   leftoverKrw: number;
+  poolKrw: number;
+  cashUsedKrw: number;
 }
 
 /** 목표 합계 (예수금 미포함이면 예수금 목표는 빼고). */
@@ -168,7 +172,7 @@ export function allocationView(target: AllocationTarget, accounts: readonly Acco
       };
     })
     .sort((a, b) => b.targetWeight - a.targetWeight || b.valueKrw - a.valueKrw);
-  return { target, rows, totalKrw: total, missingPrice };
+  return { target, rows, totalKrw: total, missingPrice, cashKrw: included.reduce((s, a) => s + cashToKrw(a.cash, usdKrw), 0) };
 }
 
 /** 종목의 매수 단위(원): 금액 단위가 있으면 그 금액, 없으면 1주 가격, 가격을 모르면 null (내림하지 않음). */
@@ -192,16 +196,22 @@ function suggestion(target: AllocationTarget, row: AllocationRow, amountKrw: num
  * 그다음 종목별 매수 단위로 내림하고, 남은 돈으로 목표보다 가장 많이 부족한 종목부터 한 단위씩 더 산다
  * (목표와의 차이 합이 줄어들 때만 — 예수금 목표가 있으면 예수금 차이도 함께).
  */
-export function buyOnly(view: AllocationView, amountKrw: number): BuyPlan {
-  if (amountKrw <= 0) return { trades: [], leftoverKrw: 0 };
+export function buyOnly(view: AllocationView, inputKrw: number, useCash = false): BuyPlan {
+  // 현재 예수금도 쓰면: 계산에 쓰는 돈 = 넣을 돈 + 예수금, 예수금 줄의 지금 값은 0 으로 (모두 매수에 쓸 돈으로 옮김)
+  const cashUsed = useCash ? Math.max(0, view.cashKrw) : 0;
+  const amountKrw = Math.max(0, inputKrw) + cashUsed;
+  const cashInTotal = view.rows.some((r) => r.isCash);
+  const valueOf = (r: AllocationRow) => (r.isCash && useCash ? 0 : r.valueKrw);
+  if (amountKrw <= 0) return { trades: [], leftoverKrw: 0, poolKrw: 0, cashUsedKrw: 0 };
   // 목표 합계는 "지금 매수 안 함" 종목까지 포함한 원래 목표 기준 (나머지 종목의 목표를 부풀리지 않는다)
   const sum = view.rows.reduce((s, r) => s + r.targetWeight, 0);
   const noBuy = new Set(view.target.noBuy);
   const rows = view.rows.filter((r) => r.targetWeight > 0 && !noBuy.has(r.key));
   const buySum = rows.reduce((s, r) => s + r.targetWeight, 0);
-  if (rows.length === 0 || sum <= 0 || buySum <= 0) return { trades: [], leftoverKrw: amountKrw };
-  const newTotal = view.totalKrw + amountKrw;
-  const deficits = rows.map((r) => Math.max(0, (r.targetWeight / sum) * newTotal - r.valueKrw));
+  if (rows.length === 0 || sum <= 0 || buySum <= 0) return { trades: [], leftoverKrw: amountKrw, poolKrw: amountKrw, cashUsedKrw: cashUsed };
+  // 예수금이 이미 합계에 들어 있으면(비중에 포함) 옮겨도 합계는 그대로, 아니면 쓰는 예수금만큼 늘어난다
+  const newTotal = view.totalKrw + Math.max(0, inputKrw) + (cashInTotal ? 0 : cashUsed);
+  const deficits = rows.map((r) => Math.max(0, (r.targetWeight / sum) * newTotal - valueOf(r)));
   const deficitSum = deficits.reduce((s, d) => s + d, 0);
   const ideal = new Map<AllocationRow, number>(
     rows.map((r, i) => [
@@ -223,7 +233,7 @@ export function buyOnly(view: AllocationView, amountKrw: number): BuyPlan {
   let leftover = amountKrw - [...buys.values()].reduce((s, b) => s + b, 0);
   const cashRow = rows.find((r) => r.isCash) ?? null;
   const goal = (r: AllocationRow) => Math.max(1e-9, (r.targetWeight / sum) * newTotal);
-  const need = (r: AllocationRow, bought: number) => goal(r) - (r.valueKrw + bought);
+  const need = (r: AllocationRow, bought: number) => goal(r) - (valueOf(r) + bought);
   for (let guard = 0; guard < 100_000; guard++) {
     const cashNeed = cashRow ? need(cashRow, leftover) : 0;
     let pick: AllocationRow | null = null;
@@ -259,7 +269,7 @@ export function buyOnly(view: AllocationView, amountKrw: number): BuyPlan {
     trades.push(suggestion(view.target, cashRow, leftover));
     leftover = 0;
   }
-  return { trades: trades.filter((t) => t.amountKrw >= 0.5), leftoverKrw: leftover };
+  return { trades: trades.filter((t) => t.amountKrw >= 0.5), leftoverKrw: leftover, poolKrw: amountKrw, cashUsedKrw: cashUsed };
 }
 
 /** 사고팔아 정확히 맞추기: 종목별 목표 × 합계 − 평가금 (+ 사기, − 팔기), 매수 단위로 0 쪽 내림. */

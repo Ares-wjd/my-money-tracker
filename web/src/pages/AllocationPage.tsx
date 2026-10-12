@@ -13,6 +13,7 @@ const RINGS: readonly Ring[] = ['current', 'target', 'compare'];
 const RING_LABEL: { [r in Ring]: string } = { current: '실제', target: '목표', compare: '비교' };
 const SELECTED_KEY = 'allocation_selected';
 const RING_KEY = 'allocation_ring';
+const USE_CASH_KEY = 'allocation_use_cash';
 /** 색을 따로 주는 종목 수. 7번째부터는 "기타" 로 묶는다 (검증한 팔레트의 앞 6색). */
 const MAX_COLORS = 6;
 
@@ -186,6 +187,8 @@ export function AllocationPage() {
   const [ring, setRing] = useState<Ring>(() => (RINGS as readonly string[]).includes(read(RING_KEY) ?? '') ? (read(RING_KEY) as Ring) : 'compare');
   const [amountText, setAmountText] = useState('');
   const [showRebalance, setShowRebalance] = useState(false);
+  // 현재 예수금도 함께 쓰기 (기본 켬, 이 브라우저에 기억)
+  const [useCash, setUseCash] = useState(() => read(USE_CASH_KEY) !== 'off');
 
   const targets = data.allocationTargets;
   const selected = targets.find((t) => t.id === selectedId) ?? targets[0] ?? null;
@@ -195,7 +198,7 @@ export function AllocationPage() {
   };
   const view = selected ? allocationView(selected, data.summary.accounts, data.usdKrw) : null;
   const amount = parseDecimal(amountText) ?? 0;
-  const plan = view ? buyOnly(view, amount) : { trades: [], leftoverKrw: 0 };
+  const plan = view ? buyOnly(view, amount, useCash) : { trades: [], leftoverKrw: 0, poolKrw: 0, cashUsedKrw: 0 };
   const buys = plan.trades;
   const trades = view ? rebalance(view) : [];
 
@@ -293,7 +296,25 @@ export function AllocationPage() {
           <Card title="매수 계산기">
             <p className="muted small">넣을 돈을 입력하면, 팔지 않고 사기만 해서 목표에 가장 가까워지도록 종목별로 얼마를 살지 알려 드립니다. 매수 단위(1주 또는 금액 단위)에 맞춰 내림하고, 남은 돈은 가장 부족한 종목부터 더 삽니다. 계좌에 없는 종목은 현재가를 넣어야 주 수가 나옵니다.</p>
             <WonField label="이번에 넣을 돈" value={amountText} onChange={setAmountText} preview={manwon} quick />
-            {amount > 0 && buys.length === 0 && <p className="muted small">목표 비중이 있는 종목이 없습니다.</p>}
+            {view.cashKrw > 0 && (
+              <label className="check small">
+                <input
+                  type="checkbox"
+                  checked={useCash}
+                  onChange={(e) => {
+                    setUseCash(e.target.checked);
+                    write(USE_CASH_KEY, e.target.checked ? 'on' : 'off');
+                  }}
+                />
+                현재 예수금도 함께 쓰기 ({won(view.cashKrw)})
+              </label>
+            )}
+            {plan.poolKrw > 0 && plan.cashUsedKrw > 0 && (
+              <p className="muted small">
+                사용할 돈: 넣을 돈 {won(amount)} + 예수금 {won(plan.cashUsedKrw)} = <strong>{won(plan.poolKrw)}</strong>
+              </p>
+            )}
+            {plan.poolKrw > 0 && buys.length === 0 && <p className="muted small">목표 비중이 있는 종목이 없습니다.</p>}
             {buys.map((s) => (
               <div key={s.row.key} className="row">
                 <span>{s.row.isCash ? '예수금으로 남김' : s.row.name}</span>
@@ -303,7 +324,7 @@ export function AllocationPage() {
             {selected.noBuy.length > 0 && (
               <p className="muted small">지금 매수 안 함: {selected.noBuy.map((k) => view.rows.find((r) => r.key === k)?.name ?? excludedName(k, data.holdings)).join(', ')}</p>
             )}
-            {amount > 0 && plan.leftoverKrw >= 1 && (
+            {plan.poolKrw > 0 && plan.leftoverKrw >= 1 && (
               <div className="row muted">
                 <span>남는 돈 (매수 단위 때문에)</span>
                 <span>{won(plan.leftoverKrw)}</span>

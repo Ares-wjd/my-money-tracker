@@ -185,4 +185,21 @@ describe('비중 (AllocationTest)', () => {
     expect(plan.leftoverKrw).toBeLessThan(7);
     expect(plan.trades.reduce((s, x) => s + x.amountKrw, 0) + plan.leftoverKrw).toBeCloseTo(1000, 6);
   });
+
+  it('현재 예수금도 함께 쓰기', () => {
+    const t = { ...target, includeCash: false, targets: { 'KR:360750': 60, 'KR:AAA': 40 }, units: { 'KR:360750': 1, 'KR:AAA': 1 } };
+    const view = allocationView(t, accounts, null);
+    expect(view.cashKrw).toBe(500);
+    const plan = buyOnly(view, 0, true);
+    expect(plan.poolKrw).toBe(500);
+    expect(plan.cashUsedKrw).toBe(500);
+    expect(plan.leftoverKrw).toBeLessThan(1);
+    expect(plan.trades.reduce((s, x) => s + x.amountKrw, 0) + plan.leftoverKrw).toBeCloseTo(500, 6);
+    expect(buyOnly(view, 0, false).trades.length).toBe(0);
+
+    const withCash = allocationView({ ...target, units: { 'KR:AAA': 0.01 } }, accounts, null);
+    const p2 = byKey(buyOnly(withCash, 0, true).trades.map((s) => ({ ...s, key: s.row.key })));
+    expect(Math.abs(p2.get('KR:AAA')!.amountKrw - (500 * 250) / 750)).toBeLessThan(0.02);
+    expect(p2.get('CASH')!.amountKrw).toBeCloseTo(500 - p2.get('KR:AAA')!.amountKrw, 6);
+  });
 });

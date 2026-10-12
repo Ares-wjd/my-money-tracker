@@ -66,6 +66,8 @@ data class AllocationView(
     val totalKrw: Double,
     /** 현재가가 없어 평가금에서 빠진 종목이 있는지. */
     val missingPrice: Boolean,
+    /** 대상 계좌들의 현재 예수금 (원화, 달러는 환율로). 비중에 넣지 않아도 계산기에서 쓸 수 있다. */
+    val cashKrw: Double = 0.0,
 ) {
     /** 강조할 줄: |차이| 가 기준 이상. */
     fun highlighted(row: AllocationRow): Boolean = abs(row.diffPoints) >= target.threshold - 1e-9 && target.threshold > 0
@@ -77,8 +79,8 @@ data class AllocationView(
  */
 data class TradeSuggestion(val row: AllocationRow, val amountKrw: Double, val shares: Double?, val fractional: Boolean = false)
 
-/** 매수 계산기 결과: 종목별 살 금액과 단위 때문에 남는 돈. */
-data class BuyPlan(val trades: List<TradeSuggestion>, val leftoverKrw: Double)
+/** 매수 계산기 결과: 종목별 살 금액, 단위 때문에 남는 돈, 계산에 쓴 돈(넣을 돈 + 쓴 예수금)과 그중 예수금. */
+data class BuyPlan(val trades: List<TradeSuggestion>, val leftoverKrw: Double, val poolKrw: Double = 0.0, val cashUsedKrw: Double = 0.0)
 
 object AllocationCalculator {
     const val CASH = "CASH"
@@ -156,7 +158,7 @@ object AllocationCalculator {
                 targetWeight = (target.targets[r.key] ?: 0.0) / 100,
             )
         }.sortedWith(compareByDescending<AllocationRow> { it.targetWeight }.thenByDescending { it.valueKrw })
-        return AllocationView(target, rows, total, missingPrice)
+        return AllocationView(target, rows, total, missingPrice, included.sumOf { it.cash.toKrw(usdKrw) })
     }
 
     /** 종목의 매수 단위(원): 금액 단위가 있으면 그 금액, 없으면 1주 가격, 가격을 모르면 null (내림하지 않음). */
@@ -179,15 +181,21 @@ object AllocationCalculator {
      * 그다음 종목별 매수 단위로 내림하고, 남은 돈으로 목표보다 가장 많이 부족한 종목부터 한 단위씩 더 산다
      * (목표와의 차이 합이 줄어들 때만 — 예수금 목표가 있으면 예수금 차이도 함께).
      */
-    fun buyOnly(view: AllocationView, amountKrw: Double): BuyPlan {
+    fun buyOnly(view: AllocationView, inputKrw: Double, useCash: Boolean = false): BuyPlan {
+        // 현재 예수금도 쓰면: 계산에 쓰는 돈 = 넣을 돈 + 예수금, 예수금 줄의 지금 값은 0 으로 (모두 매수에 쓸 돈으로 옮김)
+        val cashUsed = if (useCash) max(0.0, view.cashKrw) else 0.0
+        val amountKrw = max(0.0, inputKrw) + cashUsed
+        val cashInTotal = view.rows.any { it.isCash }
+        fun valueOf(r: AllocationRow) = if (r.isCash && useCash) 0.0 else r.valueKrw
         if (amountKrw <= 0) return BuyPlan(emptyList(), 0.0)
         // 목표 합계는 "지금 매수 안 함" 종목까지 포함한 원래 목표 기준 (나머지 종목의 목표를 부풀리지 않는다)
         val targetSum = view.rows.sumOf { it.targetWeight }
         val rows = view.rows.filter { it.targetWeight > 0 && it.key !in view.target.noBuy }
         val buySum = rows.sumOf { it.targetWeight }
-        if (rows.isEmpty() || targetSum <= 0 || buySum <= 0) return BuyPlan(emptyList(), amountKrw)
-        val newTotal = view.totalKrw + amountKrw
-        val deficits = rows.associateWith { max(0.0, it.targetWeight / targetSum * newTotal - it.valueKrw) }
+        if (rows.isEmpty() || targetSum <= 0 || buySum <= 0) return BuyPlan(emptyList(), amountKrw, amountKrw, cashUsed)
+        // 예수금이 이미 합계에 들어 있으면(비중에 포함) 옮겨도 합계는 그대로, 아니면 쓰는 예수금만큼 늘어난다
+        val newTotal = view.totalKrw + max(0.0, inputKrw) + if (cashInTotal) 0.0 else cashUsed
+        val deficits = rows.associateWith { max(0.0, it.targetWeight / targetSum * newTotal - valueOf(it)) }
         val deficitSum = deficits.values.sum()
         val ideal = if (deficitSum >= amountKrw && deficitSum > 0) {
             rows.associateWith { deficits.getValue(it) / deficitSum * amountKrw }
@@ -209,7 +217,7 @@ object AllocationCalculator {
         // 예수금 목표가 있으면 남은 돈은 예수금이 되므로 예수금의 목표 차이도 함께 따진다.
         val cashRow = rows.firstOrNull { it.isCash }
         fun goal(r: AllocationRow) = max(1e-9, r.targetWeight / targetSum * newTotal)
-        fun need(r: AllocationRow, bought: Double) = goal(r) - (r.valueKrw + bought)
+        fun need(r: AllocationRow, bought: Double) = goal(r) - (valueOf(r) + bought)
         var guard = 0
         while (guard++ < 100_000) {
             val cashNeed = cashRow?.let { need(it, leftover) } ?: 0.0
@@ -242,7 +250,7 @@ object AllocationCalculator {
             trades += suggestion(view.target, cashRow, leftover)
             leftover = 0.0
         }
-        return BuyPlan(trades.filter { it.amountKrw >= 0.5 }, leftover)
+        return BuyPlan(trades.filter { it.amountKrw >= 0.5 }, leftover, amountKrw, cashUsed)
     }
 
     /** 사고팔아 정확히 맞추기: 종목별 목표 × 합계 − 평가금 (+ 사기, − 팔기), 매수 단위로 0 쪽 내림. */
