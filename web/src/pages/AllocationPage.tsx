@@ -5,7 +5,7 @@ import { allocationView, buyOnly, isHighlighted, keyOf, rebalance, type Allocati
 import { decimal, manwon, parseDecimal, usd, won } from '../core/format';
 import { useAppData } from '../data/DataContext';
 import { AllocationForm } from '../forms/AllocationForm';
-import { marketCurrency, type Holding } from '../model';
+import type { Holding } from '../model';
 import type { AllocationTarget } from '../core/allocation';
 
 type Ring = 'current' | 'target' | 'compare';
@@ -165,9 +165,8 @@ function excludedName(key: string, holdings: readonly Holding[]): string {
 }
 
 function tradeText(s: TradeSuggestion, usdKrw: number | null): string {
-  const h = s.row.holding;
   const parts = [won(Math.abs(s.amountKrw))];
-  if (h && marketCurrency(h.market) === 'USD' && usdKrw) parts.push(usd(Math.abs(s.amountKrw) / usdKrw));
+  if (s.row.isForeign && usdKrw) parts.push(usd(Math.abs(s.amountKrw) / usdKrw));
   if (s.shares !== null) parts.push(`약 ${decimal(s.shares, 0)}주`);
   return parts.join(' · ');
 }
@@ -276,7 +275,7 @@ export function AllocationPage() {
           </Card>
 
           <Card title="매수 계산기">
-            <p className="muted small">넣을 돈을 입력하면, 팔지 않고 사기만 해서 목표에 가장 가까워지도록 종목별로 얼마를 살지 알려 드립니다.</p>
+            <p className="muted small">넣을 돈을 입력하면, 팔지 않고 사기만 해서 목표에 가장 가까워지도록 종목별로 얼마를 살지 알려 드립니다. 계좌에 없는 종목은 현재가가 없어 주 수는 나오지 않습니다.</p>
             <WonField label="이번에 넣을 돈" value={amountText} onChange={setAmountText} preview={manwon} quick />
             {amount > 0 && buys.length === 0 && <p className="muted small">목표 비중이 있는 종목이 없습니다.</p>}
             {buys.map((s) => (

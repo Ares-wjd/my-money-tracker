@@ -60,7 +60,6 @@ import com.mymoneytracker.app.ui.common.SegmentedPills
 import com.mymoneytracker.app.ui.common.TickerBadge
 import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.core.MoneyFormat
-import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.portfolio.AllocationCalculator
 import com.mymoneytracker.core.portfolio.AllocationRow
 import com.mymoneytracker.core.portfolio.AllocationView
@@ -221,7 +220,7 @@ private fun AllocationContent(
         item {
             SectionCard(title = "매수 계산기") {
                 Text(
-                    "넣을 돈을 입력하면, 팔지 않고 사기만 해서 목표에 가장 가까워지도록 종목별로 얼마를 살지 알려 드립니다.",
+                    "넣을 돈을 입력하면, 팔지 않고 사기만 해서 목표에 가장 가까워지도록 종목별로 얼마를 살지 알려 드립니다. 계좌에 없는 종목은 현재가가 없어 주 수는 나오지 않습니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -272,8 +271,7 @@ private fun TableRow(row: AllocationRow, highlighted: Boolean) {
 @Composable
 private fun TradeLine(s: TradeSuggestion, usdKrw: Double?, prefix: String) {
     val parts = mutableListOf(MoneyFormat.won(kotlin.math.abs(s.amountKrw)))
-    val h = s.row.holding
-    if (h != null && h.currency == Currency.USD && usdKrw != null && usdKrw > 0) parts += MoneyFormat.usd(kotlin.math.abs(s.amountKrw) / usdKrw)
+    if (s.row.isForeign && usdKrw != null && usdKrw > 0) parts += MoneyFormat.usd(kotlin.math.abs(s.amountKrw) / usdKrw)
     s.shares?.let { parts += "약 ${MoneyFormat.decimal(it, 0)}주" }
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(s.row.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)

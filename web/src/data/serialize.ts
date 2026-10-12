@@ -102,5 +102,6 @@ export function allocationTargetDoc(t: AllocationTarget) {
     threshold: t.threshold,
     createdAt: createdAt(t.createdAt),
     excluded: t.excluded,
+    names: t.names,
   };
 }

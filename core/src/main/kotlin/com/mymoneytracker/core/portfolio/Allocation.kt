@@ -23,6 +23,8 @@ data class AllocationTarget(
     val createdAt: Long = 0L,
     /** 비중 계산에서 뺄 종목 키 (대상 계좌에 있어도 계산하지 않는다). */
     val excluded: List<String> = emptyList(),
+    /** 계좌에 없는(아직 안 산) 종목을 직접 추가할 때의 이름: 종목 키 → 이름. */
+    val names: Map<String, String> = emptyMap(),
 ) {
     val targetSum: Double get() = targets.filterKeys { includeCash || it != AllocationCalculator.CASH }.values.sum()
 }
@@ -45,6 +47,9 @@ data class AllocationRow(
     /** 실제 − 목표 (%p). */
     val diffPoints: Double get() = (currentWeight - targetWeight) * 100
     val isCash: Boolean get() = key == AllocationCalculator.CASH
+
+    /** 해외 종목인지 (계산기에서 달러 금액도 보여줄지). */
+    val isForeign: Boolean get() = holding?.currency == Currency.USD || key.startsWith(AllocationCalculator.US_PREFIX)
 }
 
 data class AllocationView(
@@ -67,10 +72,21 @@ data class TradeSuggestion(val row: AllocationRow, val amountKrw: Double) {
 
 object AllocationCalculator {
     const val CASH = "CASH"
+    const val KR_PREFIX = "KR:"
+    const val US_PREFIX = "US:"
 
-    /** 종목 키: 같은 종목이 여러 계좌에 있어도 같은 키 (시장:코드). 코드가 없는 펀드·채권은 종목 하나로. */
-    fun keyOf(holding: Holding): String =
-        if (holding.code.isBlank()) "id:${holding.id}" else "${holding.market.name}:${holding.code.trim().uppercase()}"
+    /**
+     * 종목 키: 같은 종목이 여러 계좌에 있어도 같은 키. 국내 "KR:코드", 해외 "US:티커" (거래소는 구분하지 않는다 —
+     * 직접 추가한 종목과 나중에 계좌에 추가한 종목이 거래소 선택과 상관없이 연결되도록). 코드가 없는 펀드·채권은 종목 하나로.
+     */
+    fun keyOf(holding: Holding): String = when {
+        holding.code.isBlank() -> "id:${holding.id}"
+        else -> manualKey(holding.currency == Currency.USD, holding.code)
+    }
+
+    /** 직접 추가하는 종목의 키 (keyOf 와 같은 규칙). */
+    fun manualKey(foreign: Boolean, code: String): String =
+        (if (foreign) US_PREFIX else KR_PREFIX) + code.trim().uppercase()
 
     /** 대상 계좌들의 종목을 합쳐 실제·목표 비중을 계산한다. */
     fun view(target: AllocationTarget, accounts: List<AccountSummary>, usdKrw: Double?): AllocationView {
@@ -99,7 +115,7 @@ object AllocationCalculator {
         }
         // 목표에는 있는데 대상 계좌에 종목이 없는 키 (종목을 지웠거나 계좌를 뺐을 때)
         target.targets.filter { (k, v) -> v > 0 && k != CASH && k !in target.excluded && raws.none { it.key == k } }.forEach { (k, _) ->
-            raws += Raw(k, k.substringAfter(':'), null, 0.0, 0.0, null, null)
+            raws += Raw(k, target.names[k]?.ifBlank { null } ?: k.substringAfter(':'), null, 0.0, 0.0, null, null)
         }
 
         val total = raws.sumOf { it.value }

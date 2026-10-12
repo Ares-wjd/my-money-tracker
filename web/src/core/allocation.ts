@@ -19,6 +19,8 @@ export interface AllocationTarget {
   createdAt: number;
   /** 비중 계산에서 뺄 종목 키 */
   excluded: string[];
+  /** 계좌에 없는(아직 안 산) 종목을 직접 추가할 때의 이름: 종목 키 → 이름 */
+  names: { [key: string]: string };
 }
 
 /** 비중 표의 한 줄 (종목 하나 또는 예수금). 비중은 0~1. */
@@ -38,6 +40,8 @@ export interface AllocationRow {
   /** 실제 − 목표 (%p) */
   diffPoints: number;
   isCash: boolean;
+  /** 해외 종목인지 (계산기에서 달러 금액도 보여줄지) */
+  isForeign: boolean;
 }
 
 export interface AllocationView {
@@ -63,9 +67,20 @@ export function targetSum(t: AllocationTarget): number {
     .reduce((s, [, v]) => s + v, 0);
 }
 
-/** 종목 키: 같은 종목이 여러 계좌에 있어도 같은 키. 코드가 없는 펀드·채권은 종목 하나로. */
+export const KR_PREFIX = 'KR:';
+export const US_PREFIX = 'US:';
+
+/** 직접 추가하는 종목의 키 (keyOf 와 같은 규칙). */
+export function manualKey(foreign: boolean, code: string): string {
+  return (foreign ? US_PREFIX : KR_PREFIX) + code.trim().toUpperCase();
+}
+
+/**
+ * 종목 키: 같은 종목이 여러 계좌에 있어도 같은 키. 국내 "KR:코드", 해외 "US:티커" (거래소는 구분하지 않는다 —
+ * 직접 추가한 종목과 나중에 계좌에 추가한 종목이 연결되도록). 코드가 없는 펀드·채권은 종목 하나로.
+ */
 export function keyOf(h: Holding): string {
-  return h.code.trim() === '' ? `id:${h.id}` : `${h.market}:${h.code.trim().toUpperCase()}`;
+  return h.code.trim() === '' ? `id:${h.id}` : manualKey(marketCurrency(h.market) === 'USD', h.code);
 }
 
 /** 강조할 줄: |차이| 가 기준 이상. */
@@ -105,7 +120,8 @@ export function allocationView(target: AllocationTarget, accounts: readonly Acco
   // 목표에는 있는데 대상 계좌에 종목이 없는 키 (종목을 지웠거나 계좌를 뺐을 때)
   for (const [k, v] of Object.entries(target.targets)) {
     if (v > 0 && k !== CASH_KEY && !excluded.has(k) && !raws.some((r) => r.key === k)) {
-      raws.push({ key: k, name: k.includes(':') ? k.slice(k.indexOf(':') + 1) : k, holding: null, qty: 0, value: 0, priceKrw: null, priceLocal: null });
+      const fallback = k.includes(':') ? k.slice(k.indexOf(':') + 1) : k;
+      raws.push({ key: k, name: target.names[k]?.trim() || fallback, holding: null, qty: 0, value: 0, priceKrw: null, priceLocal: null });
     }
   }
   const total = raws.reduce((s, r) => s + r.value, 0);
@@ -116,6 +132,7 @@ export function allocationView(target: AllocationTarget, accounts: readonly Acco
       return {
         key: r.key, name: r.name, holding: r.holding, quantity: r.qty, valueKrw: r.value, priceKrw: r.priceKrw, priceLocal: r.priceLocal,
         currentWeight, targetWeight, diffPoints: (currentWeight - targetWeight) * 100, isCash: r.key === CASH_KEY,
+        isForeign: (r.holding !== null && marketCurrency(r.holding.market) === 'USD') || r.key.startsWith(US_PREFIX),
       };
     })
     .sort((a, b) => b.targetWeight - a.targetWeight || b.valueKrw - a.valueKrw);

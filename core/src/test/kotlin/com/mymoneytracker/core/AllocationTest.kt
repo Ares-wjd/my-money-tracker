@@ -114,4 +114,33 @@ class AllocationTest {
         assertEquals(0.75, view.rows.first().currentWeight, 1e-9)
         assertFalse(AllocationCalculator.buyOnly(view, 1000.0).any { it.row.key == "KR:AAA" })
     }
+
+    @Test
+    fun manualHoldingNotInAccount() {
+        // 계좌에 없는 종목을 직접 추가: 실제 0%, 계산기 금액은 있지만 주 수는 없음
+        val key = AllocationCalculator.manualKey(foreign = true, code = "qqqm")
+        assertEquals("US:QQQM", key)
+        val view = AllocationCalculator.view(
+            target.copy(targets = mapOf("KR:360750" to 50.0, "KR:AAA" to 30.0, key to 20.0), includeCash = false, names = mapOf(key to "Invesco QQQM")),
+            summary.accounts,
+            null,
+        )
+        val q = view.rows.first { it.key == key }
+        assertEquals("Invesco QQQM", q.name)
+        assertEquals(0.0, q.currentWeight, 1e-9)
+        assertTrue(q.isForeign)
+        val buy = AllocationCalculator.buyOnly(view, 1000.0).first { it.row.key == key }
+        assertTrue(buy.amountKrw > 0)
+        assertEquals(null, buy.shares)
+    }
+
+    @Test
+    fun foreignKeyIgnoresExchange() {
+        val nyse = Holding(id = "x", accountId = "a", name = "VOO", code = "voo", market = Market.NYSE)
+        val other = Holding(id = "y", accountId = "b", name = "VOO", code = "VOO", market = Market.US_OTHER)
+        assertEquals("US:VOO", AllocationCalculator.keyOf(nyse))
+        assertEquals(AllocationCalculator.keyOf(nyse), AllocationCalculator.keyOf(other))
+        assertEquals("KR:360750", AllocationCalculator.keyOf(sp1))
+        assertEquals("id:f", AllocationCalculator.keyOf(Holding(id = "f", accountId = "a", name = "펀드", market = Market.KR)))
+    }
 }

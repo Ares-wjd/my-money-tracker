@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FormActions, Modal, NumberField, TextField } from '../components/form';
-import { CASH_KEY, keyOf, type AllocationTarget } from '../core/allocation';
+import { CASH_KEY, keyOf, manualKey, type AllocationTarget } from '../core/allocation';
 import { decimal, parseDecimal } from '../core/format';
 import { useAppData, useData } from '../data/DataContext';
 import { deleteAllocationTarget, saveAllocationTarget } from '../data/writes';
@@ -14,6 +14,12 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
   const [includeCash, setIncludeCash] = useState(existing?.includeCash ?? false);
   const [thresholdText, setThresholdText] = useState(existing ? decimal(existing.threshold, 2).replace(/,/g, '') : '3');
   const [excluded, setExcluded] = useState<string[]>(existing?.excluded ?? []);
+  // 계좌에 없는(아직 안 산) 종목: 종목 키 → 이름
+  const [manual, setManual] = useState<{ [key: string]: string }>(existing?.names ?? {});
+  const [adding, setAdding] = useState(false);
+  const [addForeign, setAddForeign] = useState(true);
+  const [addCode, setAddCode] = useState('');
+  const [addName, setAddName] = useState('');
   const [texts, setTexts] = useState<{ [key: string]: string }>(() =>
     Object.fromEntries(Object.entries(existing?.targets ?? {}).map(([k, v]) => [k, decimal(v, 2).replace(/,/g, '')])),
   );
@@ -23,7 +29,9 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
   for (const h of data.holdings.filter((h) => accountIds.includes(h.accountId))) {
     if (!items.has(keyOf(h))) items.set(keyOf(h), h.name);
   }
-  // 이미 목표가 있는데 대상 계좌에 없는 종목(지웠거나 계좌를 뺐을 때)도 남겨 둔다
+  const held = new Set(items.keys());
+  // 직접 추가한 종목, 그리고 이미 목표가 있는데 대상 계좌에 없는 종목(지웠거나 계좌를 뺐을 때)도 남겨 둔다
+  for (const [k, n] of Object.entries(manual)) if (!items.has(k)) items.set(k, n);
   for (const k of Object.keys(existing?.targets ?? {})) {
     if (k !== CASH_KEY && !items.has(k)) items.set(k, k.includes(':') ? k.slice(k.indexOf(':') + 1) : k);
   }
@@ -44,6 +52,24 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
             : threshold === null || threshold < 0 || threshold > 100 ? '강조 기준은 0~100%p 로 입력하세요.'
               : null;
 
+  const addKey = addCode.trim() === '' ? null : manualKey(addForeign, addCode);
+  const addProblem = addKey === null ? null : items.has(addKey) || addKey === CASH_KEY ? '이미 목록에 있는 종목입니다.' : null;
+  const addManual = () => {
+    if (addKey === null || addProblem) return;
+    setManual({ ...manual, [addKey]: addName.trim() || addCode.trim().toUpperCase() });
+    setAddCode('');
+    setAddName('');
+    setAdding(false);
+  };
+  const removeManual = (k: string) => {
+    const nextManual = { ...manual };
+    delete nextManual[k];
+    const nextTexts = { ...texts };
+    delete nextTexts[k];
+    setManual(nextManual);
+    setTexts(nextTexts);
+  };
+
   const toggleAccount = (id: string) =>
     setAccountIds(accountIds.includes(id) ? accountIds.filter((x) => x !== id) : [...accountIds, id]);
 
@@ -53,7 +79,9 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
     const id = await saveAllocationTarget(uid, {
       id: existing?.id ?? '', name: name.trim(), accountIds, targets, includeCash, threshold: threshold ?? 3, createdAt: existing?.createdAt ?? 0,
       // 지금 대상 계좌에 있는 종목만 제외 목록에 남긴다
-      excluded: excluded.filter((k) => items.has(k)),
+      excluded: excluded.filter((k) => held.has(k)),
+      // 직접 추가한 이름은 아직 계좌에 없는 종목만 (사서 계좌에 생기면 종목 이름을 쓴다)
+      names: Object.fromEntries(Object.entries(manual).filter(([k]) => !held.has(k))),
     });
     onSaved?.(id);
   };
@@ -78,7 +106,7 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
       <NumberField label="차이 강조 기준 (%p)" value={thresholdText} onChange={setThresholdText} preview={(n) => `목표와 ±${decimal(n, 2)}%p 이상 차이 나면 강조`} />
       <div className="field">
         <span className="field-label">목표 비중 (%)</span>
-        <span className="field-hint">아직 안 산 종목은 계좌에서 종목을 먼저 추가하면 여기에 나옵니다 (0주여도 됩니다). 비중에서 뺄 종목은 [제외]를 고르세요.</span>
+        <span className="field-hint">아직 안 산 종목은 아래 [+ 계좌에 없는 종목 직접 추가]로 넣을 수 있습니다 (나중에 사면 자동으로 연결). 비중에서 뺄 종목은 [제외]를 고르세요.</span>
         {keys.map((k) => {
           const label = k === CASH_KEY ? '예수금' : items.get(k);
           const off = isExcluded(k);
@@ -87,6 +115,7 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
               <span>
                 {label} <span className="muted small">{k === CASH_KEY ? '' : k.replace(/^id:.*/, '')}</span>
                 {off && <span className="muted small"> · 제외</span>}
+                {!held.has(k) && k !== CASH_KEY && <span className="muted small"> · 미보유</span>}
               </span>
               <span className="target-inputs">
                 {off ? (
@@ -100,7 +129,10 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
                     onChange={(e) => setTexts({ ...texts, [k]: e.target.value.replace(/[^0-9.]/g, '').slice(0, 6) })}
                   />
                 )}
-                {k !== CASH_KEY && (
+                {k !== CASH_KEY && !held.has(k) && (
+                  <button type="button" className="icon-button" aria-label={`${label} 빼기`} onClick={() => removeManual(k)}>✕</button>
+                )}
+                {k !== CASH_KEY && held.has(k) && (
                   <label className="check small">
                     <input type="checkbox" checked={off} onChange={() => setExcluded(off ? excluded.filter((x) => x !== k) : [...excluded, k])} />
                     제외
@@ -110,6 +142,29 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
             </div>
           );
         })}
+        {adding ? (
+          <div className="sub-card">
+            <div className="choices" role="radiogroup" aria-label="시장">
+              {[true, false].map((f) => (
+                <button type="button" key={String(f)} role="radio" aria-checked={addForeign === f} className={addForeign === f ? 'choice on' : 'choice'} onClick={() => setAddForeign(f)}>
+                  {addForeign === f && <span aria-hidden="true">✓ </span>}
+                  {f ? '해외' : '국내'}
+                </button>
+              ))}
+            </div>
+            <div className="field-row">
+              <TextField label="종목코드" placeholder={addForeign ? '예: QQQM' : '예: 005930'} value={addCode} onChange={(v) => setAddCode(v.replace(/[^0-9A-Za-z.\-]/g, '').slice(0, 20))} />
+              <TextField label="종목 이름" placeholder={addForeign ? '예: Invesco QQQM' : '예: 삼성전자'} value={addName} onChange={setAddName} maxLength={60} />
+            </div>
+            {addProblem && <p className="warning">{addProblem}</p>}
+            <div className="confirm-buttons">
+              <button type="button" onClick={() => setAdding(false)}>취소</button>
+              <button type="button" className="primary" disabled={addKey === null || !!addProblem} onClick={addManual}>추가</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="text-button align-start" onClick={() => setAdding(true)}>+ 계좌에 없는 종목 직접 추가</button>
+        )}
         {keys.length > 0 && (
           <span className={Math.abs(left) > 0.01 ? 'sum-line bad' : 'sum-line'}>
             합계 {decimal(sum, 2)}%{Math.abs(left) > 0.01 ? (left > 0 ? ` · ${decimal(left, 2)}% 남음` : ` · ${decimal(-left, 2)}% 넘음`) : ' ✓'}

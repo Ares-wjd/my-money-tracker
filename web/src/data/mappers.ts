@@ -205,5 +205,8 @@ export function toAllocationTarget(id: string, d: Data): AllocationTarget | null
     threshold: num(d.threshold) ?? 3,
     createdAt: num(d.createdAt) ?? 0,
     excluded: Array.isArray(d.excluded) ? d.excluded.filter((x): x is string => typeof x === 'string') : [],
+    names: d.names && typeof d.names === 'object' && !Array.isArray(d.names)
+      ? Object.fromEntries(Object.entries(d.names as Data).filter((e): e is [string, string] => typeof e[1] === 'string'))
+      : {},
   };
 }

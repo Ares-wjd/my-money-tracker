@@ -12,7 +12,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -39,7 +42,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.common.AppFilterChip
 import com.mymoneytracker.app.ui.common.ConfirmDialog
+import com.mymoneytracker.app.ui.common.appCardColors
 import com.mymoneytracker.app.ui.common.DeleteButton
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.NumberField
@@ -118,12 +123,20 @@ private fun AllocationForm(
         }
     }
     val excluded = remember { mutableStateListOf<String>().apply { addAll(initial?.excluded.orEmpty()) } }
+    // 계좌에 없는(아직 안 산) 종목: 종목 키 → 이름
+    val manual = remember { mutableStateMapOf<String, String>().apply { putAll(initial?.names.orEmpty()) } }
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var addForeign by rememberSaveable { mutableStateOf(true) }
+    var addCode by rememberSaveable { mutableStateOf("") }
+    var addName by rememberSaveable { mutableStateOf("") }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
     // 대상 계좌의 종목 (같은 종목은 하나로, 0주 포함 — 아직 안 산 종목도 목표에 넣을 수 있게)
     val items = linkedMapOf<String, String>()
     holdings.filter { it.accountId in accountIds }.forEach { h -> items.putIfAbsent(AllocationCalculator.keyOf(h), h.name) }
-    // 이미 목표가 있는데 대상 계좌에 없는 종목(지웠거나 계좌를 뺐을 때)도 남겨 둔다
+    val held = items.keys.toSet()
+    // 직접 추가한 종목, 그리고 이미 목표가 있는데 대상 계좌에 없는 종목(지웠거나 계좌를 뺐을 때)도 남겨 둔다
+    manual.forEach { (k, n) -> items.putIfAbsent(k, n) }
     initial?.targets?.keys?.filter { it != AllocationCalculator.CASH && it !in items }?.forEach { items[it] = it.substringAfter(':') }
     val keys = items.keys.toList() + if (includeCash) listOf(AllocationCalculator.CASH) else emptyList()
     // 제외한 종목은 목표 % 를 받지 않고 계산에서 뺀다
@@ -167,7 +180,7 @@ private fun AllocationForm(
         )
         Text("목표 비중 (%)", style = MaterialTheme.typography.titleMedium)
         Text(
-            "아직 안 산 종목은 계좌에서 종목을 먼저 추가하면 여기에 나옵니다 (0주여도 됩니다). 비중에서 뺄 종목은 [제외]를 고르세요.",
+            "아직 안 산 종목은 아래 [+ 계좌에 없는 종목 직접 추가]로 넣을 수 있습니다 (나중에 사면 자동으로 연결). 비중에서 뺄 종목은 [제외]를 고르세요.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -176,7 +189,8 @@ private fun AllocationForm(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        (if (k == AllocationCalculator.CASH) "예수금" else items[k].orEmpty()) + if (off) " (제외)" else "",
+                        (if (k == AllocationCalculator.CASH) "예수금" else items[k].orEmpty()) +
+                            if (off) " (제외)" else if (k != AllocationCalculator.CASH && k !in held) " (미보유)" else "",
                         style = MaterialTheme.typography.bodyLarge,
                         color = if (off) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     )
@@ -196,7 +210,13 @@ private fun AllocationForm(
                         modifier = Modifier.width(100.dp),
                     )
                 }
-                if (k != AllocationCalculator.CASH) {
+                if (k != AllocationCalculator.CASH && k !in held) {
+                    IconButton(onClick = {
+                        manual.remove(k)
+                        texts.remove(k)
+                    }) { Icon(Icons.Filled.Close, contentDescription = "${items[k]} 빼기") }
+                }
+                if (k != AllocationCalculator.CASH && k in held) {
                     Row(
                         Modifier.clickable { if (off) excluded.remove(k) else excluded.add(k) },
                         verticalAlignment = Alignment.CenterVertically,
@@ -206,6 +226,44 @@ private fun AllocationForm(
                     }
                 }
             }
+        }
+        if (adding) {
+            val addKey = addCode.trim().takeIf { it.isNotEmpty() }?.let { AllocationCalculator.manualKey(addForeign, it) }
+            val addProblem = if (addKey != null && (addKey in items || addKey == AllocationCalculator.CASH)) "이미 목록에 있는 종목입니다." else null
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = appCardColors()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("계좌에 없는 종목 직접 추가", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppFilterChip(selected = addForeign, label = "해외", onClick = { addForeign = true })
+                        AppFilterChip(selected = !addForeign, label = "국내", onClick = { addForeign = false })
+                    }
+                    OutlinedTextField(
+                        value = addCode,
+                        onValueChange = { v -> addCode = v.filter { it.isLetterOrDigit() || it == '.' || it == '-' }.take(20) },
+                        label = { Text(if (addForeign) "종목코드 (예: QQQM)" else "종목코드 (예: 005930)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    TextInput(if (addForeign) "종목 이름 (예: Invesco QQQM)" else "종목 이름 (예: 삼성전자)", addName, { addName = it }, maxLength = 60)
+                    addProblem?.let { WarningText(it) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { adding = false }) { Text("취소") }
+                        TextButton(
+                            onClick = {
+                                if (addKey != null && addProblem == null) {
+                                    manual[addKey] = addName.trim().ifBlank { addCode.trim().uppercase() }
+                                    addCode = ""
+                                    addName = ""
+                                    adding = false
+                                }
+                            },
+                            enabled = addKey != null && addProblem == null,
+                        ) { Text("추가") }
+                    }
+                }
+            }
+        } else {
+            TextButton(onClick = { adding = true }) { Text("+ 계좌에 없는 종목 직접 추가") }
         }
         if (keys.isNotEmpty()) {
             val left = 100 - sum
@@ -233,7 +291,9 @@ private fun AllocationForm(
                         threshold = threshold ?: 3.0,
                         createdAt = initial?.createdAt ?: 0L,
                         // 지금 대상 계좌에 있는 종목만 제외 목록에 남긴다
-                        excluded = excluded.filter { it in items },
+                        excluded = excluded.filter { it in held },
+                        // 직접 추가한 이름은 아직 계좌에 없는 종목만 (사서 계좌에 생기면 종목 이름을 쓴다)
+                        names = manual.filterKeys { it !in held },
                     ),
                 )
             },

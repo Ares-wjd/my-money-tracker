@@ -1,6 +1,6 @@
 // core AllocationTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
-import { CASH_KEY, allocationView, buyOnly, isHighlighted, rebalance, type AllocationTarget } from './allocation';
+import { CASH_KEY, allocationView, buyOnly, isHighlighted, keyOf, manualKey, rebalance, type AllocationTarget } from './allocation';
 import { summarize } from './portfolio';
 import { account, holding, record } from './testData';
 
@@ -20,7 +20,7 @@ const records = [
 const accounts = summarize([isa, other], [sp1, bond, sp2, gold], records, null).accounts;
 const target: AllocationTarget = {
   id: '', name: '자산배분', accountIds: ['a', 'b'], targets: { 'KR:360750': 50, 'KR:AAA': 30, [CASH_KEY]: 20 },
-  includeCash: true, threshold: 3, createdAt: 0, excluded: [],
+  includeCash: true, threshold: 3, createdAt: 0, excluded: [], names: {},
 };
 const byKey = <T extends { key: string }>(rows: T[]) => new Map(rows.map((r) => [r.key, r]));
 
@@ -86,5 +86,31 @@ describe('비중 (AllocationTest)', () => {
     expect(view.rows.map((r) => r.key)).toEqual(['KR:360750', 'CASH']);
     expect(view.rows[0].currentWeight).toBeCloseTo(0.75, 9);
     expect(buyOnly(view, 1000).some((s) => s.row.key === 'KR:AAA')).toBe(false);
+  });
+
+  it('계좌에 없는 종목을 직접 추가', () => {
+    const key = manualKey(true, 'qqqm');
+    expect(key).toBe('US:QQQM');
+    const view = allocationView(
+      { ...target, targets: { 'KR:360750': 50, 'KR:AAA': 30, [key]: 20 }, includeCash: false, names: { [key]: 'Invesco QQQM' } },
+      accounts,
+      null,
+    );
+    const q = view.rows.find((r) => r.key === key)!;
+    expect(q.name).toBe('Invesco QQQM');
+    expect(q.currentWeight).toBe(0);
+    expect(q.isForeign).toBe(true);
+    const buy = buyOnly(view, 1000).find((s) => s.row.key === key)!;
+    expect(buy.amountKrw).toBeGreaterThan(0);
+    expect(buy.shares).toBeNull();
+  });
+
+  it('해외는 거래소와 상관없이 같은 키', () => {
+    const nyse = holding({ id: 'x', accountId: 'a', name: 'VOO', code: 'voo', market: 'NYSE' });
+    const other = holding({ id: 'y', accountId: 'b', name: 'VOO', code: 'VOO', market: 'US_OTHER' });
+    expect(keyOf(nyse)).toBe('US:VOO');
+    expect(keyOf(other)).toBe(keyOf(nyse));
+    expect(keyOf(sp1)).toBe('KR:360750');
+    expect(keyOf(holding({ id: 'f', accountId: 'a', name: '펀드' }))).toBe('id:f');
   });
 });

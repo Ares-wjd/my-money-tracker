@@ -67,6 +67,7 @@ class PortfolioRepository(
                 "includeCash" to target.includeCash,
                 "threshold" to target.threshold,
                 "excluded" to target.excluded,
+                "names" to target.names,
                 F_CREATED_AT to if (target.createdAt > 0) target.createdAt else System.currentTimeMillis(),
             ),
         ).logFailure("비중 설정 저장")
@@ -256,6 +257,11 @@ class PortfolioRepository(
             threshold = getDouble("threshold") ?: 3.0,
             createdAt = getLong(F_CREATED_AT) ?: 0L,
             excluded = (get("excluded") as? List<*>)?.filterIsInstance<String>().orEmpty(),
+            names = (get("names") as? Map<*, *>)?.mapNotNull { (k, v) ->
+                val key = k as? String ?: return@mapNotNull null
+                val value = v as? String ?: return@mapNotNull null
+                key to value
+            }?.toMap().orEmpty(),
         )
     }
 
