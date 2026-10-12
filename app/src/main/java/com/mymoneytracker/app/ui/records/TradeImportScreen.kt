@@ -8,6 +8,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -56,6 +58,7 @@ import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.TopBarTitle
 import com.mymoneytracker.app.ui.common.WarningText
+import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.RecordType
@@ -76,7 +79,7 @@ private val GridSaver = Saver<List<List<String>>, String>(
  * 표로 일괄 입력 (매수·매도): 빈 표에 엑셀·구글시트에서 복사한 칸을 붙여 넣으면, 고른 칸부터 오른쪽·아래로 채운다.
  * 줄마다 인식 결과를 보여주고, [저장]을 누르면 새 종목과 기록을 한꺼번에 저장한다.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TradeImportScreen(
     viewModel: PortfolioViewModel,
@@ -90,6 +93,7 @@ fun TradeImportScreen(
     val overrides = remember { mutableStateMapOf<String, TradeImport.NewHolding>() }
     var confirmLeave by rememberSaveable { mutableStateOf(false) }
     var confirmClear by rememberSaveable { mutableStateOf(false) }
+    var addRowsText by rememberSaveable { mutableStateOf("") }
     val hasContent = grid.any { row -> row.any { it.isNotBlank() } }
     val leave = { if (hasContent) confirmLeave = true else onBack() }
     BackHandler(onBack = leave)
@@ -123,7 +127,7 @@ fun TradeImportScreen(
             item {
                 Text(
                     "엑셀·구글시트에서 복사한 칸을, 채우기 시작할 칸을 누르고 붙여 넣으세요. 고른 칸부터 오른쪽·아래로 채워지고 줄은 자동으로 늘어납니다. " +
-                        "열이나 줄을 나눠 여러 번 붙여 넣어도 됩니다. 표는 좌우로 밀어 볼 수 있습니다.",
+                        "열이나 줄을 나눠 여러 번 붙여 넣어도 됩니다. 수량은 매수 +, 매도 −(예: -3)로 쓰고, 매매구분은 비워도 됩니다. 표는 좌우로 밀어 볼 수 있습니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp),
@@ -131,10 +135,15 @@ fun TradeImportScreen(
             }
             item { HeaderRow(hScroll) }
             itemsIndexed(grid) { r, cells ->
+                val row = analysis.rows.getOrNull(r)
+                // 수량 단위 (금현물은 g)
+                val unit = row?.holding?.assetType?.unit
+                    ?: analysis.newHoldings.firstOrNull { it.key == row?.newKey }?.assetType?.unit ?: "주"
                 GridRow(
                     index = r,
                     cells = cells,
-                    row = analysis.rows.getOrNull(r),
+                    row = row,
+                    unit = unit,
                     scroll = hScroll,
                     onCellChange = { c, old, value ->
                         grid = if (value.contains('\t') || value.contains('\n')) {
@@ -151,11 +160,28 @@ fun TradeImportScreen(
                 )
             }
             item {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val room = TradeImport.MAX_ROWS - grid.size
+                val addRows = addRowsText.toIntOrNull()?.coerceAtMost(room) ?: 0
+                FlowRow(
+                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     OutlinedButton(
-                        onClick = { grid = grid + TradeImport.emptyGrid(5) },
-                        enabled = grid.size < TradeImport.MAX_ROWS,
+                        onClick = { grid = grid + TradeImport.emptyGrid(minOf(5, room)) },
+                        enabled = room > 0,
                     ) { Text("+ 5줄 추가") }
+                    // 원하는 만큼 줄 추가 (표 전체 최대 300줄)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Cell(addRowsText, 56) { v -> addRowsText = v.filter { it.isDigit() }.take(3) }
+                        OutlinedButton(
+                            onClick = {
+                                grid = grid + TradeImport.emptyGrid(addRows)
+                                addRowsText = ""
+                            },
+                            enabled = addRows > 0,
+                        ) { Text("줄 추가") }
+                    }
                     OutlinedButton(onClick = { confirmClear = true }, enabled = hasContent) { Text("표 비우기") }
                 }
             }
@@ -257,6 +283,7 @@ private fun GridRow(
     index: Int,
     cells: List<String>,
     row: TradeImport.Row?,
+    unit: String,
     scroll: ScrollState,
     onCellChange: (col: Int, old: String, value: String) -> Unit,
     onRemove: () -> Unit,
@@ -274,7 +301,7 @@ private fun GridRow(
             Cell(value, CELL_WIDTHS[c]) { onCellChange(c, value, it) }
         }
         Text(
-            statusText(row),
+            statusText(row, unit),
             Modifier.width(STATUS_WIDTH.dp).padding(start = 6.dp),
             style = MaterialTheme.typography.labelMedium,
             color = when {
@@ -291,11 +318,12 @@ private fun GridRow(
     }
 }
 
-private fun statusText(row: TradeImport.Row?): String = when (row?.status) {
+private fun statusText(row: TradeImport.Row?, unit: String): String = when (row?.status) {
     null, TradeImport.Status.EMPTY -> ""
     TradeImport.Status.ERROR -> row.error.orEmpty()
     TradeImport.Status.DUPLICATE -> "중복 의심 (저장 안 함)"
-    TradeImport.Status.OK -> (if (row.holding != null) "기존 종목" else "새 종목") + " · " + if (row.type == RecordType.SELL) "매도" else "매수"
+    TradeImport.Status.OK -> (if (row.holding != null) "기존 종목" else "새 종목") + " · " +
+        (if (row.type == RecordType.SELL) "매도 " else "매수 ") + MoneyFormat.decimal(row.quantity) + unit
 }
 
 @Composable

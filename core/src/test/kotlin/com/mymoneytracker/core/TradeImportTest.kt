@@ -38,6 +38,10 @@ class TradeImportTest {
         assertEquals(10160.0, TradeImport.parseNumber("10,160원")!!, 1e-9)
         assertEquals(12.5, TradeImport.parseNumber("$12.50")!!, 1e-9)
         assertNull(TradeImport.parseNumber(""))
+        assertEquals(-3.0, TradeImport.parseNumber("-3")!!, 1e-9)
+        assertEquals(-3.0, TradeImport.parseNumber("−3")!!, 1e-9)
+        assertEquals(-1200.0, TradeImport.parseNumber("(1,200)")!!, 1e-9)
+        assertNull(TradeImport.parseNumber("NaN"))
     }
 
     @Test
@@ -115,19 +119,41 @@ class TradeImportTest {
                 "2026-10-01\t매수\t\t\t70000\t1\t",
                 "2026-10-01\t매수\t삼성전자\t005930\t70000\t0\t",
                 "2026-10-01\t매수\t삼성전자\t005930\t70,000\t10\t",
-                "2026-10-05\t매도\t삼성전자\t005930\t80000\t11\t",
-                "2026-10-05\t매도\t삼성전자\t005930\t80000\t10\t",
+                "2026-10-05\t매도\t삼성전자\t005930\t80000\t-11\t",
+                "2026-10-05\t\t삼성전자\t005930\t80000\t-10\t",
             ),
             "a", holdings, all, listOf(buy),
         )
         val r = a.rows
         assertEquals("날짜를 읽지 못함", r[0].error)
-        assertEquals("매매구분은 매수·매도", r[1].error)
+        assertEquals("매매구분은 매수·매도 (비워도 됨)", r[1].error)
         assertEquals("종목명이나 종목코드 필요", r[2].error)
-        assertEquals("수량 확인", r[3].error)
+        assertEquals("수량 확인 (매수 +, 매도 −)", r[3].error)
         assertEquals(Status.DUPLICATE, r[4].status) // 이미 있는 기록과 같음
         assertEquals(Status.ERROR, r[5].status) // 10주 보유 + 다른 매도 10주 → 11주 매도 불가
         assertEquals(Status.ERROR, r[6].status) // 다른 줄의 11주 매도까지 합치면 부족
+    }
+
+    @Test
+    fun quantitySignDecidesAndChecksSide() {
+        val a = TradeImport.analyze(
+            grid(
+                "2026-10-02\t\t삼성전자\t005930\t70000\t3\t", // 구분 없이 + → 매수
+                "2026-10-03\t\t삼성전자\t005930\t70000\t-2\t", // 구분 없이 − → 매도
+                "2026-10-03\t매수\t삼성전자\t005930\t70000\t-2\t", // 매수인데 −
+                "2026-10-03\t매도\t삼성전자\t005930\t70000\t2\t", // 매도인데 +
+                "2026-10-03\t배당\t삼성전자\t005930\t70000\t2\t",
+            ),
+            "a", holdings, all, listOf(buy),
+        )
+        val r = a.rows
+        assertEquals(RecordType.BUY, r[0].type)
+        assertEquals(3.0, r[0].quantity, 1e-9)
+        assertEquals(RecordType.SELL, r[1].type)
+        assertEquals(2.0, r[1].quantity, 1e-9) // 저장은 양수
+        assertEquals("매수인데 수량이 음수", r[2].error)
+        assertEquals("매도는 수량을 음수로 (예: -3)", r[3].error)
+        assertEquals("매매구분은 매수·매도 (비워도 됨)", r[4].error)
     }
 
     @Test
@@ -135,7 +161,7 @@ class TradeImportTest {
         val a = TradeImport.analyze(
             grid(
                 "2026-10-02\t매수\t애플\tAAPL\t200\t3\t",
-                "2026-10-03\t매도\t애플\tAAPL\t210\t2\t",
+                "2026-10-03\t\t애플\tAAPL\t210\t-2\t",
             ),
             "a", holdings, all, emptyList(),
         )

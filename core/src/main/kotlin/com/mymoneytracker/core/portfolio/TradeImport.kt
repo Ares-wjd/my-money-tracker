@@ -92,10 +92,11 @@ object TradeImport {
         }
     }
 
-    /** 숫자 (쉼표·공백·원·$ 무시). 빈 칸이면 null. */
+    /** 숫자 (쉼표·공백·원·$ 무시, 음수는 -3·−3·(3)). 빈 칸이면 null. */
     fun parseNumber(text: String): Double? {
-        val t = text.replace(",", "").replace(" ", "").replace("원", "").replace("$", "").replace("₩", "").trim()
-        if (t.isEmpty()) return null
+        var t = text.replace(",", "").replace(" ", "").replace("원", "").replace("$", "").replace("₩", "").replace('−', '-').trim()
+        if (t.length >= 3 && t.startsWith("(") && t.endsWith(")")) t = "-" + t.substring(1, t.length - 1)
+        if (t.isEmpty() || t.any { it.isLetter() }) return null
         return t.toDoubleOrNull()?.takeIf { !it.isNaN() && !it.isInfinite() }
     }
 
@@ -179,29 +180,34 @@ object TradeImport {
             val cells = List(COLUMNS) { raw.getOrNull(it)?.trim().orEmpty() }
             if (cells.all { it.isEmpty() }) return@mapIndexed Row(index, Status.EMPTY)
             val date = parseDate(cells[DATE])
-            val type = parseSide(cells[SIDE])
+            // 수량 부호: 양수 = 매수, 음수 = 매도. 매매구분은 비워도 되고, 적었으면 부호와 맞아야 한다.
+            val side = parseSide(cells[SIDE])
             val name = cells[NAME]
             val code = cells[CODE].uppercase()
             val price = parseNumber(cells[PRICE])
-            val quantity = parseNumber(cells[QUANTITY])
+            val signed = parseNumber(cells[QUANTITY])
             val cost = if (cells[COST].isEmpty()) 0.0 else parseNumber(cells[COST])
             val error = when {
                 date == null -> "날짜를 읽지 못함"
-                type == null -> "매매구분은 매수·매도"
+                cells[SIDE].isNotEmpty() && side == null -> "매매구분은 매수·매도 (비워도 됨)"
                 name.isEmpty() && code.isEmpty() -> "종목명이나 종목코드 필요"
                 price == null || price < 0 -> "평단가 확인"
-                quantity == null || quantity <= 0 -> "수량 확인"
+                signed == null || signed == 0.0 -> "수량 확인 (매수 +, 매도 −)"
+                side == RecordType.BUY && signed < 0 -> "매수인데 수량이 음수"
+                side == RecordType.SELL && signed > 0 -> "매도는 수량을 음수로 (예: -3)"
                 cost == null || cost < 0 -> "제비용합 확인"
                 else -> null
             }
             if (error != null) return@mapIndexed Row(index, Status.ERROR, error = error)
+            val type = if (signed!! > 0) RecordType.BUY else RecordType.SELL
+            val quantity = abs(signed)
             val holding = matchHolding(name, code, accountHoldings)
             val key = if (holding == null) newKey(name, code) else null
             if (key != null && key !in newHoldings) {
                 newHoldings[key] = overrides[key]?.copy(name = name.ifEmpty { code }, code = code)
                     ?: NewHolding(key, name.ifEmpty { code }, code, guessMarket(code, allHoldings), guessAssetType(name, code, allHoldings))
             }
-            Row(index, Status.OK, date, type, price!!, quantity!!, cost!!, holding, key)
+            Row(index, Status.OK, date, type, price!!, quantity, cost!!, holding, key)
         }
 
         // 중복 의심: 이미 있는 기록과 날짜·종목·구분·수량·단가가 같음

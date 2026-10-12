@@ -26,6 +26,10 @@ describe('표로 일괄 입력 (TradeImportTest)', () => {
     expect(parseNumber('10,160원')).toBe(10160);
     expect(parseNumber('$12.50')).toBe(12.5);
     expect(parseNumber('')).toBeNull();
+    expect(parseNumber('-3')).toBe(-3);
+    expect(parseNumber('−3')).toBe(-3);
+    expect(parseNumber('(1,200)')).toBe(-1200);
+    expect(parseNumber('NaN')).toBeNull();
   });
 
   it('고른 칸부터 채우고 줄이 늘어난다', () => {
@@ -94,24 +98,42 @@ describe('표로 일괄 입력 (TradeImportTest)', () => {
         '2026-10-01\t매수\t\t\t70000\t1\t',
         '2026-10-01\t매수\t삼성전자\t005930\t70000\t0\t',
         '2026-10-01\t매수\t삼성전자\t005930\t70,000\t10\t',
-        '2026-10-05\t매도\t삼성전자\t005930\t80000\t11\t',
-        '2026-10-05\t매도\t삼성전자\t005930\t80000\t10\t',
+        '2026-10-05\t매도\t삼성전자\t005930\t80000\t-11\t',
+        '2026-10-05\t\t삼성전자\t005930\t80000\t-10\t',
       ),
       'a', holdings, all, [buy],
     );
     const r = a.rows;
     expect(r[0].error).toBe('날짜를 읽지 못함');
-    expect(r[1].error).toBe('매매구분은 매수·매도');
+    expect(r[1].error).toBe('매매구분은 매수·매도 (비워도 됨)');
     expect(r[2].error).toBe('종목명이나 종목코드 필요');
-    expect(r[3].error).toBe('수량 확인');
+    expect(r[3].error).toBe('수량 확인 (매수 +, 매도 −)');
     expect(r[4].status).toBe('DUPLICATE');
     expect(r[5].status).toBe('ERROR');
     expect(r[6].status).toBe('ERROR');
   });
 
+  it('수량 부호로 매수·매도, 매매구분과 맞는지 확인', () => {
+    const r = analyzeImport(
+      grid(
+        '2026-10-02\t\t삼성전자\t005930\t70000\t3\t',
+        '2026-10-03\t\t삼성전자\t005930\t70000\t-2\t',
+        '2026-10-03\t매수\t삼성전자\t005930\t70000\t-2\t',
+        '2026-10-03\t매도\t삼성전자\t005930\t70000\t2\t',
+        '2026-10-03\t배당\t삼성전자\t005930\t70000\t2\t',
+      ),
+      'a', holdings, all, [buy],
+    ).rows;
+    expect([r[0].type, r[0].quantity]).toEqual(['BUY', 3]);
+    expect([r[1].type, r[1].quantity]).toEqual(['SELL', 2]);
+    expect(r[2].error).toBe('매수인데 수량이 음수');
+    expect(r[3].error).toBe('매도는 수량을 음수로 (예: -3)');
+    expect(r[4].error).toBe('매매구분은 매수·매도 (비워도 됨)');
+  });
+
   it('같은 표에서 산 뒤 판 기록', () => {
     const a = analyzeImport(
-      grid('2026-10-02\t매수\t애플\tAAPL\t200\t3\t', '2026-10-03\t매도\t애플\tAAPL\t210\t2\t'),
+      grid('2026-10-02\t매수\t애플\tAAPL\t200\t3\t', '2026-10-03\t\t애플\tAAPL\t210\t-2\t'),
       'a', holdings, all, [],
     );
     expect(saveCount(a)).toBe(2);

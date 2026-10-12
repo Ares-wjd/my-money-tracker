@@ -77,9 +77,10 @@ export function parseSide(text: string): 'BUY' | 'SELL' | null {
   return null;
 }
 
-/** 숫자 (쉼표·공백·원·$ 무시). 빈 칸이면 null. */
+/** 숫자 (쉼표·공백·원·$ 무시, 음수는 -3·−3·(3)). 빈 칸이면 null. */
 export function parseNumber(text: string): number | null {
-  const t = text.replace(/[, 원$₩]/g, '').trim();
+  let t = text.replace(/[, 원$₩]/g, '').replace(/−/g, '-').trim();
+  if (t.length >= 3 && t.startsWith('(') && t.endsWith(')')) t = `-${t.slice(1, -1)}`;
   if (t === '' || !/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(t)) return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
@@ -170,21 +171,26 @@ export function analyzeImport(
     const cells = Array.from({ length: IMPORT_COLUMNS }, (_, i) => (raw[i] ?? '').trim());
     if (cells.every((c) => c === '')) return blankRow(index, 'EMPTY');
     const date = parseDate(cells[COL.DATE]);
-    const type = parseSide(cells[COL.SIDE]);
+    // 수량 부호: 양수 = 매수, 음수 = 매도. 매매구분은 비워도 되고, 적었으면 부호와 맞아야 한다.
+    const side = parseSide(cells[COL.SIDE]);
     const name = cells[COL.NAME];
     const code = cells[COL.CODE].toUpperCase();
     const price = parseNumber(cells[COL.PRICE]);
-    const quantity = parseNumber(cells[COL.QUANTITY]);
+    const signed = parseNumber(cells[COL.QUANTITY]);
     const cost = cells[COL.COST] === '' ? 0 : parseNumber(cells[COL.COST]);
     const error =
       date === null ? '날짜를 읽지 못함'
-        : type === null ? '매매구분은 매수·매도'
+        : cells[COL.SIDE] !== '' && side === null ? '매매구분은 매수·매도 (비워도 됨)'
           : name === '' && code === '' ? '종목명이나 종목코드 필요'
             : price === null || price < 0 ? '평단가 확인'
-              : quantity === null || quantity <= 0 ? '수량 확인'
-                : cost === null || cost < 0 ? '제비용합 확인'
-                  : null;
+              : signed === null || signed === 0 ? '수량 확인 (매수 +, 매도 −)'
+                : side === 'BUY' && signed < 0 ? '매수인데 수량이 음수'
+                  : side === 'SELL' && signed > 0 ? '매도는 수량을 음수로 (예: -3)'
+                    : cost === null || cost < 0 ? '제비용합 확인'
+                      : null;
     if (error !== null) return blankRow(index, 'ERROR', error);
+    const type = signed! > 0 ? 'BUY' : 'SELL';
+    const quantity = Math.abs(signed!);
     const holding = matchHolding(name, code, accountHoldings);
     const key = holding === null ? newKeyOf(name, code) : null;
     if (key !== null && !newHoldings.has(key)) {
@@ -197,7 +203,7 @@ export function analyzeImport(
         assetType: o?.assetType ?? guessAssetType(name, code, allHoldings),
       });
     }
-    return { index, status: 'OK', date, type, price: price!, quantity: quantity!, cost: cost!, holding, newKey: key, error: null };
+    return { index, status: 'OK', date, type, price: price!, quantity, cost: cost!, holding, newKey: key, error: null };
   });
 
   // 중복 의심: 이미 있는 기록과 날짜·종목·구분·수량·단가가 같음
