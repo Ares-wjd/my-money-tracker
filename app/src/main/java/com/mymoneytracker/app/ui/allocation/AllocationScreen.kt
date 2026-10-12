@@ -39,6 +39,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -72,29 +77,43 @@ import kotlin.math.hypot
 
 private enum class Ring(val label: String) { CURRENT("실제"), TARGET("목표"), COMPARE("비교") }
 
-/** 색을 따로 주는 종목 수. 7번째부터는 "기타" (검증한 범주 팔레트의 앞 6색, 웹과 같은 값). */
-private const val MAX_COLORS = 6
+/** 검증한 범주 팔레트 색 수 (웹과 같은 값). 9~16번째는 같은 색에 빗금, 17번째부터는 "기타". */
+private const val PALETTE = 8
+private const val MAX_COLORS = PALETTE * 2
 private const val OTHER_KEY = "__other"
 
 @Composable
 private fun seriesColor(index: Int): Color {
     val dark = isSystemInDarkTheme()
-    val light = listOf(0xFF2A78D6, 0xFFEB6834, 0xFF1BAF7A, 0xFFEDA100, 0xFFE87BA4, 0xFF008300)
-    val darkColors = listOf(0xFF3987E5, 0xFFD95926, 0xFF199E70, 0xFFC98500, 0xFFD55181, 0xFF008300)
+    val light = listOf(0xFF2A78D6, 0xFFEB6834, 0xFF1BAF7A, 0xFFEDA100, 0xFFE87BA4, 0xFF008300, 0xFF6250D6, 0xFFE34948)
+    val darkColors = listOf(0xFF3987E5, 0xFFD95926, 0xFF199E70, 0xFFC98500, 0xFFD55181, 0xFF008300, 0xFF9085E9, 0xFFE66767)
     return when {
-        index < MAX_COLORS -> Color(if (dark) darkColors[index] else light[index])
+        index < MAX_COLORS -> Color(if (dark) darkColors[index % PALETTE] else light[index % PALETTE])
         else -> if (dark) Color(0xFF5E6B65) else Color(0xFF9AA5A0)
     }
 }
 
-private data class Slice(val key: String, val name: String, val color: Color, val weight: Double)
+/** 9~16번째 종목은 빗금 무늬로 구분. */
+private fun isStriped(index: Int) = index in PALETTE until MAX_COLORS
+
+private data class Slice(val key: String, val name: String, val color: Color, val striped: Boolean, val weight: Double)
 
 @Composable
 private fun slicesOf(rows: List<AllocationRow>, weight: (AllocationRow) -> Double): List<Slice> {
-    val slices = rows.take(MAX_COLORS).mapIndexed { i, r -> Slice(r.key, r.name, seriesColor(i), weight(r)) }.toMutableList()
+    val slices = rows.take(MAX_COLORS).mapIndexed { i, r -> Slice(r.key, r.name, seriesColor(i), isStriped(i), weight(r)) }.toMutableList()
     val other = rows.drop(MAX_COLORS).sumOf(weight)
-    if (other > 0) slices += Slice(OTHER_KEY, "기타", seriesColor(MAX_COLORS), other)
+    if (other > 0) slices += Slice(OTHER_KEY, "기타", seriesColor(MAX_COLORS), false, other)
     return slices.filter { it.weight > 0 }
+}
+
+/** 영역 안에 45° 빗금 (바탕색 선). */
+private fun DrawScope.stripes(color: Color) {
+    val step = 5.dp.toPx()
+    var x = -size.height
+    while (x < size.width) {
+        drawLine(color, Offset(x, 0f), Offset(x + size.height, size.height), strokeWidth = 1.6.dp.toPx())
+        x += step
+    }
 }
 
 private fun pct(w: Double) = "${MoneyFormat.decimal(w * 100, 1)}%"
@@ -426,6 +445,15 @@ private fun Donut(view: AllocationView, ring: Ring) {
                             size = Size(mid * 2, mid * 2),
                             style = Stroke(width = thickness),
                         )
+                        // 9번째부터는 같은 색 위에 빗금 (조각 모양으로 잘라서)
+                        if (s.striped) {
+                            val piece = Path().apply {
+                                arcTo(Rect(center, radius * r1), start, sweep, forceMoveTo = true)
+                                arcTo(Rect(center, radius * r0), start + sweep, -sweep, forceMoveTo = false)
+                                close()
+                            }
+                            clipPath(piece) { stripes(surface.copy(alpha = alpha)) }
+                        }
                         // 조각 사이 2dp 바탕색 틈
                         if (slices.size > 1) {
                             val rad = Math.toRadians(start.toDouble())
@@ -454,7 +482,11 @@ private fun Donut(view: AllocationView, ring: Ring) {
                 Modifier.fillMaxWidth().clickable { picked = if (picked == key) null else key }.padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(12.dp).background(seriesColor(index), RoundedCornerShape(3.dp)))
+                val swatch = seriesColor(index)
+                Canvas(Modifier.size(12.dp).clip(RoundedCornerShape(3.dp))) {
+                    drawRect(swatch)
+                    if (isStriped(index)) stripes(surface)
+                }
                 Text(name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(pct(cw), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(60.dp), textAlign = TextAlign.End)
                 Text(pct(tw), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(60.dp), textAlign = TextAlign.End)

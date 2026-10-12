@@ -14,8 +14,9 @@ const RING_LABEL: { [r in Ring]: string } = { current: '실제', target: '목표
 const SELECTED_KEY = 'allocation_selected';
 const RING_KEY = 'allocation_ring';
 const USE_CASH_KEY = 'allocation_use_cash';
-/** 색을 따로 주는 종목 수. 7번째부터는 "기타" 로 묶는다 (검증한 팔레트의 앞 6색). */
-const MAX_COLORS = 6;
+/** 검증한 범주 팔레트 색 수. 9~16번째는 같은 색에 빗금, 17번째부터는 "기타" 로 묶는다. */
+const PALETTE = 8;
+const MAX_COLORS = PALETTE * 2;
 
 const read = (key: string): string | null => {
   try {
@@ -34,12 +35,15 @@ const write = (key: string, value: string) => {
 
 const pct = (w: number) => `${decimal(w * 100, 1)}%`;
 /** 색: 종목 순서(목표 큰 순)로 고정 — 실제/목표를 바꿔도 같은 종목은 같은 색. */
-const colorOf = (index: number) => (index < MAX_COLORS ? `var(--series-${index + 1})` : 'var(--series-other)');
+const colorOf = (index: number) => (index < MAX_COLORS ? `var(--series-${(index % PALETTE) + 1})` : 'var(--series-other)');
+/** 9~16번째 종목은 빗금 무늬로 구분 */
+const isStriped = (index: number) => index >= PALETTE && index < MAX_COLORS;
 
 interface Slice {
   key: string;
   name: string;
   color: string;
+  striped: boolean;
   weight: number;
 }
 
@@ -47,17 +51,17 @@ function slicesOf(rows: readonly AllocationRow[], weight: (r: AllocationRow) => 
   const slices: Slice[] = [];
   let other = 0;
   rows.forEach((r, i) => {
-    if (i < MAX_COLORS) slices.push({ key: r.key, name: r.name, color: colorOf(i), weight: weight(r) });
+    if (i < MAX_COLORS) slices.push({ key: r.key, name: r.name, color: colorOf(i), striped: isStriped(i), weight: weight(r) });
     else other += weight(r);
   });
-  if (other > 0) slices.push({ key: '__other', name: '기타', color: colorOf(MAX_COLORS), weight: other });
+  if (other > 0) slices.push({ key: '__other', name: '기타', color: colorOf(MAX_COLORS), striped: false, weight: other });
   return slices.filter((s) => s.weight > 0);
 }
 
 /** 범례: 종목 순서(목표 큰 순) 그대로, 색 6개 + 기타. */
-function legendOf(rows: readonly AllocationRow[]): { key: string; name: string; color: string }[] {
-  const items = rows.slice(0, MAX_COLORS).map((r, i) => ({ key: r.key, name: r.name, color: colorOf(i) }));
-  if (rows.length > MAX_COLORS) items.push({ key: '__other', name: `기타 ${rows.length - MAX_COLORS}종목`, color: colorOf(MAX_COLORS) });
+function legendOf(rows: readonly AllocationRow[]): { key: string; name: string; color: string; striped: boolean }[] {
+  const items = rows.slice(0, MAX_COLORS).map((r, i) => ({ key: r.key, name: r.name, color: colorOf(i), striped: isStriped(i) }));
+  if (rows.length > MAX_COLORS) items.push({ key: '__other', name: `기타 ${rows.length - MAX_COLORS}종목`, color: colorOf(MAX_COLORS), striped: false });
   return items;
 }
 
@@ -77,17 +81,16 @@ function RingPaths({ slices, r0, r1, hovered, onHover }: { slices: Slice[]; r0: 
       {slices.map((s) => {
         const a0 = a;
         a += total > 0 ? (s.weight / total) * Math.PI * 2 : 0;
+        const d = arc(110, 110, r0, r1, a0, a);
+        const dim = hovered !== null && hovered !== s.key ? 'dim' : '';
         return (
-          <path
-            key={s.key}
-            d={arc(110, 110, r0, r1, a0, a)}
-            fill={s.color}
-            className={hovered !== null && hovered !== s.key ? 'dim' : ''}
-            onMouseEnter={() => onHover(s.key)}
-            onMouseLeave={() => onHover(null)}
-          >
-            <title>{`${s.name} ${pct(s.weight)}`}</title>
-          </path>
+          <g key={s.key}>
+            <path d={d} fill={s.color} className={dim} onMouseEnter={() => onHover(s.key)} onMouseLeave={() => onHover(null)}>
+              <title>{`${s.name} ${pct(s.weight)}`}</title>
+            </path>
+            {/* 9번째부터는 같은 색 위에 빗금 */}
+            {s.striped && <path d={d} fill="url(#donut-stripe)" className={dim} style={{ pointerEvents: 'none', stroke: 'none' }} />}
+          </g>
         );
       })}
     </>
@@ -115,6 +118,11 @@ function Donut({ view, ring }: { view: AllocationView; ring: Ring }) {
   return (
     <div className="donut-wrap">
       <svg className="donut" viewBox="0 0 220 220" role="img" aria-label={`비중 도넛 그래프 (${RING_LABEL[ring]})`}>
+        <defs>
+          <pattern id="donut-stripe" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="1.6" height="5" style={{ fill: 'var(--card)' }} />
+          </pattern>
+        </defs>
         {ring === 'compare' ? (
           <>
             <RingPaths slices={current} r0={78} r1={108} hovered={hovered} onHover={setHovered} />
@@ -141,7 +149,7 @@ function Donut({ view, ring }: { view: AllocationView; ring: Ring }) {
           const tw = row ? row.targetWeight : sum(otherRows, (r) => r.targetWeight);
           return (
             <div key={s.key} className="donut-legend-row" onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}>
-              <span className="swatch" style={{ background: s.color }} />
+              <span className={s.striped ? 'swatch striped' : 'swatch'} style={{ backgroundColor: s.color }} />
               <span>{s.name}</span>
               <span className="num">{pct(cw)}</span>
               <span className="num">{pct(tw)}</span>

@@ -22,7 +22,7 @@
   --shadow: 0 1px 2px rgba(22, 32, 28, 0.06);
   /* 그래프 색 (dataviz 검사 통과: 밝게 #007a5e/#b5770a, 어둡게 #27957a/#c4851c) */
   --chart-value: #007a5e;
-  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; --series-5: #e87ba4; --series-6: #008300; --series-other: #9aa5a0;
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948; --series-other: #9aa5a0;
   --short-row: #eaf1fd; --over-row: #fdecee; --short-tag: #1f5fd1; --over-tag: #c62436; --short-tag-ink: #ffffff; --over-tag-ink: #ffffff;
   --chart-invested: #b5770a;
   color-scheme: light;
@@ -49,7 +49,7 @@
   --logo-bg: #34443d;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   --chart-value: #27957a;
-  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-other: #5e6b65;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767; --series-other: #5e6b65;
   --short-row: #1d2b45; --over-row: #3b1f24; --short-tag: #8fb4ff; --over-tag: #ff8a96; --short-tag-ink: #16201c; --over-tag-ink: #16201c;
   --chart-invested: #c4851c;
   color-scheme: dark;
@@ -75,7 +75,7 @@
   --logo-bg: #34443d;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   --chart-value: #27957a;
-  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-other: #5e6b65;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767; --series-other: #5e6b65;
   --short-row: #1d2b45; --over-row: #3b1f24; --short-tag: #8fb4ff; --over-tag: #ff8a96; --short-tag-ink: #16201c; --over-tag-ink: #16201c;
   --chart-invested: #c4851c;
   color-scheme: dark;
@@ -350,6 +350,8 @@ button.primary.small-button { padding: 8px 14px; }
 .donut-legend { display: flex; flex-direction: column; gap: 6px; min-width: 220px; flex: 1; }
 .donut-legend-row { display: grid; grid-template-columns: 12px 1fr auto auto; gap: 10px; align-items: center; font-size: 14px; }
 .donut-legend-row .swatch { width: 12px; height: 12px; border-radius: 3px; }
+/* 9번째부터: 같은 색 + 빗금 (도넛 조각과 같은 무늬) */
+.donut-legend-row .swatch.striped { background-image: repeating-linear-gradient(45deg, transparent 0 2px, var(--card) 2px 3.5px); }
 .donut-legend-row .num { min-width: 56px; text-align: right; }
 .ring-note { font-size: 12px; color: var(--muted); }
 /* 비중 차이: 부족(파랑) / 초과(빨강) — 줄 배경은 옅게, 태그는 진하게 (태그 글자 대비 4.5:1 이상) */
