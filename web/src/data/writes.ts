@@ -30,6 +30,29 @@ export const saveSavingsGoal = (uid: string, g: SavingsGoal) => save(uid, 'savin
 export const saveAllocationTarget = (uid: string, t: AllocationTarget) => save(uid, 'allocationTargets', t.id, allocationTargetDoc(t));
 export const deleteAllocationTarget = (uid: string, id: string) => deleteDoc(doc(col(uid, 'allocationTargets'), id));
 
+/**
+ * 표로 일괄 입력: 새 종목과 매매 기록을 한꺼번에 저장한다. records 의 holdingId 가 newHoldings 의 키면 새 종목 id 로 바꾼다.
+ * 한 번에 쓸 수 있는 개수(500) 아래로 나눠 저장한다.
+ */
+export async function importTrades(uid: string, newHoldings: ReadonlyMap<string, Holding>, records: readonly Record[]) {
+  const ids = new Map<string, string>();
+  const writes: [DocumentReference, object][] = [];
+  for (const [key, h] of newHoldings) {
+    const r = ref(uid, 'holdings', '');
+    ids.set(key, r.id);
+    writes.push([r, holdingDoc(h)]);
+  }
+  for (const rec of records) {
+    const holdingId = rec.holdingId !== null ? ids.get(rec.holdingId) ?? rec.holdingId : null;
+    writes.push([ref(uid, 'records', ''), recordDoc({ ...rec, holdingId })]);
+  }
+  for (let i = 0; i < writes.length; i += 400) {
+    const batch = writeBatch(db());
+    for (const [r, data] of writes.slice(i, i + 400)) batch.set(r, data);
+    await batch.commit();
+  }
+}
+
 export const deleteRecord = (uid: string, id: string) => deleteDoc(doc(col(uid, 'records'), id));
 export const deleteSavingsGoal = (uid: string, id: string) => deleteDoc(doc(col(uid, 'savingsGoals'), id));
 

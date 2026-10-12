@@ -23,9 +23,11 @@ import com.mymoneytracker.core.chart.ChartPoint
 import com.mymoneytracker.core.market.MarketKeys
 import com.mymoneytracker.core.market.MarketSnapshot
 import com.mymoneytracker.core.market.PriceLookup
+import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.InvestmentAccount
+import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.DisplayCurrency
@@ -36,6 +38,7 @@ import com.mymoneytracker.core.portfolio.KrwHoldingCalculator
 import com.mymoneytracker.core.portfolio.KrwHoldingView
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.PortfolioSummary
+import com.mymoneytracker.core.portfolio.TradeImport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -292,6 +295,26 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     }
 
     fun saveRecord(record: Record) = repository.saveRecord(record)
+
+    /**
+     * 표로 일괄 입력 저장: 새 종목([TradeImport.NewHolding]) → 매매 기록. 저장한 기록 수를 돌려준다.
+     */
+    fun saveImport(accountId: String, analysis: TradeImport.Analysis): Int {
+        val newHoldings = analysis.newHoldings.associate { n ->
+            n.key to Holding(
+                accountId = accountId,
+                name = n.name,
+                code = n.code,
+                market = if (n.assetType == AssetType.GOLD) Market.KR else n.market,
+                assetType = n.assetType,
+            )
+        }
+        // 새 종목 기록은 holdingId 에 키를 넣어 두고, 저장할 때 새 종목 id 로 바꾼다
+        val records = TradeImport.build(analysis.rows, accountId) { key -> key }.map { it.second }
+        repository.importTrades(newHoldings.filterKeys { key -> records.any { it.holdingId == key } }, records)
+        _message.value = "${records.size}건을 저장했습니다."
+        return records.size
+    }
 
     fun deleteRecord(recordId: String) = repository.deleteRecord(recordId)
 

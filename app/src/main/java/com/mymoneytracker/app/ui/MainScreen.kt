@@ -59,6 +59,7 @@ import com.mymoneytracker.app.ui.holdings.HoldingEditScreen
 import com.mymoneytracker.app.ui.home.HomeScreen
 import com.mymoneytracker.app.ui.records.CashBalanceScreen
 import com.mymoneytracker.app.ui.records.RecordEditScreen
+import com.mymoneytracker.app.ui.records.TradeImportScreen
 import com.mymoneytracker.app.ui.settings.SettingsScreen
 import com.mymoneytracker.app.ui.update.AppUpdateViewModel
 import com.mymoneytracker.app.ui.update.UpdateDialog
@@ -78,6 +79,7 @@ private object Routes {
     const val HOLDING_EDIT = "holding-edit/{accountId}?holdingId={holdingId}"
     const val RECORD_EDIT = "record-edit/{accountId}/{type}?recordId={recordId}&holdingId={holdingId}"
     const val CASH_BALANCE = "cash-balance/{accountId}"
+    const val TRADE_IMPORT = "trade-import/{accountId}"
     const val SAVINGS_DETAIL = "savings/{savingsId}"
     const val SAVINGS_EDIT = "savings-edit?savingsId={savingsId}"
     const val GOAL_EDIT = "goal-edit/{savingsId}?goalId={goalId}"
@@ -93,6 +95,7 @@ private object Routes {
         return "record-edit/$accountId/${type.name}" + if (query.isEmpty()) "" else "?" + query.joinToString("&")
     }
     fun cashBalance(accountId: String) = "cash-balance/$accountId"
+    fun tradeImport(accountId: String) = "trade-import/$accountId"
     fun allocationEdit(id: String? = null) = if (id == null) "allocation-edit" else "allocation-edit?targetId=$id"
     fun savingsDetail(id: String) = "savings/$id"
     fun savingsEdit(id: String? = null) = if (id == null) "savings-edit" else "savings-edit?savingsId=$id"
@@ -317,6 +320,15 @@ fun MainScreen(
                     },
                     onEnterCash = { navController.navigate(Routes.cashBalance(accountId)) },
                     onOpenSettings = { navController.navigateToTab(Routes.SETTINGS) },
+                    onImportTrades = { navController.navigate(Routes.tradeImport(accountId)) },
+                )
+            }
+            composable(Routes.TRADE_IMPORT) { entry ->
+                TradeImportScreen(
+                    viewModel = portfolioViewModel,
+                    accountId = entry.arguments?.getString("accountId").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onDone = { navController.popBackStack() },
                 )
             }
             composable(Routes.HOLDING_EDIT, arguments = listOf(optionalString("holdingId"))) { entry ->

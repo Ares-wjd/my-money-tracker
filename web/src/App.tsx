@@ -12,6 +12,7 @@ import { HoldingDetailPage } from './pages/HoldingDetailPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { TradeImportPage } from './pages/TradeImportPage';
 import { ThemeProvider } from './theme';
 
 function Gate() {
@@ -35,6 +36,7 @@ function Gate() {
             <Route index element={<HomePage />} />
             <Route path="accounts" element={<AccountsPage />} />
             <Route path="accounts/:accountId" element={<AccountDetailPage />} />
+            <Route path="accounts/:accountId/import" element={<TradeImportPage />} />
             <Route path="holdings/:holdingId" element={<HoldingDetailPage />} />
             <Route path="allocation" element={<AllocationPage />} />
             <Route path="goals" element={<GoalsPage />} />

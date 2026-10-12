@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatDate } from '../core/dates';
 import { amount, decimal, rate as formatRate, signedWon, usd, won } from '../core/format';
 import { HOLDING_SORTS, HOLDING_SORT_LABEL, convert, displayConversion, sortHoldings, type HoldingValuation } from '../core/portfolio';
@@ -194,12 +194,15 @@ export function AccountDetailPage() {
       <Card
         title={`기록 ${records.length}건`}
         action={
-          <AddRecordMenu
-            // 한투 연결 계좌는 매수·매도를 불러오므로 직접 추가하지 않는다 (중복 방지).
-            types={ADDABLE.filter((t) => !linked || (t !== 'BUY' && t !== 'SELL'))}
-            label={(t) => RECORD_TYPE_LABEL[t]}
-            onSelect={(type) => setDialog({ kind: 'record', type, existing: null })}
-          />
+          <div className="head-actions">
+            {/* 한투 연결 계좌는 매수·매도를 불러오므로 직접 추가하지 않는다 (중복 방지). */}
+            {!linked && <Link className="button-link small-button" to={`/accounts/${accountId}/import`}>표로 일괄 입력</Link>}
+            <AddRecordMenu
+              types={ADDABLE.filter((t) => !linked || (t !== 'BUY' && t !== 'SELL'))}
+              label={(t) => RECORD_TYPE_LABEL[t]}
+              onSelect={(type) => setDialog({ kind: 'record', type, existing: null })}
+            />
+          </div>
         }
       >
         {records.length === 0 && <p className="muted">기록이 없습니다. 기록 추가에서 입금부터 남겨 보세요.</p>}

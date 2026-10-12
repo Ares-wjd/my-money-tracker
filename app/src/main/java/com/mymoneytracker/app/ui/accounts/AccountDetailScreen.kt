@@ -101,6 +101,7 @@ fun AccountDetailScreen(
     onOpenRecord: (String) -> Unit,
     onEnterCash: () -> Unit,
     onOpenSettings: () -> Unit,
+    onImportTrades: () -> Unit,
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     val apiStatus by viewModel.apiStatus.collectAsStateWithLifecycle()
@@ -153,6 +154,15 @@ fun AccountDetailScreen(
                             onClick = {
                                 menuOpen = false
                                 onAddRecord(type)
+                            },
+                        )
+                    }
+                    if (!linkedHere) {
+                        DropdownMenuItem(
+                            text = { Text("표로 일괄 입력 (매수·매도)") },
+                            onClick = {
+                                menuOpen = false
+                                onImportTrades()
                             },
                         )
                     }

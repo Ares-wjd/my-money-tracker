@@ -119,7 +119,11 @@ class PortfolioRepository(
     /** 종목을 저장하고 문서 ID 를 돌려준다. */
     fun saveHolding(holding: Holding): String {
         val doc = if (holding.id.isEmpty()) holdingsCol.document() else holdingsCol.document(holding.id)
-        val data = mapOf(
+        doc.set(holdingData(holding)).logFailure("종목 저장")
+        return doc.id
+    }
+
+    private fun holdingData(holding: Holding): Map<String, Any?> = mapOf(
             "accountId" to holding.accountId,
             "name" to holding.name,
             "code" to holding.code,
@@ -129,9 +133,6 @@ class PortfolioRepository(
             "manualPriceDate" to holding.manualPriceDate?.toString(),
             F_CREATED_AT to if (holding.createdAt > 0) holding.createdAt else System.currentTimeMillis(),
         )
-        doc.set(data).logFailure("종목 저장")
-        return doc.id
-    }
 
     /** 종목과 그 종목의 매매·배당 기록을 함께 삭제한다. */
     fun deleteHolding(holdingId: String, records: List<Record>) {
@@ -143,7 +144,25 @@ class PortfolioRepository(
 
     fun saveRecord(record: Record) {
         val doc = if (record.id.isEmpty()) recordsCol.document() else recordsCol.document(record.id)
-        val data = mapOf(
+        doc.set(recordData(record)).logFailure("기록 저장")
+    }
+
+    /**
+     * 표로 일괄 입력: 새 종목과 매매 기록을 한꺼번에 저장한다. [records] 의 holdingId 가 [newHoldings] 의 키면 새 종목 id 로 바꾼다.
+     * 한 번에 쓸 수 있는 개수(500) 아래로 나눠 저장한다.
+     */
+    fun importTrades(newHoldings: Map<String, Holding>, records: List<Record>) {
+        val ids = newHoldings.mapValues { holdingsCol.document().id }
+        val writes = newHoldings.map { (key, h) -> holdingsCol.document(ids.getValue(key)) to holdingData(h) } +
+            records.map { r -> recordsCol.document() to recordData(r.copy(holdingId = ids[r.holdingId] ?: r.holdingId)) }
+        writes.chunked(400).forEach { chunk ->
+            val batch = db.batch()
+            chunk.forEach { (doc, data) -> batch.set(doc, data) }
+            batch.commit().logFailure("일괄 입력 저장")
+        }
+    }
+
+    private fun recordData(record: Record): Map<String, Any?> = mapOf(
             "accountId" to record.accountId,
             "type" to record.type.name,
             "date" to record.date.toString(),
@@ -161,8 +180,6 @@ class PortfolioRepository(
             "memo" to record.memo,
             F_CREATED_AT to if (record.createdAt > 0) record.createdAt else System.currentTimeMillis(),
         )
-        doc.set(data).logFailure("기록 저장")
-    }
 
     fun deleteRecord(recordId: String) {
         recordsCol.document(recordId).delete().logFailure("기록 삭제")

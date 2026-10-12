@@ -373,3 +373,21 @@ tr.over td { background: var(--over-row); }
 .target-sub select { font: inherit; color: var(--ink); background: var(--ground); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
 .sum-line { font-weight: 600; }
 .sum-line.bad { color: var(--error); }
+
+/* 표로 일괄 입력 */
+.button-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 12px; }
+.import-table td { padding: 2px 3px; }
+.import-cell input { font: inherit; font-size: 13px; color: var(--ink); background: var(--ground); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; min-width: 0; }
+.import-cell input:focus { outline: 2px solid var(--green); outline-offset: -1px; }
+.import-cell.col-0 input { width: 104px; }
+.import-cell.col-1 input { width: 56px; }
+.import-cell.col-2 input { width: 150px; }
+.import-cell.col-3 input { width: 88px; }
+.import-cell.col-4 input { width: 88px; }
+.import-cell.col-5 input { width: 64px; }
+.import-cell.col-6 input { width: 80px; }
+.import-status { min-width: 170px; white-space: normal; }
+.import-error .import-status { color: var(--error); font-weight: 600; }
+.import-duplicate .import-status { color: var(--muted); }
+.head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.button-link { display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 10px; text-decoration: none; font-weight: 600; }
