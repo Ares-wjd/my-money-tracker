@@ -37,6 +37,7 @@ export function recordDoc(r: Record) {
     price: r.price,
     fee: r.fee,
     tax: r.tax,
+    cost: r.cost,
     initial: r.initial,
     externalId: r.externalId,
     memo: r.memo,

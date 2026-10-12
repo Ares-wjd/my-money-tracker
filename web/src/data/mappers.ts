@@ -80,6 +80,7 @@ export function toRecord(id: string, d: Data): Record | null {
     price: num(d.price) ?? 0,
     fee: num(d.fee) ?? 0,
     tax: num(d.tax) ?? 0,
+    cost: num(d.cost),
     initial: d.initial === true,
     externalId: str(d.externalId),
     memo: str(d.memo) ?? '',

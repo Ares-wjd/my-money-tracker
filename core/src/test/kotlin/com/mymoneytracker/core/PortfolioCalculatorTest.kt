@@ -12,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import com.mymoneytracker.core.model.CostInput
 import org.junit.Test
 import java.time.LocalDate
 
@@ -58,6 +59,41 @@ class PortfolioCalculatorTest {
         // (90,000 - 75,000) × 5 - 100 - 900
         assertEquals(74_000.0, p.realizedProfit, 1e-9)
         assertEquals(1_200.0, p.feesAndTaxes, 1e-9)
+    }
+
+    @Test
+    fun costTotalIsUsedWhenGiven() {
+        // 제비용합만 쓴 기록 (수수료·세금 0) 과 예전 기록 (제비용합 없음 → 수수료 + 세금)
+        val records = listOf(
+            rec("kr", RecordType.BUY, day1, holding = "s", qty = 10.0, price = 70_000.0).copy(cost = 300.0),
+            rec("kr", RecordType.SELL, day2, holding = "s", qty = 5.0, price = 80_000.0, fee = 100.0, tax = 900.0),
+        )
+        val p = PortfolioCalculator.position(samsung, records)
+        assertEquals(10_000.0 * 5 - 1_000.0, p.realizedProfit, 1e-9)
+        assertEquals(1_300.0, p.feesAndTaxes, 1e-9)
+    }
+
+    @Test
+    fun costInputModes() {
+        val base = rec("kr", RecordType.BUY, day1, holding = "s", qty = 1.0, price = 1.0)
+        // 수수료·세금을 쓰면 제비용합은 합, 제비용합 칸은 잠김
+        val parts = CostInput(total = 999.0, fee = 100.0, tax = null)
+        assertTrue(parts.totalLocked)
+        assertEquals(100.0, parts.effectiveTotal, 1e-9)
+        val r1 = parts.applyTo(base)
+        assertEquals(100.0, r1.fee, 1e-9)
+        assertEquals(100.0, r1.cost!!, 1e-9)
+        // 제비용합만 쓰면 수수료·세금 0, 두 칸은 잠김
+        val total = CostInput(total = 1_500.0, fee = null, tax = null)
+        assertTrue(total.partsLocked)
+        val r2 = total.applyTo(base)
+        assertEquals(0.0, r2.fee + r2.tax, 1e-9)
+        assertEquals(1_500.0, r2.totalCost, 1e-9)
+        // 다시 열 때: 수수료·세금이 있으면 나눠서, 없으면 제비용합으로
+        assertEquals(CostInput(null, 100.0, null), CostInput.of(r1))
+        assertEquals(CostInput(1_500.0, null, null), CostInput.of(r2))
+        assertEquals(CostInput(null, null, null), CostInput.of(base))
+        assertFalse(CostInput(null, null, null).partsLocked)
     }
 
     @Test

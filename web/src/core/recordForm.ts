@@ -14,9 +14,33 @@ export interface RecordInput {
   holdingId: string | null;
   quantity: number | null;
   price: number | null;
-  fee: number;
-  tax: number;
+  cost: CostInput;
   memo: string;
+}
+
+/**
+ * 매수·매도의 제비용 입력 (core CostInput 과 같음). 수수료·세금을 쓰면 제비용합은 그 합(제비용합 칸은 잠김),
+ * 제비용합만 쓰면 수수료·세금은 0 (두 칸은 잠김). 빈 칸은 null.
+ */
+export interface CostInput {
+  total: number | null;
+  fee: number | null;
+  tax: number | null;
+}
+
+export const NO_COST: CostInput = { total: null, fee: null, tax: null };
+/** 수수료·세금으로 나눠 쓰는 중인지 (= 제비용합 칸을 잠글지) */
+export const costBreakdown = (c: CostInput): boolean => c.fee !== null || c.tax !== null;
+/** 수수료·세금 칸을 잠글지 (제비용합만 쓰는 중) */
+export const costPartsLocked = (c: CostInput): boolean => !costBreakdown(c) && c.total !== null;
+/** 제비용합 */
+export const effectiveCost = (c: CostInput): number => (costBreakdown(c) ? (c.fee ?? 0) + (c.tax ?? 0) : c.total ?? 0);
+
+/** 수정할 기록 → 제비용 입력: 수수료나 세금이 있으면 나눠서, 아니면 제비용합으로. */
+export function costInputOf(r: Pick<Record, 'fee' | 'tax' | 'cost'> | null): CostInput {
+  if (!r) return NO_COST;
+  if (r.fee !== 0 || r.tax !== 0) return { total: null, fee: r.fee !== 0 ? r.fee : null, tax: r.tax !== 0 ? r.tax : null };
+  return { total: r.cost !== null && r.cost !== 0 ? r.cost : null, fee: null, tax: null };
 }
 
 /** 문제가 있으면 안내 문구, 없으면 null. */
@@ -78,6 +102,7 @@ export function buildRecord(input: RecordInput, accountId: string, base: Record 
     price: 0,
     fee: 0,
     tax: 0,
+    cost: null,
     initial: base?.initial ?? false,
     externalId: base?.externalId ?? null,
     memo: input.memo.trim(),
@@ -99,7 +124,12 @@ export function buildRecord(input: RecordInput, accountId: string, base: Record 
       return { ...common, currency: input.currency, amount, krwAmount: input.krw ?? 0 };
     case 'BUY':
     case 'SELL':
-      return { ...common, holdingId: input.holdingId, quantity: input.quantity ?? 0, price: input.price ?? 0, fee: input.fee, tax: input.tax };
+    {
+      // 수수료·세금·제비용합을 모두 저장한다
+      const c = input.cost;
+      const costs = costBreakdown(c) ? { fee: c.fee ?? 0, tax: c.tax ?? 0, cost: effectiveCost(c) } : { fee: 0, tax: 0, cost: c.total ?? 0 };
+      return { ...common, holdingId: input.holdingId, quantity: input.quantity ?? 0, price: input.price ?? 0, ...costs };
+    }
     case 'DIVIDEND':
       return { ...common, holdingId: input.holdingId, amount };
     case 'CASH_ADJUST':
@@ -122,8 +152,7 @@ export function inputFromRecord(r: Record, fallbackRate: number | null): RecordI
     holdingId: r.holdingId,
     quantity: r.quantity === 0 ? null : r.quantity,
     price: r.price === 0 && r.type !== 'BUY' && r.type !== 'SELL' ? null : r.price,
-    fee: r.fee,
-    tax: r.tax,
+    cost: costInputOf(r),
     memo: r.memo,
   };
 }

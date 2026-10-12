@@ -10,7 +10,7 @@ export const holding = (p: Partial<Holding> & { id: string; accountId: string; n
 });
 
 export const record = (p: Partial<Record> & Pick<Record, 'id' | 'accountId' | 'type' | 'date'>): Record => ({
-  currency: 'KRW', amount: 0, krwAmount: 0, toAccountId: null, holdingId: null, quantity: 0, price: 0, fee: 0, tax: 0,
+  currency: 'KRW', amount: 0, krwAmount: 0, toAccountId: null, holdingId: null, quantity: 0, price: 0, fee: 0, tax: 0, cost: null,
   initial: false, externalId: null, memo: '', createdAt: 0, ...p,
 });
 

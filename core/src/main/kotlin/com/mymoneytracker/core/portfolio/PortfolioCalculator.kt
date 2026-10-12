@@ -204,17 +204,17 @@ object PortfolioCalculator {
                     val newQuantity = quantity + r.quantity
                     if (newQuantity > 0) average = (quantity * average + r.quantity * r.price) / newQuantity
                     quantity = newQuantity
-                    fees += r.fee + r.tax
+                    fees += r.totalCost
                 }
                 RecordType.SELL -> {
                     val sold = minOf(r.quantity, quantity)
-                    realized += sold * (r.price - average) - r.fee - r.tax
+                    realized += sold * (r.price - average) - r.totalCost
                     quantity -= sold
                     if (quantity <= EPSILON) {
                         quantity = 0.0
                         average = 0.0
                     }
-                    fees += r.fee + r.tax
+                    fees += r.totalCost
                 }
                 RecordType.DIVIDEND -> dividends += r.amount
                 else -> Unit

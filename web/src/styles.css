@@ -240,6 +240,7 @@ button.primary.small-button { padding: 8px 14px; }
   font: inherit; color: var(--ink); background: var(--ground); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%;
 }
 .field input:focus, .field textarea:focus { outline: 2px solid var(--green); outline-offset: -1px; }
+.field input:disabled { background: var(--soft); color: var(--muted); border-style: dashed; cursor: not-allowed; }
 .field-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .choices { display: flex; flex-wrap: wrap; gap: 6px; }
 .choice { padding: 6px 12px; border-radius: 999px; background: var(--soft); border: 1px solid transparent; color: var(--muted); font-size: 14px; }

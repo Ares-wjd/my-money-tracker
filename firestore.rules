@@ -69,12 +69,12 @@ service cloud.firestore {
           && num(data().createdAt);
       }
 
-      // 입출금·이체·매매·배당·예수금 기록
+      // 입출금·이체·매매·배당·예수금 기록 (cost: 매수·매도 제비용합, 없으면 수수료 + 세금)
       match /records/{id} {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid)
           && onlyKeys(['accountId', 'type', 'date', 'currency', 'amount', 'krwAmount', 'toAccountId', 'holdingId',
-                       'quantity', 'price', 'fee', 'tax', 'initial', 'externalId', 'memo', 'createdAt'])
+                       'quantity', 'price', 'fee', 'tax', 'cost', 'initial', 'externalId', 'memo', 'createdAt'])
           && str(data().accountId, 100)
           && data().type in ['DEPOSIT', 'WITHDRAW', 'TRANSFER', 'EXCHANGE', 'BUY', 'SELL', 'DIVIDEND', 'CASH_ADJUST', 'CASH_BALANCE']
           && date(data().date)
@@ -87,6 +87,7 @@ service cloud.firestore {
           && num(data().price)
           && num(data().fee)
           && num(data().tax)
+          && optNum(data().get('cost', null))
           && data().initial is bool
           && optStr(data().get('externalId', null), 100)
           && str(data().memo, 300)

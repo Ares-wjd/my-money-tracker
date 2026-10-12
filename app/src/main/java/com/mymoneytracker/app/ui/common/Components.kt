@@ -511,9 +511,12 @@ fun NumberField(
     preview: (Double) -> String = { MoneyFormat.decimal(it) },
     isError: Boolean = false,
     supporting: String? = null,
+    /** false 면 회색으로 잠근다 (값은 표시만) */
+    enabled: Boolean = true,
 ) {
     OutlinedTextField(
         value = value,
+        enabled = enabled,
         onValueChange = { input ->
             var filtered = input.filter { it.isDigit() || (allowDecimal && it == '.') || (allowNegative && it == '-') }
             if (filtered.count { it == '.' } > 1) return@OutlinedTextField

@@ -71,6 +71,8 @@ export interface Record {
   price: number;
   fee: number;
   tax: number;
+  /** 제비용합 (종목 통화). 수수료·세금을 쓰면 그 합, 제비용합만 쓰면 수수료·세금은 0. 예전 기록·한투 기록은 null (수수료 + 세금). */
+  cost: number | null;
   initial: boolean;
   externalId: string | null;
   memo: string;
@@ -176,6 +178,9 @@ export const ACCOUNT_KIND_SHORT: { [K in AccountKind]: string } = {
   GOLD: '금',
   OTHER: '기타',
 };
+/** 계산에 쓰는 제비용합 (core Record.totalCost 와 같음). */
+export const totalCost = (r: Pick<Record, 'cost' | 'fee' | 'tax'>): number => r.cost ?? r.fee + r.tax;
+
 export const ASSET_TYPE_LABEL: { [K in AssetType]: string } = { STOCK: '주식', ETF: 'ETF', FUND: '펀드', BOND: '채권', GOLD: '금현물' };
 /** KRX 금 99.99 1kg 종목코드. */
 export const GOLD_CODE = 'M04020000';

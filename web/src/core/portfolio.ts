@@ -1,6 +1,6 @@
 // core 의 PortfolioCalculator 와 같은 규칙. 수수료·세금은 평균단가에 넣지 않고, 평균단가는 이동평균법.
 import type { Currency, Holding, InvestmentAccount, PricePoint, Record } from '../model';
-import { marketCurrency } from '../model';
+import { marketCurrency, totalCost } from '../model';
 
 export interface CashBalance {
   krw: number;
@@ -92,16 +92,16 @@ export function position(holding: Holding, records: readonly Record[]): Position
       const newQuantity = quantity + r.quantity;
       if (newQuantity > 0) average = (quantity * average + r.quantity * r.price) / newQuantity;
       quantity = newQuantity;
-      fees += r.fee + r.tax;
+      fees += totalCost(r);
     } else if (r.type === 'SELL') {
       const sold = Math.min(r.quantity, quantity);
-      realized += sold * (r.price - average) - r.fee - r.tax;
+      realized += sold * (r.price - average) - totalCost(r);
       quantity -= sold;
       if (quantity <= EPSILON) {
         quantity = 0;
         average = 0;
       }
-      fees += r.fee + r.tax;
+      fees += totalCost(r);
     } else if (r.type === 'DIVIDEND') {
       dividends += r.amount;
     }
@@ -291,16 +291,16 @@ export function krwHoldingView(
       const newQuantity = quantity + r.quantity;
       if (newQuantity > 0) averageKrw = (quantity * averageKrw + r.quantity * r.price * fx) / newQuantity;
       quantity = newQuantity;
-      feesKrw += (r.fee + r.tax) * fx;
+      feesKrw += totalCost(r) * fx;
     } else if (r.type === 'SELL') {
       const sold = Math.min(r.quantity, quantity);
-      realizedKrw += sold * (r.price * fx - averageKrw) - (r.fee + r.tax) * fx;
+      realizedKrw += sold * (r.price * fx - averageKrw) - totalCost(r) * fx;
       quantity -= sold;
       if (quantity <= EPSILON) {
         quantity = 0;
         averageKrw = 0;
       }
-      feesKrw += (r.fee + r.tax) * fx;
+      feesKrw += totalCost(r) * fx;
     } else {
       dividendsKrw += r.amount * fx;
     }

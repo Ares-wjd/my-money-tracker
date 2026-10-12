@@ -40,8 +40,8 @@ fun recordAmountText(record: Record, data: PortfolioData, accountId: String): St
         } else {
             "${MoneyFormat.signedUsd(-record.amount)} / ${MoneyFormat.signedWon(record.krwAmount)}"
         }
-        RecordType.BUY -> MoneyFormat.signedAmount(holdingCurrency, -(record.quantity * record.price + record.fee + record.tax))
-        RecordType.SELL -> MoneyFormat.signedAmount(holdingCurrency, record.quantity * record.price - record.fee - record.tax)
+        RecordType.BUY -> MoneyFormat.signedAmount(holdingCurrency, -(record.quantity * record.price + record.totalCost))
+        RecordType.SELL -> MoneyFormat.signedAmount(holdingCurrency, record.quantity * record.price - record.totalCost)
         RecordType.DIVIDEND -> MoneyFormat.signedAmount(holdingCurrency, record.amount)
         RecordType.CASH_ADJUST -> MoneyFormat.signedAmount(record.currency, record.amount)
         RecordType.CASH_BALANCE -> MoneyFormat.amount(record.currency, record.amount)
@@ -53,8 +53,18 @@ fun recordDetailText(record: Record, data: PortfolioData): String? {
     val holding = record.holdingId?.let { data.holding(it) }
     val holdingCurrency = holding?.currency ?: Currency.KRW
     return when (record.type) {
-        RecordType.BUY, RecordType.SELL ->
-            "${MoneyFormat.decimal(record.quantity)}${holding?.assetType?.unit ?: "주"} × ${MoneyFormat.amount(holdingCurrency, record.price)}"
+        RecordType.BUY, RecordType.SELL -> {
+            val trade = "${MoneyFormat.decimal(record.quantity)}${holding?.assetType?.unit ?: "주"} × ${MoneyFormat.amount(holdingCurrency, record.price)}"
+            // 제비용: 수수료·세금이 있으면 나눠서, 아니면 제비용합
+            val parts = listOfNotNull(
+                record.fee.takeIf { it != 0.0 }?.let { "수수료 ${MoneyFormat.amount(holdingCurrency, it)}" },
+                record.tax.takeIf { it != 0.0 }?.let { "세금 ${MoneyFormat.amount(holdingCurrency, it)}" },
+            )
+            val cost = parts.joinToString(" · ").ifEmpty {
+                record.totalCost.takeIf { it != 0.0 }?.let { "제비용 ${MoneyFormat.amount(holdingCurrency, it)}" }.orEmpty()
+            }
+            if (cost.isEmpty()) trade else "$trade · $cost"
+        }
         else -> record.memo.ifBlank { null }
     }
 }

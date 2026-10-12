@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildRecord, recordProblem, type RecordInput } from './recordForm';
+import { NO_COST, buildRecord, costInputOf, costPartsLocked, costBreakdown, effectiveCost, inputFromRecord, recordProblem, type RecordInput } from './recordForm';
 import { holding, record } from './testData';
 
 const h = holding({ id: 'h', accountId: 'a', name: '삼성전자' });
 const base: RecordInput = {
   type: 'DEPOSIT', date: '2026-10-10', currency: 'KRW', amount: 1000, krw: null, rate: null,
-  toAccountId: null, holdingId: null, quantity: null, price: null, fee: 0, tax: 0, memo: ' 메모 ',
+  toAccountId: null, holdingId: null, quantity: null, price: null, cost: NO_COST, memo: ' 메모 ',
 };
 
 describe('기록 입력 검사 (폰과 같은 규칙)', () => {
@@ -30,6 +30,24 @@ describe('기록 입력 검사 (폰과 같은 규칙)', () => {
     expect(r.krwAmount).toBe(14000);
     expect(r.memo).toBe('메모');
     expect(r.holdingId).toBeNull();
+  });
+
+  it('제비용: 수수료·세금을 쓰면 합계, 제비용합만 쓰면 수수료·세금 0 (모두 저장)', () => {
+    const buy: RecordInput = { ...base, type: 'BUY', holdingId: 'h', quantity: 1, price: 100 };
+    const parts = { total: 999, fee: 100, tax: null };
+    expect(costBreakdown(parts)).toBe(true);
+    expect(effectiveCost(parts)).toBe(100);
+    const r1 = buildRecord({ ...buy, cost: parts }, 'a', null);
+    expect([r1.fee, r1.tax, r1.cost]).toEqual([100, 0, 100]);
+    const total = { total: 1500, fee: null, tax: null };
+    expect(costPartsLocked(total)).toBe(true);
+    const r2 = buildRecord({ ...buy, cost: total }, 'a', null);
+    expect([r2.fee, r2.tax, r2.cost]).toEqual([0, 0, 1500]);
+    expect(costInputOf(r1)).toEqual({ total: null, fee: 100, tax: null });
+    expect(costInputOf(r2)).toEqual({ total: 1500, fee: null, tax: null });
+    expect(costInputOf(record({ id: 'x', accountId: 'a', type: 'BUY', date: '2026-10-01' }))).toEqual(NO_COST);
+    expect(inputFromRecord(r2, null).cost.total).toBe(1500);
+    expect(costPartsLocked(NO_COST)).toBe(false);
   });
 
   it('수정하면 id·처음 만든 시각·한투 표시는 그대로', () => {

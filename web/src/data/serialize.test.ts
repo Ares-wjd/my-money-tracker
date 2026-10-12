@@ -15,8 +15,8 @@ describe('Firestore 저장 형식', () => {
 
     const r = record({ id: 'r1', accountId: 'a1', type: 'DEPOSIT', date: '2026-10-10', currency: 'USD', amount: 10, krwAmount: 14000, createdAt: 9 });
     expect(toRecord('r1', recordDoc(r))).toEqual(r);
-    // 폰과 같은 16개 필드 (보안 규칙의 허용 목록)
-    expect(Object.keys(recordDoc(r))).toHaveLength(16);
+    // 폰과 같은 17개 필드 (보안 규칙의 허용 목록, 제비용합 cost 포함)
+    expect(Object.keys(recordDoc(r))).toHaveLength(17);
   });
 
   it('createdAt 이 없으면 저장 시각을 넣는다', () => {

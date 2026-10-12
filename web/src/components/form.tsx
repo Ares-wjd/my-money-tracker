@@ -52,6 +52,8 @@ export function NumberField(props: {
   allowNegative?: boolean;
   allowDecimal?: boolean;
   placeholder?: string;
+  /** 회색으로 잠근 칸 (값은 표시만) */
+  disabled?: boolean;
 }) {
   const parsed = parseDecimal(props.value);
   const pattern = props.allowNegative ? /[^0-9.,-]/g : /[^0-9.,]/g;
@@ -61,6 +63,7 @@ export function NumberField(props: {
         inputMode="decimal"
         value={props.value}
         placeholder={props.placeholder}
+        disabled={props.disabled}
         onChange={(e) => {
           let v = e.target.value.replace(pattern, '');
           if (props.allowDecimal === false) v = v.replace(/\./g, '');

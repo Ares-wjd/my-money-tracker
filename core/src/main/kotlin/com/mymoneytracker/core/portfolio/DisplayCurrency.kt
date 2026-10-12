@@ -80,17 +80,17 @@ object KrwHoldingCalculator {
                     val newQuantity = quantity + r.quantity
                     if (newQuantity > 0) averageKrw = (quantity * averageKrw + r.quantity * r.price * fx) / newQuantity
                     quantity = newQuantity
-                    feesKrw += (r.fee + r.tax) * fx
+                    feesKrw += r.totalCost * fx
                 }
                 RecordType.SELL -> {
                     val sold = minOf(r.quantity, quantity)
-                    realizedKrw += sold * (r.price * fx - averageKrw) - (r.fee + r.tax) * fx
+                    realizedKrw += sold * (r.price * fx - averageKrw) - r.totalCost * fx
                     quantity -= sold
                     if (quantity <= EPSILON) {
                         quantity = 0.0
                         averageKrw = 0.0
                     }
-                    feesKrw += (r.fee + r.tax) * fx
+                    feesKrw += r.totalCost * fx
                 }
                 else -> dividendsKrw += r.amount * fx
             }

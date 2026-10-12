@@ -52,7 +52,7 @@ export function HoldingForm({ accountId, existing, onClose, onDeleted }: { accou
     if (!existing && hasInitial && quantity !== null && average !== null) {
       await saveRecord(uid, {
         id: '', accountId, type: 'BUY', date: initialDate, currency: 'KRW', amount: 0, krwAmount: 0, toAccountId: null,
-        holdingId: id, quantity, price: average, fee: 0, tax: 0, initial: true, externalId: null, memo: '', createdAt: 0,
+        holdingId: id, quantity, price: average, fee: 0, tax: 0, cost: null, initial: true, externalId: null, memo: '', createdAt: 0,
       });
     }
   };

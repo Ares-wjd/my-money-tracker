@@ -1,7 +1,7 @@
 // 폰 앱 RecordText 와 같은 기록 표시.
 import { amount, decimal, signedAmount, signedUsd, signedWon } from '../core/format';
 import type { Holding, InvestmentAccount, Record } from '../model';
-import { CURRENCY_LABEL, RECORD_TYPE_LABEL, marketCurrency, quantityUnit } from '../model';
+import { CURRENCY_LABEL, RECORD_TYPE_LABEL, marketCurrency, quantityUnit, totalCost } from '../model';
 
 export interface RecordLookup {
   holding: (id: string) => Holding | undefined;
@@ -49,9 +49,9 @@ export function recordAmountText(record: Record, lookup: RecordLookup, accountId
         ? `${signedWon(-record.krwAmount)} / ${signedUsd(record.amount)}`
         : `${signedUsd(-record.amount)} / ${signedWon(record.krwAmount)}`;
     case 'BUY':
-      return signedAmount(holdingCurrency, -(record.quantity * record.price + record.fee + record.tax));
+      return signedAmount(holdingCurrency, -(record.quantity * record.price + totalCost(record)));
     case 'SELL':
-      return signedAmount(holdingCurrency, record.quantity * record.price - record.fee - record.tax);
+      return signedAmount(holdingCurrency, record.quantity * record.price - totalCost(record));
     case 'DIVIDEND':
       return signedAmount(holdingCurrency, record.amount);
     case 'CASH_ADJUST':
@@ -66,7 +66,11 @@ export function recordDetailText(record: Record, lookup: RecordLookup): string |
   if (record.type === 'BUY' || record.type === 'SELL') {
     const holding = record.holdingId ? lookup.holding(record.holdingId) : undefined;
     const currency = holding ? marketCurrency(holding.market) : 'KRW';
-    return `${decimal(record.quantity)}${quantityUnit(holding?.assetType)} × ${amount(currency, record.price)}`;
+    const trade = `${decimal(record.quantity)}${quantityUnit(holding?.assetType)} × ${amount(currency, record.price)}`;
+    // 제비용: 수수료·세금이 있으면 나눠서, 아니면 제비용합
+    const parts = [record.fee !== 0 ? `수수료 ${amount(currency, record.fee)}` : '', record.tax !== 0 ? `세금 ${amount(currency, record.tax)}` : ''].filter(Boolean);
+    const cost = parts.length > 0 ? parts.join(' · ') : totalCost(record) !== 0 ? `제비용 ${amount(currency, totalCost(record))}` : '';
+    return cost ? `${trade} · ${cost}` : trade;
   }
   return record.memo.trim() === '' ? null : record.memo;
 }

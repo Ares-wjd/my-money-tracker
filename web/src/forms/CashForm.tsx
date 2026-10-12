@@ -28,7 +28,7 @@ export function CashForm({ summary, onClose }: { summary: AccountSummary; onClos
       await saveRecord(uid, {
         id: cashRecordId(accountId, date, currency), accountId, type: 'CASH_BALANCE', date, currency,
         amount: roundCash(currency, value), krwAmount: 0, toAccountId: null, holdingId: null, quantity: 0, price: 0,
-        fee: 0, tax: 0, initial: false, externalId: null, memo: memo.trim(), createdAt: Date.now(),
+        fee: 0, tax: 0, cost: null, initial: false, externalId: null, memo: memo.trim(), createdAt: Date.now(),
       });
     }
   };

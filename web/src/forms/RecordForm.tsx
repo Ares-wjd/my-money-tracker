@@ -3,7 +3,7 @@ import { Choice, DateField, FormActions, Modal, NumberField, TextField, WonField
 import { Row } from '../components/ui';
 import { formatDate, today } from '../core/dates';
 import { amount as formatAmount, amountPreview, decimal, manwon, parseDecimal, usd, won } from '../core/format';
-import { buildRecord, inputFromRecord, recordProblem, type RecordInput } from '../core/recordForm';
+import { NO_COST, buildRecord, costBreakdown, costPartsLocked, effectiveCost, inputFromRecord, recordProblem, type RecordInput } from '../core/recordForm';
 import { useAppData, useData } from '../data/DataContext';
 import { deleteRecord, saveRecord } from '../data/writes';
 import { CURRENCIES, CURRENCY_LABEL, RECORD_TYPE_LABEL, marketCurrency, type Currency, type Record, type RecordType } from '../model';
@@ -29,7 +29,7 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
     ? inputFromRecord(existing, data.usdKrw)
     : {
         type, date: today(), currency: 'KRW', amount: null, krw: null, rate: data.usdKrw, toAccountId: null,
-        holdingId: presetHoldingId ?? null, quantity: null, price: null, fee: 0, tax: 0, memo: '',
+        holdingId: presetHoldingId ?? null, quantity: null, price: null, cost: NO_COST, memo: '',
       };
   const recordType = existing?.type ?? type;
   const [date, setDate] = useState(initial.date);
@@ -41,8 +41,9 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
   const [holdingId, setHoldingId] = useState<string | null>(initial.holdingId);
   const [quantityText, setQuantityText] = useState(numberText(initial.quantity));
   const [priceText, setPriceText] = useState(numberText(initial.price));
-  const [feeText, setFeeText] = useState(numberText(initial.fee));
-  const [taxText, setTaxText] = useState(numberText(initial.tax));
+  const [costText, setCostText] = useState(numberText(initial.cost.total));
+  const [feeText, setFeeText] = useState(numberText(initial.cost.fee));
+  const [taxText, setTaxText] = useState(numberText(initial.cost.tax));
   const [memo, setMemo] = useState(initial.memo);
 
   const holdings = data.holdings.filter((h) => h.accountId === accountId);
@@ -52,7 +53,7 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
     type: recordType, date, currency, toAccountId, holdingId, memo,
     amount: parseDecimal(amountText), krw: parseDecimal(krwText), rate: parseDecimal(rateText),
     quantity: parseDecimal(quantityText), price: parseDecimal(priceText),
-    fee: parseDecimal(feeText) ?? 0, tax: parseDecimal(taxText) ?? 0,
+    cost: { total: parseDecimal(costText), fee: parseDecimal(feeText), tax: parseDecimal(taxText) },
   };
   const problem = recordProblem(input, holdings, data.records, existing?.id ?? null);
   const others = data.accounts.filter((a) => a.id !== accountId);
@@ -119,14 +120,31 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
             <>
               <NumberField label={holding?.assetType === 'GOLD' ? '수량 (g)' : '수량'} value={quantityText} onChange={setQuantityText} />
               <NumberField label={`단가 (${CURRENCY_LABEL[holdingCurrency]}${holding?.assetType === 'GOLD' ? ', 1g당' : ''})`} value={priceText} onChange={setPriceText} preview={(n) => amountPreview(holdingCurrency, n)} />
-              <div className="field-row">
-                <NumberField label="수수료" value={feeText} onChange={setFeeText} preview={(n) => amountPreview(holdingCurrency, n)} />
-                <NumberField label="세금" value={taxText} onChange={setTaxText} preview={(n) => amountPreview(holdingCurrency, n)} />
+              <div className="sub-card">
+                {/* 수수료·세금을 쓰면 제비용합은 자동 계산(잠김), 제비용합만 쓰면 수수료·세금이 잠긴다 */}
+                <NumberField
+                  label="제비용합"
+                  value={costBreakdown(input.cost) ? numberText(effectiveCost(input.cost)) : costText}
+                  onChange={setCostText}
+                  disabled={costBreakdown(input.cost)}
+                  preview={(n) => amountPreview(holdingCurrency, n)}
+                />
+                <div className="field-row">
+                  <NumberField label="수수료" value={feeText} onChange={setFeeText} disabled={costPartsLocked(input.cost)} preview={(n) => amountPreview(holdingCurrency, n)} />
+                  <NumberField label="세금" value={taxText} onChange={setTaxText} disabled={costPartsLocked(input.cost)} preview={(n) => amountPreview(holdingCurrency, n)} />
+                </div>
+                <p className="muted small">
+                  {costBreakdown(input.cost)
+                    ? '수수료·세금의 합으로 제비용합을 계산합니다.'
+                    : costPartsLocked(input.cost)
+                      ? '제비용합만 저장합니다. 나눠 쓰려면 제비용합을 비우세요.'
+                      : '제비용합만 쓰거나, 수수료·세금을 나눠 쓰세요.'}
+                </p>
               </div>
               {input.quantity !== null && input.price !== null && (
                 <Row
-                  label={recordType === 'BUY' ? '총 매수 금액 (수수료·세금 포함)' : '정산 금액 (수수료·세금 차감)'}
-                  value={formatAmount(holdingCurrency, input.quantity * input.price + (recordType === 'BUY' ? 1 : -1) * (input.fee + input.tax))}
+                  label={recordType === 'BUY' ? '총 매수 금액 (제비용 포함)' : '정산 금액 (제비용 차감)'}
+                  value={formatAmount(holdingCurrency, input.quantity * input.price + (recordType === 'BUY' ? 1 : -1) * effectiveCost(input.cost))}
                 />
               )}
             </>

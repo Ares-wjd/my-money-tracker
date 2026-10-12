@@ -250,7 +250,7 @@ object TradeImport {
                 holdingId = holdingId,
                 quantity = row.quantity,
                 price = row.price,
-                fee = row.cost,
+                cost = row.cost,
             )
         }
 }

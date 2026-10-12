@@ -2,6 +2,7 @@ package com.mymoneytracker.app.ui.records
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -36,11 +37,13 @@ import com.mymoneytracker.app.ui.common.DateField
 import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.NumberField
+import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.TextInput
 import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.app.ui.common.formatDate
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.AssetType
+import com.mymoneytracker.core.model.CostInput
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
@@ -137,8 +140,11 @@ private fun RecordForm(
     var holdingId by rememberSaveable { mutableStateOf(initial?.holdingId ?: presetHoldingId) }
     var quantityText by rememberSaveable { mutableStateOf(text(initial?.quantity)) }
     var priceText by rememberSaveable { mutableStateOf(text(initial?.price)) }
-    var feeText by rememberSaveable { mutableStateOf(text(initial?.fee)) }
-    var taxText by rememberSaveable { mutableStateOf(text(initial?.tax)) }
+    // 제비용: 수수료나 세금이 있으면 나눠서, 아니면 제비용합으로 연다
+    val initialCost = CostInput.of(initial)
+    var costText by rememberSaveable { mutableStateOf(text(initialCost.total)) }
+    var feeText by rememberSaveable { mutableStateOf(text(initialCost.fee)) }
+    var taxText by rememberSaveable { mutableStateOf(text(initialCost.tax)) }
     var memo by rememberSaveable { mutableStateOf(initial?.memo.orEmpty()) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
@@ -148,8 +154,7 @@ private fun RecordForm(
     val rate = MoneyFormat.parseDecimal(rateText)
     val quantity = MoneyFormat.parseDecimal(quantityText)
     val price = MoneyFormat.parseDecimal(priceText)
-    val fee = MoneyFormat.parseDecimal(feeText) ?: 0.0
-    val tax = MoneyFormat.parseDecimal(taxText) ?: 0.0
+    val cost = CostInput(MoneyFormat.parseDecimal(costText), MoneyFormat.parseDecimal(feeText), MoneyFormat.parseDecimal(taxText))
     val holdings = data.holdingsOf(accountId)
     val holding = holdingId?.let { data.holding(it) }
     val holdingCurrency = holding?.currency ?: Currency.KRW
@@ -283,13 +288,46 @@ private fun RecordForm(
                         { priceText = it },
                         preview = { MoneyFormat.amountPreview(holdingCurrency, it) },
                     )
-                    NumberField("수수료", feeText, { feeText = it }, preview = { MoneyFormat.amountPreview(holdingCurrency, it) })
-                    NumberField("세금", taxText, { taxText = it }, preview = { MoneyFormat.amountPreview(holdingCurrency, it) })
+                    // 수수료·세금을 쓰면 제비용합은 자동 계산(잠김), 제비용합만 쓰면 수수료·세금이 잠긴다
+                    SectionCard(title = "제비용") {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            NumberField(
+                                "제비용합",
+                                if (cost.totalLocked) text(cost.effectiveTotal) else costText,
+                                { costText = it },
+                                enabled = !cost.totalLocked,
+                                preview = { MoneyFormat.amountPreview(holdingCurrency, it) },
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                NumberField(
+                                    "수수료", feeText, { feeText = it },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = !cost.partsLocked,
+                                    preview = { MoneyFormat.amountPreview(holdingCurrency, it) },
+                                )
+                                NumberField(
+                                    "세금", taxText, { taxText = it },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = !cost.partsLocked,
+                                    preview = { MoneyFormat.amountPreview(holdingCurrency, it) },
+                                )
+                            }
+                            Text(
+                                when {
+                                    cost.breakdown -> "수수료·세금의 합으로 제비용합을 계산합니다."
+                                    cost.partsLocked -> "제비용합만 저장합니다. 나눠 쓰려면 제비용합을 비우세요."
+                                    else -> "제비용합만 쓰거나, 수수료·세금을 나눠 쓰세요."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     if (quantity != null && price != null) {
                         val gross = quantity * price
-                        val total = if (type == RecordType.BUY) gross + fee + tax else gross - fee - tax
+                        val total = if (type == RecordType.BUY) gross + cost.effectiveTotal else gross - cost.effectiveTotal
                         LabeledValue(
-                            if (type == RecordType.BUY) "총 매수 금액 (수수료·세금 포함)" else "정산 금액 (수수료·세금 차감)",
+                            if (type == RecordType.BUY) "총 매수 금액 (제비용 포함)" else "정산 금액 (제비용 차감)",
                             MoneyFormat.amount(holdingCurrency, total),
                         )
                     }
@@ -319,12 +357,8 @@ private fun RecordForm(
                         toAccountId = if (type == RecordType.TRANSFER) toAccountId else null,
                     )
                     RecordType.EXCHANGE -> base.copy(currency = currency, amount = amount ?: 0.0, krwAmount = krw ?: 0.0)
-                    RecordType.BUY, RecordType.SELL -> base.copy(
-                        holdingId = holdingId,
-                        quantity = quantity ?: 0.0,
-                        price = price ?: 0.0,
-                        fee = fee,
-                        tax = tax,
+                    RecordType.BUY, RecordType.SELL -> cost.applyTo(
+                        base.copy(holdingId = holdingId, quantity = quantity ?: 0.0, price = price ?: 0.0),
                     )
                     RecordType.DIVIDEND -> base.copy(holdingId = holdingId, amount = amount ?: 0.0)
                     RecordType.CASH_ADJUST, RecordType.CASH_BALANCE -> base.copy(currency = currency, amount = amount ?: 0.0)

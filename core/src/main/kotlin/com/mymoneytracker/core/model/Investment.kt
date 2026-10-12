@@ -94,7 +94,7 @@ enum class RecordType(val label: String) {
  * - DEPOSIT / WITHDRAW: [currency], [amount](해당 통화), [krwAmount](원화 환산, 투자금 계산용)
  * - TRANSFER: [accountId] 보내는 계좌, [toAccountId] 받는 계좌, [currency], [amount], [krwAmount]
  * - EXCHANGE: [currency] 바꾸기 전 통화, [krwAmount] 원화 금액, [amount] 달러 금액 (기록용, 예수금에 영향 없음)
- * - BUY / SELL: [holdingId], [quantity], [price](종목 통화), [fee], [tax]
+ * - BUY / SELL: [holdingId], [quantity], [price](종목 통화), [fee], [tax], [cost](제비용합)
  * - DIVIDEND: [holdingId], [amount] (종목 통화, 세후)
  * - CASH_ADJUST: [currency], [amount] (예전 버전 기록, 계산에 쓰지 않음)
  * - CASH_BALANCE: [currency], [amount] 그날의 예수금 잔액. 통화별로 가장 최근 값이 그 계좌의 예수금이다.
@@ -113,13 +113,54 @@ data class Record(
     val price: Double = 0.0,
     val fee: Double = 0.0,
     val tax: Double = 0.0,
+    /**
+     * 제비용합 (종목 통화). 수수료·세금을 쓰면 그 합, 제비용합만 쓰면 수수료·세금은 0.
+     * 예전 기록·한투에서 불러온 기록은 null 이고 수수료 + 세금을 쓴다.
+     */
+    val cost: Double? = null,
     /** 이미 보유하던 종목을 처음 등록할 때 쓴 매수 기록인지 (표시용). */
     val initial: Boolean = false,
     /** 한투 API 에서 불러온 기록이면 원본 식별자 (예: 주문번호). 이런 기록은 메모만 고칠 수 있다. */
     val externalId: String? = null,
     val memo: String = "",
     val createdAt: Long = 0L,
-)
+) {
+    /** 계산에 쓰는 제비용합. */
+    val totalCost: Double get() = cost ?: (fee + tax)
+}
+
+/**
+ * 매수·매도의 제비용 입력. 수수료·세금을 쓰면 제비용합은 그 합(제비용합 칸은 잠김),
+ * 제비용합만 쓰면 수수료·세금은 0 (두 칸은 잠김). 빈 칸은 null.
+ */
+data class CostInput(val total: Double?, val fee: Double?, val tax: Double?) {
+    /** 수수료·세금으로 나눠 쓰는 중인지 */
+    val breakdown: Boolean get() = fee != null || tax != null
+    /** 제비용합 칸을 잠글지 (수수료·세금을 쓰는 중) */
+    val totalLocked: Boolean get() = breakdown
+    /** 수수료·세금 칸을 잠글지 (제비용합만 쓰는 중) */
+    val partsLocked: Boolean get() = !breakdown && total != null
+    /** 제비용합 */
+    val effectiveTotal: Double get() = if (breakdown) (fee ?: 0.0) + (tax ?: 0.0) else total ?: 0.0
+
+    /** 기록에 넣는다 (수수료·세금·제비용합을 모두 저장). */
+    fun applyTo(record: Record): Record =
+        if (breakdown) {
+            record.copy(fee = fee ?: 0.0, tax = tax ?: 0.0, cost = effectiveTotal)
+        } else {
+            record.copy(fee = 0.0, tax = 0.0, cost = total ?: 0.0)
+        }
+
+    companion object {
+        /** 수정할 기록 → 입력값: 수수료나 세금이 있으면 나눠서, 아니면 제비용합으로. */
+        fun of(record: Record?): CostInput = when {
+            record == null -> CostInput(null, null, null)
+            record.fee != 0.0 || record.tax != 0.0 ->
+                CostInput(null, record.fee.takeIf { it != 0.0 }, record.tax.takeIf { it != 0.0 })
+            else -> CostInput(record.cost?.takeIf { it != 0.0 }, null, null)
+        }
+    }
+}
 
 /** 가격과 그 기준일. */
 data class PricePoint(val price: Double, val date: LocalDate?)

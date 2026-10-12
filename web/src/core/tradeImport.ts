@@ -238,7 +238,7 @@ export function buildImportRecords(rows: readonly ImportRow[], accountId: string
     if (holdingId === undefined) continue;
     out.push([row.index, {
       id: '', accountId, type: row.type!, date: row.date!, currency: 'KRW', amount: 0, krwAmount: 0, toAccountId: null,
-      holdingId, quantity: row.quantity, price: row.price, fee: row.cost, tax: 0, initial: false, externalId: null, memo: '', createdAt: 0,
+      holdingId, quantity: row.quantity, price: row.price, fee: 0, tax: 0, cost: row.cost, initial: false, externalId: null, memo: '', createdAt: 0,
     }]);
   }
   return out;
