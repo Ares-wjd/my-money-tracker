@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FormActions, Modal, NumberField, TextField } from '../components/form';
-import { CASH_KEY, DEFAULT_ABSOLUTE, DEFAULT_RELATIVE, codelessKey, isCodeless, keyOf, manualKey, toleranceBand, type AllocationTarget } from '../core/allocation';
+import { CASH_KEY, DEFAULT_ABSOLUTE, DEFAULT_RELATIVE, codelessKey, isCodeless, keyOf, manualKey, ruleIsSet, toleranceBand, type AllocationTarget } from '../core/allocation';
 import { decimal, parseDecimal } from '../core/format';
 import { useAppData, useData } from '../data/DataContext';
 import { deleteAllocationTarget, saveAllocationTarget } from '../data/writes';
@@ -27,6 +27,10 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
   const bandText = (n: number | null) => (n !== null && n > 0 ? decimal(n, 2).replace(/,/g, '') : '');
   const [absoluteText, setAbsoluteText] = useState(existing ? bandText(existing.threshold) : String(DEFAULT_ABSOLUTE));
   const [relativeText, setRelativeText] = useState(existing ? bandText(existing.relative) : String(DEFAULT_RELATIVE));
+  // 상단(초과) 기준을 따로 쓸지 (기본: 상단·하단 같은 기준)
+  const [sameBands, setSameBands] = useState(!existing?.upper);
+  const [upperAbsoluteText, setUpperAbsoluteText] = useState(existing?.upper ? bandText(existing.upper.threshold) : '');
+  const [upperRelativeText, setUpperRelativeText] = useState(existing?.upper ? bandText(existing.upper.relative) : '');
   const [excluded, setExcluded] = useState<string[]>(existing?.excluded ?? []);
   // 지금 매수 안 함 (비중 표에는 보이고 매수 계산기에서만 뺌)
   const [noBuy, setNoBuy] = useState<string[]>(existing?.noBuy ?? []);
@@ -68,6 +72,23 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
   const absolute = parseDecimal(absoluteText);
   const relative = parseDecimal(relativeText);
   const band = { threshold: absolute ?? 0, relative: relative !== null && relative > 0 ? relative : null };
+  const upperAbsolute = parseDecimal(upperAbsoluteText);
+  const upperRelative = parseDecimal(upperRelativeText);
+  const upper = sameBands ? null : { threshold: upperAbsolute ?? 0, relative: upperRelative !== null && upperRelative > 0 ? upperRelative : null };
+  const toggleSame = (same: boolean) => {
+    // 끄면 상단 칸은 지금 값으로 시작
+    if (!same) {
+      setUpperAbsoluteText(absoluteText);
+      setUpperRelativeText(relativeText);
+    }
+    setSameBands(same);
+  };
+  const example = (w: number) => {
+    const low = toleranceBand(band, w);
+    const high = toleranceBand(upper ?? band, w);
+    if (low === null || high === null) return null;
+    return upper ? `목표 ${w}% → +${decimal(high, 2)}%p / −${decimal(low, 2)}%p (${decimal(Math.max(0, w - low), 2)}~${decimal(w + high, 2)}%)` : `목표 ${w}% → ±${decimal(low, 2)}%p`;
+  };
   const badNumber = (t: string | undefined, max = Infinity) => (t ?? '').trim() !== '' && ((parseDecimal(t!) ?? -1) < 0 || (parseDecimal(t!) ?? 0) > max);
   const invalidPercent = keys.some((k) => !isExcluded(k) && badNumber(texts[k], 100));
   const invalidUnit = stockKeys.some((k) => badNumber(unitTexts[k]) || badNumber(priceTexts[k]));
@@ -78,8 +99,10 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
         : invalidPercent ? '목표 비중은 0~100% 로 입력하세요.'
           : invalidUnit ? '매수 단위·현재가를 확인하세요.'
             : Math.abs(sum - 100) > 0.01 ? `목표 합계가 100% 가 되어야 합니다 (지금 ${decimal(sum, 2)}%).`
-              : badNumber(absoluteText, 100) || badNumber(relativeText, 100) ? '허용 범위의 절대·상대 기준은 0~100 으로 입력하세요.'
-                : band.threshold <= 0 && band.relative === null ? '허용 범위의 절대·상대 기준 중 하나는 넣으세요.'
+              : badNumber(absoluteText, 100) || badNumber(relativeText, 100) || (!sameBands && (badNumber(upperAbsoluteText, 100) || badNumber(upperRelativeText, 100)))
+                ? '허용 범위의 절대·상대 기준은 0~100 으로 입력하세요.'
+                : !ruleIsSet(band) || (upper !== null && !ruleIsSet(upper))
+                  ? (sameBands ? '허용 범위의 절대·상대 기준 중 하나는 넣으세요.' : '상단·하단마다 절대·상대 기준 중 하나는 넣으세요.')
                   : null;
 
   // 직접 추가: 이름은 필수, 종목코드는 선택 (코드가 없으면 계좌 종목과 자동 연결되지 않는 키)
@@ -131,7 +154,7 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
     const targets: { [key: string]: number } = {};
     for (const k of keys) if (percent(k) > 0) targets[k] = percent(k);
     const id = await saveAllocationTarget(uid, {
-      id: existing?.id ?? '', name: name.trim(), accountIds, targets, includeCash, ...band, createdAt: existing?.createdAt ?? 0,
+      id: existing?.id ?? '', name: name.trim(), accountIds, targets, includeCash, ...band, upper, createdAt: existing?.createdAt ?? 0,
       // 지금 대상 계좌에 있는 종목만 제외 목록에 남긴다
       excluded: excluded.filter((k) => held.has(k)),
       // 직접 추가한 이름·현재가는 아직 계좌에 없는 종목만 (사서 계좌에 생기면 종목 이름·시세를 쓴다)
@@ -163,17 +186,29 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
       <div className="sub-card">
         <div className="sub-card-head">
           <span className="field-label">허용 범위 (벗어나면 부족·초과로 강조)</span>
-          <button type="button" className="small-button" onClick={() => { setAbsoluteText(String(DEFAULT_ABSOLUTE)); setRelativeText(String(DEFAULT_RELATIVE)); }}>5/25 기본값</button>
+          <button
+            type="button"
+            className="small-button"
+            onClick={() => { setAbsoluteText(String(DEFAULT_ABSOLUTE)); setRelativeText(String(DEFAULT_RELATIVE)); setSameBands(true); }}
+          >5/25 기본값</button>
         </div>
+        <label className="check">
+          <input type="checkbox" checked={sameBands} onChange={(e) => toggleSame(e.target.checked)} />
+          상단·하단 같은 기준
+        </label>
+        {!sameBands && (
+          <div className="field-row">
+            <NumberField label="상단(초과) 절대 A (%p)" value={upperAbsoluteText} onChange={setUpperAbsoluteText} placeholder="안 씀" />
+            <NumberField label="상단(초과) 상대 R (%)" value={upperRelativeText} onChange={setUpperRelativeText} placeholder="안 씀" />
+          </div>
+        )}
         <div className="field-row">
-          <NumberField label="절대 기준 A (%p)" value={absoluteText} onChange={setAbsoluteText} placeholder="안 씀" />
-          <NumberField label="상대 기준 R (%)" value={relativeText} onChange={setRelativeText} placeholder="안 씀" />
+          <NumberField label={sameBands ? '절대 기준 A (%p)' : '하단(부족) 절대 A (%p)'} value={absoluteText} onChange={setAbsoluteText} placeholder="안 씀" />
+          <NumberField label={sameBands ? '상대 기준 R (%)' : '하단(부족) 상대 R (%)'} value={relativeText} onChange={setRelativeText} placeholder="안 씀" />
         </div>
         <p className="muted small">
           허용 편차 = min(A, 목표 × R). 하나를 비우면 그 기준은 쓰지 않습니다. 목표 0% 종목은 강조하지 않습니다.
-          {band.threshold > 0 || band.relative !== null
-            ? ` 예: 목표 40% → ±${decimal(toleranceBand(band, 40) ?? 0, 2)}%p, 목표 10% → ±${decimal(toleranceBand(band, 10) ?? 0, 2)}%p`
-            : ''}
+          {[example(40), example(10)].some((e) => e !== null) ? ` 예: ${[example(40), example(10)].filter(Boolean).join(', ')}` : ''}
         </p>
       </div>
 

@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { Card, PlaceholderBadge, TickerBadge, Warning } from '../components/ui';
 import { WonField } from '../components/form';
 import { allocationView, buyOnly, isCodeless, isHighlighted, keyOf, rebalance, toleranceLabel, toleranceRange, type AllocationRow, type AllocationView, type TradeSuggestion } from '../core/allocation';
-import { decimal, manwon, parseDecimal, usd, won } from '../core/format';
+import { decimal, manwon, parseDecimal, signedWon, usd, won } from '../core/format';
+import { today } from '../core/dates';
+import { tradeUsdKrw } from '../core/market';
+import { averageCostKrwByKey, realizedInYear, TAX_LIMIT_KRW } from '../core/overseasTax';
 import { useAppData } from '../data/DataContext';
 import { AllocationForm } from '../forms/AllocationForm';
 import { quantityUnit, type Holding } from '../model';
@@ -209,7 +212,21 @@ export function AllocationPage() {
   const amount = parseDecimal(amountText) ?? 0;
   const plan = view ? buyOnly(view, amount, useCash) : { trades: [], leftoverKrw: 0, poolKrw: 0, cashUsedKrw: 0 };
   const buys = plan.trades;
-  const trades = view ? rebalance(view) : [];
+  // 사고팔기: 해외 매도의 실현이익이 올해 양도세 한도(240만원)를 넘지 않게
+  const day = today();
+  const fxAt = (d: string) => tradeUsdKrw(data.market, d, day);
+  const yearRealized = realizedInYear(data.holdings, data.records, Number(day.slice(0, 4)), fxAt, data.usdKrw);
+  const rebalancePlan = view && selected
+    ? rebalance(view, {
+        realizedKrw: yearRealized.realizedKrw,
+        averageCostKrw: averageCostKrwByKey(data.holdings.filter((h) => selected.accountIds.includes(h.accountId)), data.records, fxAt, data.usdKrw),
+        limitKrw: TAX_LIMIT_KRW,
+        estimated: yearRealized.estimated,
+      })
+    : { trades: [], tax: null };
+  const trades = rebalancePlan.trades;
+  const tax = rebalancePlan.tax;
+  const showTax = tax !== null && (view?.rows.some((r) => r.isForeign) ?? false);
 
   return (
     <div className="stack">
@@ -367,6 +384,29 @@ export function AllocationPage() {
                   </div>
                 ))
               ))}
+            {showRebalance && showTax && tax && (
+              <div className="sub-card">
+                <span className="field-label">해외 양도세 한도 (연 공제 250만원, 계산 한도 {manwon(tax.limitKrw)})</span>
+                <div className="row">
+                  <span>올해 해외 실현손익{tax.estimated ? ' (추정, 환율 일부 없음)' : ' (추정)'}</span>
+                  <span>{signedWon(tax.realizedKrw)}</span>
+                </div>
+                <div className="row">
+                  <span>이번 매도로 생기는 손익</span>
+                  <span>{signedWon(tax.plannedGainKrw)}</span>
+                </div>
+                <div className="row">
+                  <strong>합계</strong>
+                  <strong>{signedWon(tax.realizedKrw + tax.plannedGainKrw)} / {manwon(tax.limitKrw)}</strong>
+                </div>
+                {tax.reduced.length > 0 && (
+                  <p className="small strong">
+                    한도 때문에 매도를 줄였습니다: {tax.reduced.map(([r, c]) => `${r.name} ${won(c)}`).join(', ')} (매수도 같은 비율로 줄임)
+                  </p>
+                )}
+                <p className="muted small">매도 기록으로 계산한 추정값입니다 (매매일 환율·이동평균). 실제 신고 금액과 다를 수 있어 10만원 여유를 둡니다.</p>
+              </div>
+            )}
           </Card>
         </>
       )}

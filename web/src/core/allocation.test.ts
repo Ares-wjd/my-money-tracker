@@ -20,7 +20,7 @@ const records = [
 const accounts = summarize([isa, other], [sp1, bond, sp2, gold], records, null).accounts;
 const target: AllocationTarget = {
   id: '', name: '자산배분', accountIds: ['a', 'b'], targets: { 'KR:360750': 50, 'KR:AAA': 30, [CASH_KEY]: 20 },
-  includeCash: true, threshold: 3, relative: null, createdAt: 0, excluded: [], names: {}, units: {}, prices: {}, noBuy: [],
+  includeCash: true, threshold: 3, relative: null, upper: null, createdAt: 0, excluded: [], names: {}, units: {}, prices: {}, noBuy: [],
 };
 const byKey = <T extends { key: string }>(rows: T[]) => new Map(rows.map((r) => [r.key, r]));
 
@@ -51,7 +51,7 @@ describe('비중 (AllocationTest)', () => {
     expect(toleranceBand({ threshold: 0, relative: 25 }, 10)).toBe(2.5);
     expect(toleranceBand({ threshold: 0, relative: 0 }, 10)).toBeNull();
     expect(toleranceLabel(rule)).toBe('5/25 룰');
-    expect(toleranceLabel({ threshold: 3, relative: null })).toBe('±3%p');
+    expect(toleranceLabel({ threshold: 3, relative: null, upper: null })).toBe('±3%p');
 
     const view = allocationView(rule, accounts, null);
     const rows = byKey(view.rows);
@@ -102,7 +102,7 @@ describe('비중 (AllocationTest)', () => {
   });
 
   it('사고팔아 정확히 맞추기', () => {
-    const trades = byKey(rebalance(allocationView(target, accounts, null)).map((s) => ({ ...s, key: s.row.key })));
+    const trades = byKey(rebalance(allocationView(target, accounts, null)).trades.map((s) => ({ ...s, key: s.row.key })));
     // 1주 100원 단위로 0 쪽 내림: −250 → −200, +250 → +200
     expect(trades.get('KR:360750')!.amountKrw).toBeCloseTo(-200, 9);
     expect(trades.get('KR:AAA')!.amountKrw).toBeCloseTo(200, 9);
@@ -182,7 +182,7 @@ describe('비중 (AllocationTest)', () => {
   });
 
   it('사고팔기도 매수 단위로 0 쪽 내림', () => {
-    const trades = byKey(rebalance(allocationView({ ...target, units: { 'KR:360750': 1000 } }, accounts, null)).map((s) => ({ ...s, key: s.row.key })));
+    const trades = byKey(rebalance(allocationView({ ...target, units: { 'KR:360750': 1000 } }, accounts, null)).trades.map((s) => ({ ...s, key: s.row.key })));
     expect(trades.has('KR:360750')).toBe(false);
     expect(trades.get('KR:AAA')!.amountKrw).toBeCloseTo(200, 9);
   });
@@ -194,7 +194,7 @@ describe('비중 (AllocationTest)', () => {
     expect(t.has('KR:AAA')).toBe(false);
     expect(Math.abs(t.get('KR:360750')!.amountKrw - (400 * 50) / 70)).toBeLessThan(0.02);
     expect(t.get('CASH')!.amountKrw).toBeCloseTo(500 - t.get('KR:360750')!.amountKrw, 6);
-    expect(rebalance(view).some((s) => s.row.key === 'KR:AAA')).toBe(false);
+    expect(rebalance(view).trades.some((s) => s.row.key === 'KR:AAA')).toBe(false);
   });
 
   it('동점이면 단위 때문에 못 산 더 부족한 종목을 산다', () => {

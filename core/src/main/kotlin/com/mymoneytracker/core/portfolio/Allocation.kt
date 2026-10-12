@@ -31,10 +31,27 @@ data class AllocationTarget(
     val prices: Map<String, Double> = emptyMap(),
     /** 지금 매수 안 함: 비중 표에는 보이지만 매수 계산기에서 빼는 종목 키 (예: 비상장). */
     val noBuy: List<String> = emptyList(),
-    /** 허용 범위의 상대 기준 R (%, 0~100). null·0 이면 쓰지 않음 (예전 설정은 null). */
+    /** 허용 범위의 상대 기준 R (%, 0~100). null·0 이면 쓰지 않음 (예전 설정은 null). 상단을 따로 쓰면 하단 기준. */
     val relative: Double? = AllocationCalculator.DEFAULT_RELATIVE,
+    /** 상단(초과) 기준을 따로 쓸 때만. null 이면 상단·하단 같은 기준 ([threshold]·[relative]). */
+    val upper: ToleranceRule? = null,
 ) {
+    /** 하단(부족) 기준 (상단·하단이 같으면 공통 기준). */
+    val lower: ToleranceRule get() = ToleranceRule(threshold, relative)
+
+    /** 상단(초과) 기준. */
+    val upperRule: ToleranceRule get() = upper ?: lower
     val targetSum: Double get() = targets.filterKeys { includeCash || it != AllocationCalculator.CASH }.values.sum()
+}
+
+/** 허용 범위 기준: 허용 편차 = min(절대 [threshold] %p, 목표 × 상대 [relative] %). 0·null 인 기준은 쓰지 않는다. */
+data class ToleranceRule(val threshold: Double, val relative: Double?) {
+    /** 허용 편차 (%p). 쓰는 기준이 없으면 null. [weightPercent] 는 목표 비중 W (%). */
+    fun band(weightPercent: Double): Double? =
+        listOfNotNull(threshold.takeIf { it > 0 }, relative?.takeIf { it > 0 }?.let { weightPercent * it / 100 }).minOrNull()
+
+    /** 쓰는 기준이 있는지. */
+    val isSet: Boolean get() = threshold > 0 || (relative ?: 0.0) > 0
 }
 
 /** 비중 표의 한 줄 (종목 하나 또는 예수금). 비중은 0~1. */
@@ -71,20 +88,26 @@ data class AllocationView(
     /** 대상 계좌들의 현재 예수금 (원화, 달러는 환율로). 비중에 넣지 않아도 계산기에서 쓸 수 있다. */
     val cashKrw: Double = 0.0,
 ) {
-    /** 허용 편차 (%p): min(A, W × R). 쓰는 기준이 없으면 null. */
-    fun band(row: AllocationRow): Double? = AllocationCalculator.band(target, row.targetWeight * 100)
+    /** 하단 허용 편차 (%p): min(A, W × R). 쓰는 기준이 없으면 null. */
+    fun lowerBand(row: AllocationRow): Double? = target.lower.band(row.targetWeight * 100)
+
+    /** 상단 허용 편차 (%p). */
+    fun upperBand(row: AllocationRow): Double? = target.upperRule.band(row.targetWeight * 100)
 
     /** 허용 범위 (하한, 상한) %. */
-    fun range(row: AllocationRow): Pair<Double, Double>? = band(row)?.let { b ->
+    fun range(row: AllocationRow): Pair<Double, Double>? {
+        val low = lowerBand(row) ?: return null
+        val high = upperBand(row) ?: return null
         val w = row.targetWeight * 100
-        max(0.0, w - b) to w + b
+        return max(0.0, w - low) to w + high
     }
 
-    /** 강조할 줄: 허용 범위를 벗어남 (|차이| ≥ 허용 편차). 목표 0% 는 강조하지 않는다. */
+    /** 강조할 줄: 허용 범위를 벗어남 (초과는 상단, 부족은 하단 편차 이상). 목표 0% 는 강조하지 않는다. */
     fun highlighted(row: AllocationRow): Boolean {
         if (row.targetWeight <= 0) return false
-        val b = band(row) ?: return false
-        return abs(row.diffPoints) >= b - 1e-9
+        val diff = row.diffPoints
+        val b = (if (diff > 0) upperBand(row) else lowerBand(row)) ?: return false
+        return abs(diff) >= b - 1e-9
     }
 }
 
@@ -94,6 +117,31 @@ data class AllocationView(
  */
 data class TradeSuggestion(val row: AllocationRow, val amountKrw: Double, val shares: Double?, val fractional: Boolean = false)
 
+/**
+ * 사고팔기 계산의 해외 양도세 한도. [realizedKrw] 올해 해외 실현손익(원), [averageCostKrw] 종목 키 → 원화 평균단가(1주),
+ * [limitKrw] 계산 한도 (기본 240만원), [estimated] 환율이 없는 날을 최신 환율로 추정했는지.
+ */
+data class TaxLimit(
+    val realizedKrw: Double,
+    val averageCostKrw: Map<String, Double>,
+    val limitKrw: Double = OverseasTax.LIMIT_KRW,
+    val estimated: Boolean = false,
+)
+
+/** 한도 적용 결과: 올해 실현손익, 이번 매도로 생기는 이익(손실은 −), 한도, 줄인 매도 (종목, 줄인 금액 원). */
+data class TaxResult(
+    val realizedKrw: Double,
+    val plannedGainKrw: Double,
+    val limitKrw: Double,
+    val reduced: List<Pair<AllocationRow, Double>>,
+    val estimated: Boolean,
+) {
+    val totalKrw: Double get() = realizedKrw + plannedGainKrw
+}
+
+/** 사고팔기 결과. [tax] 는 양도세 한도를 적용했을 때만. */
+data class RebalancePlan(val trades: List<TradeSuggestion>, val tax: TaxResult?)
+
 /** 매수 계산기 결과: 종목별 살 금액, 단위 때문에 남는 돈, 계산에 쓴 돈(넣을 돈 + 쓴 예수금)과 그중 예수금. */
 data class BuyPlan(val trades: List<TradeSuggestion>, val leftoverKrw: Double, val poolKrw: Double = 0.0, val cashUsedKrw: Double = 0.0)
 
@@ -102,12 +150,8 @@ object AllocationCalculator {
     const val DEFAULT_ABSOLUTE = 5.0
     const val DEFAULT_RELATIVE = 25.0
 
-    /** 허용 편차 (%p) = min(A, W × R). [weightPercent] 는 목표 비중 W (%). 쓰는 기준이 없으면 null. */
-    fun band(target: AllocationTarget, weightPercent: Double): Double? {
-        val absolute = target.threshold.takeIf { it > 0 }
-        val relative = target.relative?.takeIf { it > 0 }?.let { weightPercent * it / 100 }
-        return listOfNotNull(absolute, relative).minOrNull()
-    }
+    /** 하단(또는 공통) 허용 편차 (%p) = min(A, W × R). [weightPercent] 는 목표 비중 W (%). 쓰는 기준이 없으면 null. */
+    fun band(target: AllocationTarget, weightPercent: Double): Double? = target.lower.band(weightPercent)
 
     const val CASH = "CASH"
     const val KR_PREFIX = "KR:"
@@ -279,18 +323,63 @@ object AllocationCalculator {
         return BuyPlan(trades.filter { it.amountKrw >= 0.5 }, leftover, amountKrw, cashUsed)
     }
 
-    /** 사고팔아 정확히 맞추기: 종목별 목표 × 합계 − 평가금 (+ 사기, − 팔기), 매수 단위로 0 쪽 내림. */
-    fun rebalance(view: AllocationView): List<TradeSuggestion> {
+    /**
+     * 사고팔아 정확히 맞추기: 종목별 목표 × 합계 − 평가금 (+ 사기, − 팔기), 매수 단위로 0 쪽 내림.
+     * [tax] 가 있으면 해외 매도의 실현이익이 양도세 한도를 넘지 않게 줄인다 ([RebalancePlan.tax]).
+     */
+    fun rebalance(view: AllocationView, tax: TaxLimit? = null): RebalancePlan {
         val targetSum = view.rows.sumOf { it.targetWeight }
-        if (targetSum <= 0) return emptyList()
-        return view.rows
+        if (targetSum <= 0) return RebalancePlan(emptyList(), null)
+        val amounts = view.rows
             .filter { it.key !in view.target.noBuy }
-            .map { r ->
-                val raw = r.targetWeight / targetSum * view.totalKrw - r.valueKrw
-                val u = unitOf(view.target, r)
-                val amount = if (u == null) raw else kotlin.math.sign(raw) * floor(abs(raw) / u + 1e-9) * u
-                suggestion(view.target, r, amount)
+            .associateWith { r -> floorUnit(view.target, r, r.targetWeight / targetSum * view.totalKrw - r.valueKrw) }
+            .toMutableMap()
+        val result = tax?.let { limitOverseasGain(view, amounts, it) }
+        val trades = amounts.map { (r, amount) -> suggestion(view.target, r, amount) }.filter { abs(it.amountKrw) >= 0.5 }
+        return RebalancePlan(trades, result)
+    }
+
+    /** 매수 단위로 0 쪽 내림 (단위를 모르면 그대로). */
+    private fun floorUnit(target: AllocationTarget, row: AllocationRow, raw: Double): Double {
+        val u = unitOf(target, row) ?: return raw
+        return kotlin.math.sign(raw) * floor(abs(raw) / u + 1e-9) * u
+    }
+
+    /** 해외 매도 한 건의 실현이익 비율 (매도 금액 1원당). 원화 평균단가를 모르면 매도 금액 전체를 이익으로 본다 (보수적으로). */
+    private fun gainRatio(row: AllocationRow, tax: TaxLimit): Double {
+        val price = row.priceKrw?.takeIf { it > 0 } ?: return 1.0
+        val average = tax.averageCostKrw[row.key] ?: return 1.0
+        return 1 - average / price
+    }
+
+    /**
+     * 해외 매도의 실현이익 합이 남은 한도(한도 − 올해 실현손익, 손실 매도만큼 늘어남)를 넘으면,
+     * 이익 나는 해외 매도를 모두 같은 비율로 줄이고(매수 단위로 내림), 덜 판 만큼 매수(+ 금액)도 같은 비율로 줄인다.
+     */
+    private fun limitOverseasGain(view: AllocationView, amounts: MutableMap<AllocationRow, Double>, tax: TaxLimit): TaxResult {
+        val sells = amounts.filter { (r, a) -> a < 0 && r.isForeign && !r.isCash }
+        val gains = sells.mapValues { (r, a) -> -a * gainRatio(r, tax) }
+        val losses = gains.values.filter { it < 0 }.sum()
+        val profit = gains.values.filter { it > 0 }.sum()
+        val available = tax.limitKrw - tax.realizedKrw - losses
+        val reduced = mutableListOf<Pair<AllocationRow, Double>>()
+        if (profit > available + 1e-6) {
+            val ratio = (available / profit).coerceIn(0.0, 1.0)
+            gains.filterValues { it > 0 }.keys.forEach { r ->
+                val old = amounts.getValue(r)
+                val new = floorUnit(view.target, r, old * ratio)
+                amounts[r] = new
+                if (new - old > 0.5) reduced += r to (new - old)
             }
-            .filter { abs(it.amountKrw) >= 0.5 }
+            val cut = reduced.sumOf { it.second }
+            val buys = amounts.filterValues { it > 0 }
+            val buyTotal = buys.values.sum()
+            if (buyTotal > 0 && cut > 0) {
+                val scale = (max(0.0, buyTotal - cut) / buyTotal).coerceIn(0.0, 1.0)
+                buys.forEach { (r, a) -> amounts[r] = floorUnit(view.target, r, a * scale) }
+            }
+        }
+        val planned = amounts.filter { (r, a) -> a < 0 && r.isForeign && !r.isCash }.entries.sumOf { (r, a) -> -a * gainRatio(r, tax) }
+        return TaxResult(tax.realizedKrw, planned, tax.limitKrw, reduced, tax.estimated)
     }
 }

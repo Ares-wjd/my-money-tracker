@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -40,14 +41,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioViewModel
 import com.mymoneytracker.app.ui.common.AppFilterChip
+import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.MoneyField
 import com.mymoneytracker.app.ui.common.PlaceholderBadge
@@ -66,15 +68,21 @@ import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.SegmentedPills
 import com.mymoneytracker.app.ui.common.TickerBadge
 import com.mymoneytracker.app.ui.common.WarningText
+import com.mymoneytracker.app.ui.common.appCardColors
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.portfolio.AllocationCalculator
 import com.mymoneytracker.core.portfolio.AllocationRow
 import com.mymoneytracker.core.portfolio.AllocationTarget
 import com.mymoneytracker.core.portfolio.AllocationView
+import com.mymoneytracker.core.portfolio.OverseasTax
+import com.mymoneytracker.core.portfolio.TaxLimit
+import com.mymoneytracker.core.portfolio.TaxResult
+import com.mymoneytracker.core.portfolio.ToleranceRule
 import com.mymoneytracker.core.portfolio.TradeSuggestion
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.hypot
+import java.time.LocalDate
 
 private enum class Ring(val label: String) { CURRENT("실제"), TARGET("목표"), COMPARE("비교") }
 
@@ -153,8 +161,22 @@ fun AllocationScreen(
             else -> {
                 val selected = list.firstOrNull { it.id == selectedId } ?: list.first()
                 val view = AllocationCalculator.view(selected, current.summary.accounts, current.summary.usdKrw)
+                // 사고팔기의 해외 양도세 한도: 올해 해외 실현손익(모든 계좌)과 대상 계좌 해외 종목의 원화 평균단가
+                val taxLimit = remember(current, selected) {
+                    val today = LocalDate.now()
+                    val fxAt = { d: LocalDate -> current.market.tradeUsdKrw(d, today) }
+                    val realized = OverseasTax.realizedInYear(current.holdings, current.records, today.year, fxAt, current.usdKrw)
+                    TaxLimit(
+                        realizedKrw = realized.realizedKrw,
+                        averageCostKrw = OverseasTax.averageCostKrwByKey(
+                            current.holdings.filter { it.accountId in selected.accountIds }, current.records, fxAt, current.usdKrw,
+                        ),
+                        estimated = realized.estimated,
+                    )
+                }
                 AllocationContent(
                     view = view,
+                    taxLimit = taxLimit,
                     names = list.map { it.id to it.name },
                     accountNames = selected.accountIds.mapNotNull { id -> current.accounts.firstOrNull { it.id == id }?.name },
                     excludedNames = selected.excluded.map { key ->
@@ -178,6 +200,7 @@ fun AllocationScreen(
 @Composable
 private fun AllocationContent(
     view: AllocationView,
+    taxLimit: TaxLimit,
     names: List<Pair<String, String>>,
     accountNames: List<String>,
     excludedNames: List<String>,
@@ -293,11 +316,41 @@ private fun AllocationContent(
                     Text("팔기까지 해서 정확히 맞추려면 " + if (showRebalance) "▴" else "▾")
                 }
                 if (showRebalance) {
-                    val trades = AllocationCalculator.rebalance(view)
+                    // 해외 매도의 실현이익이 올해 양도세 한도(240만원)를 넘지 않게
+                    val rebalance = AllocationCalculator.rebalance(view, taxLimit)
+                    val trades = rebalance.trades
                     if (trades.isEmpty()) Text("이미 목표와 같습니다.", style = MaterialTheme.typography.bodySmall)
                     trades.forEach { TradeLine(it, usdKrw, prefix = if (it.amountKrw > 0) "사기 " else "팔기 ") }
+                    val tax = rebalance.tax
+                    if (tax != null && view.rows.any { it.isForeign }) TaxSummary(tax)
                 }
             }
+        }
+    }
+}
+
+/** 사고팔기의 해외 양도세 한도 요약. */
+@Composable
+private fun TaxSummary(tax: TaxResult) {
+    Card(Modifier.fillMaxWidth().padding(top = 8.dp), shape = MaterialTheme.shapes.medium, colors = appCardColors()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("해외 양도세 한도 (연 공제 250만원, 계산 한도 ${MoneyFormat.manwon(tax.limitKrw)})", style = MaterialTheme.typography.labelLarge)
+            LabeledValue("올해 해외 실현손익 " + if (tax.estimated) "(추정, 환율 일부 없음)" else "(추정)", MoneyFormat.signedWon(tax.realizedKrw))
+            LabeledValue("이번 매도로 생기는 손익", MoneyFormat.signedWon(tax.plannedGainKrw))
+            LabeledValue("합계 / 한도", "${MoneyFormat.signedWon(tax.totalKrw)} / ${MoneyFormat.manwon(tax.limitKrw)}")
+            if (tax.reduced.isNotEmpty()) {
+                Text(
+                    "한도 때문에 매도를 줄였습니다: " + tax.reduced.joinToString(", ") { (r, c) -> "${r.name} ${MoneyFormat.won(c)}" } +
+                        " (매수도 같은 비율로 줄임)",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Text(
+                "매도 기록으로 계산한 추정값입니다 (매매일 환율·이동평균). 실제 신고 금액과 다를 수 있어 10만원 여유를 둡니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -519,16 +572,27 @@ private fun Donut(view: AllocationView, ring: Ring) {
     }
 }
 
-/** 사용 중인 허용 기준 이름 (예: "5/25 룰", "±3%p"). */
-private fun toleranceLabel(target: AllocationTarget): String {
-    val a = target.threshold.takeIf { it > 0 }
-    val r = target.relative?.takeIf { it > 0 }
+/** 기준 하나의 이름: 5/25 (짧게) 또는 절대 5%p · 상대 25%, ±3%p, 목표의 ±25%. */
+private fun ruleText(rule: ToleranceRule, short: Boolean): String {
+    val a = rule.threshold.takeIf { it > 0 }
+    val r = rule.relative?.takeIf { it > 0 }
     return when {
         a != null && r != null ->
-            if (a == AllocationCalculator.DEFAULT_ABSOLUTE && r == AllocationCalculator.DEFAULT_RELATIVE) "5/25 룰"
+            if (short) "${MoneyFormat.decimal(a, 2)}/${MoneyFormat.decimal(r, 2)}"
             else "절대 ${MoneyFormat.decimal(a, 2)}%p · 상대 ${MoneyFormat.decimal(r, 2)}%"
         a != null -> "±${MoneyFormat.decimal(a, 2)}%p"
         r != null -> "목표의 ±${MoneyFormat.decimal(r, 2)}%"
+        else -> "안 씀"
+    }
+}
+
+/** 사용 중인 허용 기준 이름 (예: "5/25 룰", "±3%p", "상단 10/50 · 하단 5/25"). */
+private fun toleranceLabel(target: AllocationTarget): String {
+    val low = target.lower
+    target.upper?.let { return "상단 ${ruleText(it, true)} · 하단 ${ruleText(low, true)}" }
+    return when {
+        low.threshold == AllocationCalculator.DEFAULT_ABSOLUTE && low.relative == AllocationCalculator.DEFAULT_RELATIVE -> "5/25 룰"
+        low.isSet -> ruleText(low, false)
         else -> "강조 안 함"
     }
 }

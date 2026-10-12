@@ -17,7 +17,7 @@ import {
   type SavingsGoalGroup,
   type SavingsSubAccount,
 } from '../model';
-import type { AllocationTarget } from '../core/allocation';
+import type { AllocationTarget, ToleranceRule } from '../core/allocation';
 
 type Data = { [key: string]: unknown };
 
@@ -188,6 +188,14 @@ export function latestQuoteDate(snapshot: MarketSnapshot): string | null {
 }
 
 /** { 키: 숫자 } 맵 (숫자가 아닌 값은 버린다). */
+/** 상단 허용 기준 { threshold, relative } (없거나 잘못되면 null = 상단·하단 같은 기준). */
+function toleranceRule(v: unknown): ToleranceRule | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const o = v as { [key: string]: unknown };
+  const threshold = num(o.threshold);
+  return threshold === null ? null : { threshold, relative: num(o.relative) };
+}
+
 function numberMap(v: unknown): { [key: string]: number } {
   const out: { [key: string]: number } = {};
   if (v && typeof v === 'object' && !Array.isArray(v)) {
@@ -217,6 +225,7 @@ export function toAllocationTarget(id: string, d: Data): AllocationTarget | null
     includeCash: d.includeCash === true,
     threshold: num(d.threshold) ?? 3,
     relative: num(d.relative),
+    upper: toleranceRule(d.upper),
     createdAt: num(d.createdAt) ?? 0,
     excluded: Array.isArray(d.excluded) ? d.excluded.filter((x): x is string => typeof x === 'string') : [],
     names: d.names && typeof d.names === 'object' && !Array.isArray(d.names)

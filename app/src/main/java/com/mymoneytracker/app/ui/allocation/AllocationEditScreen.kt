@@ -65,6 +65,7 @@ import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.portfolio.AllocationCalculator
 import com.mymoneytracker.core.portfolio.AllocationTarget
+import com.mymoneytracker.core.portfolio.ToleranceRule
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -139,6 +140,10 @@ private fun AllocationForm(
     var relativeText by rememberSaveable {
         mutableStateOf(if (initial != null) bandText(initial.relative) else bandText(AllocationCalculator.DEFAULT_RELATIVE))
     }
+    // 상단(초과) 기준을 따로 쓸지 (기본: 상단·하단 같은 기준)
+    var sameBands by rememberSaveable { mutableStateOf(initial?.upper == null) }
+    var upperAbsoluteText by rememberSaveable { mutableStateOf(bandText(initial?.upper?.threshold)) }
+    var upperRelativeText by rememberSaveable { mutableStateOf(bandText(initial?.upper?.relative)) }
     val texts = remember { mutableStateMapOf<String, String>().apply { initial?.targets?.forEach { (k, v) -> put(k, numberText(v)) } } }
     // 매수 단위 (비우면 1주 단위, 금액이면 그 금액 단위)
     val unitTexts = remember { mutableStateMapOf<String, String>().apply { initial?.units?.forEach { (k, v) -> put(k, numberText(v)) } } }
@@ -180,14 +185,22 @@ private fun AllocationForm(
     val sum = keys.sumOf { percent(it) }
     val absolute = MoneyFormat.parseDecimal(absoluteText) ?: 0.0
     val relative = MoneyFormat.parseDecimal(relativeText)?.takeIf { it > 0 }
+    val lowerRule = ToleranceRule(absolute, relative)
+    val upperRule = if (sameBands) {
+        null
+    } else {
+        ToleranceRule(MoneyFormat.parseDecimal(upperAbsoluteText) ?: 0.0, MoneyFormat.parseDecimal(upperRelativeText)?.takeIf { it > 0 })
+    }
     val problem = when {
         name.isBlank() -> "이름을 입력하세요."
         accountIds.isEmpty() -> "대상 계좌를 고르세요."
         keys.any { it !in excluded && bad(texts[it], 100.0) } -> "목표 비중은 0~100% 로 입력하세요."
         stockKeys.any { bad(unitTexts[it]) || bad(priceTexts[it]) } -> "매수 단위·현재가를 확인하세요."
         abs(sum - 100) > 0.01 -> "목표 합계가 100% 가 되어야 합니다 (지금 ${MoneyFormat.decimal(sum, 2)}%)."
-        bad(absoluteText, 100.0) || bad(relativeText, 100.0) -> "허용 범위의 절대·상대 기준은 0~100 으로 입력하세요."
-        absolute <= 0 && relative == null -> "허용 범위의 절대·상대 기준 중 하나는 넣으세요."
+        bad(absoluteText, 100.0) || bad(relativeText, 100.0) ||
+            (!sameBands && (bad(upperAbsoluteText, 100.0) || bad(upperRelativeText, 100.0))) -> "허용 범위의 절대·상대 기준은 0~100 으로 입력하세요."
+        !lowerRule.isSet || upperRule?.isSet == false ->
+            if (sameBands) "허용 범위의 절대·상대 기준 중 하나는 넣으세요." else "상단·하단마다 절대·상대 기준 중 하나는 넣으세요."
         else -> null
     }
     val relinkTargets = held.filter { percent(it) == 0.0 && it !in excluded }
@@ -219,15 +232,42 @@ private fun AllocationForm(
                     TextButton(onClick = {
                         absoluteText = bandText(AllocationCalculator.DEFAULT_ABSOLUTE)
                         relativeText = bandText(AllocationCalculator.DEFAULT_RELATIVE)
+                        sameBands = true
                     }) { Text("5/25 기본값") }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NumberField("절대 기준 A (%p)", absoluteText, { absoluteText = it }, modifier = Modifier.weight(1f), supporting = "비우면 안 씀")
-                    NumberField("상대 기준 R (%)", relativeText, { relativeText = it }, modifier = Modifier.weight(1f), supporting = "비우면 안 씀")
+                Row(
+                    Modifier.fillMaxWidth().clickable {
+                        // 끄면 상단 칸은 지금 값으로 시작
+                        if (sameBands) {
+                            upperAbsoluteText = absoluteText
+                            upperRelativeText = relativeText
+                        }
+                        sameBands = !sameBands
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = sameBands, onCheckedChange = null)
+                    Text("상단·하단 같은 기준", style = MaterialTheme.typography.bodyMedium)
                 }
-                val sample = AllocationTarget(name = "", accountIds = emptyList(), targets = emptyMap(), threshold = absolute, relative = relative)
+                if (!sameBands) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NumberField("상단 절대 A (%p)", upperAbsoluteText, { upperAbsoluteText = it }, modifier = Modifier.weight(1f), supporting = "비우면 안 씀")
+                        NumberField("상단 상대 R (%)", upperRelativeText, { upperRelativeText = it }, modifier = Modifier.weight(1f), supporting = "비우면 안 씀")
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField(if (sameBands) "절대 기준 A (%p)" else "하단 절대 A (%p)", absoluteText, { absoluteText = it }, modifier = Modifier.weight(1f), supporting = "비우면 안 씀")
+                    NumberField(if (sameBands) "상대 기준 R (%)" else "하단 상대 R (%)", relativeText, { relativeText = it }, modifier = Modifier.weight(1f), supporting = "비우면 안 씀")
+                }
                 val example = listOf(40.0, 10.0).mapNotNull { w ->
-                    AllocationCalculator.band(sample, w)?.let { "목표 ${MoneyFormat.decimal(w, 0)}% → ±${MoneyFormat.decimal(it, 2)}%p" }
+                    val low = lowerRule.band(w) ?: return@mapNotNull null
+                    val high = (upperRule ?: lowerRule).band(w) ?: return@mapNotNull null
+                    val p = { v: Double -> MoneyFormat.decimal(v, 2) }
+                    if (upperRule == null) {
+                        "목표 ${p(w)}% → ±${p(low)}%p"
+                    } else {
+                        "목표 ${p(w)}% → +${p(high)}%p / −${p(low)}%p (${p(maxOf(0.0, w - low))}~${p(w + high)}%)"
+                    }
                 }
                 Text(
                     "허용 편차 = min(A, 목표 × R). 목표 0% 종목은 강조하지 않습니다." +
@@ -457,6 +497,7 @@ private fun AllocationForm(
                         includeCash = includeCash,
                         threshold = absolute,
                         relative = relative,
+                        upper = upperRule,
                         createdAt = initial?.createdAt ?: 0L,
                         // 지금 대상 계좌에 있는 종목만 제외 목록에 남긴다
                         excluded = excluded.filter { it in held },

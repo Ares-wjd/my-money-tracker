@@ -16,8 +16,10 @@ export interface AllocationTarget {
   includeCash: boolean;
   /** 허용 범위의 절대 기준 A (%p). 0 이면 쓰지 않음. 예전 "차이 강조 기준" */
   threshold: number;
-  /** 허용 범위의 상대 기준 R (%, 0~100). null·0 이면 쓰지 않음 (예전 설정은 null) */
+  /** 허용 범위의 상대 기준 R (%, 0~100). null·0 이면 쓰지 않음 (예전 설정은 null). 상단을 따로 쓰면 하단 기준 */
   relative: number | null;
+  /** 상단(초과) 기준을 따로 쓸 때만. null 이면 상단·하단 같은 기준 */
+  upper: ToleranceRule | null;
   createdAt: number;
   /** 비중 계산에서 뺄 종목 키 */
   excluded: string[];
@@ -29,6 +31,12 @@ export interface AllocationTarget {
   prices: { [key: string]: number };
   /** 지금 매수 안 함: 비중 표에는 보이지만 매수 계산기에서 빼는 종목 키 (예: 비상장) */
   noBuy: string[];
+}
+
+/** 허용 범위 기준: 허용 편차 = min(절대 threshold %p, 목표 × 상대 relative %). 0·null 인 기준은 쓰지 않는다. */
+export interface ToleranceRule {
+  threshold: number;
+  relative: number | null;
 }
 
 /** 비중 표의 한 줄 (종목 하나 또는 예수금). 비중은 0~1. */
@@ -122,8 +130,15 @@ export function keyOf(h: Holding): string {
 export const DEFAULT_ABSOLUTE = 5;
 export const DEFAULT_RELATIVE = 25;
 
+/** 하단(부족) 기준 (상단·하단이 같으면 공통 기준). */
+export const lowerRule = (t: Pick<AllocationTarget, 'threshold' | 'relative'>): ToleranceRule => ({ threshold: t.threshold, relative: t.relative });
+/** 상단(초과) 기준. */
+export const upperRule = (t: Pick<AllocationTarget, 'threshold' | 'relative' | 'upper'>): ToleranceRule => t.upper ?? lowerRule(t);
+/** 기준을 하나라도 쓰는지. */
+export const ruleIsSet = (r: ToleranceRule): boolean => r.threshold > 0 || (r.relative ?? 0) > 0;
+
 /** 허용 편차 (%p) = min(A, W × R). weightPercent 는 목표 비중 W (%). 쓰는 기준이 없으면 null. */
-export function toleranceBand(target: Pick<AllocationTarget, 'threshold' | 'relative'>, weightPercent: number): number | null {
+export function toleranceBand(target: ToleranceRule, weightPercent: number): number | null {
   const bands: number[] = [];
   if (target.threshold > 0) bands.push(target.threshold);
   if (target.relative !== null && target.relative > 0) bands.push((weightPercent * target.relative) / 100);
@@ -133,25 +148,35 @@ export function toleranceBand(target: Pick<AllocationTarget, 'threshold' | 'rela
 /** 허용 범위 [하한, 상한] %. */
 export function toleranceRange(view: AllocationView, row: AllocationRow): [number, number] | null {
   const w = row.targetWeight * 100;
-  const b = toleranceBand(view.target, w);
-  return b === null ? null : [Math.max(0, w - b), w + b];
+  const low = toleranceBand(lowerRule(view.target), w);
+  const high = toleranceBand(upperRule(view.target), w);
+  return low === null || high === null ? null : [Math.max(0, w - low), w + high];
 }
 
-/** 강조할 줄: 허용 범위를 벗어남 (|차이| ≥ 허용 편차). 목표 0% 는 강조하지 않는다. */
+/** 강조할 줄: 허용 범위를 벗어남 (초과는 상단, 부족은 하단 편차 이상). 목표 0% 는 강조하지 않는다. */
 export function isHighlighted(view: AllocationView, row: AllocationRow): boolean {
   if (row.targetWeight <= 0) return false;
-  const b = toleranceBand(view.target, row.targetWeight * 100);
+  const rule = row.diffPoints > 0 ? upperRule(view.target) : lowerRule(view.target);
+  const b = toleranceBand(rule, row.targetWeight * 100);
   return b !== null && Math.abs(row.diffPoints) >= b - 1e-9;
 }
 
-/** 사용 중인 허용 기준 이름 (예: "5/25 룰", "±3%p"). */
-export function toleranceLabel(target: Pick<AllocationTarget, 'threshold' | 'relative'>): string {
-  const a = target.threshold > 0 ? target.threshold : null;
-  const r = target.relative !== null && target.relative > 0 ? target.relative : null;
-  if (a !== null && r !== null) return a === DEFAULT_ABSOLUTE && r === DEFAULT_RELATIVE ? '5/25 룰' : `절대 ${trim(a)}%p · 상대 ${trim(r)}%`;
+/** 기준 하나의 짧은 이름: 5/25, ±3%p, 목표의 ±25%. */
+function ruleText(rule: ToleranceRule, short: boolean): string {
+  const a = rule.threshold > 0 ? rule.threshold : null;
+  const r = rule.relative !== null && rule.relative > 0 ? rule.relative : null;
+  if (a !== null && r !== null) return short ? `${trim(a)}/${trim(r)}` : `절대 ${trim(a)}%p · 상대 ${trim(r)}%`;
   if (a !== null) return `±${trim(a)}%p`;
   if (r !== null) return `목표의 ±${trim(r)}%`;
-  return '강조 안 함';
+  return '안 씀';
+}
+
+/** 사용 중인 허용 기준 이름 (예: "5/25 룰", "±3%p", "상단 10/50 · 하단 5/25"). */
+export function toleranceLabel(target: Pick<AllocationTarget, 'threshold' | 'relative' | 'upper'>): string {
+  const low = lowerRule(target);
+  if (target.upper) return `상단 ${ruleText(target.upper, true)} · 하단 ${ruleText(low, true)}`;
+  if (low.threshold === DEFAULT_ABSOLUTE && low.relative === DEFAULT_RELATIVE) return '5/25 룰';
+  return ruleIsSet(low) ? ruleText(low, false) : '강조 안 함';
 }
 
 const trim = (n: number): string => String(Number(n.toFixed(2)));
@@ -308,17 +333,84 @@ export function buyOnly(view: AllocationView, inputKrw: number, useCash = false)
 }
 
 /** 사고팔아 정확히 맞추기: 종목별 목표 × 합계 − 평가금 (+ 사기, − 팔기), 매수 단위로 0 쪽 내림. */
-export function rebalance(view: AllocationView): TradeSuggestion[] {
+export function rebalance(view: AllocationView, tax: TaxLimit | null = null): RebalancePlan {
   const sum = view.rows.reduce((s, r) => s + r.targetWeight, 0);
-  if (sum <= 0) return [];
+  if (sum <= 0) return { trades: [], tax: null };
   const noBuy = new Set(view.target.noBuy);
-  return view.rows
-    .filter((r) => !noBuy.has(r.key))
-    .map((r) => {
-      const raw = (r.targetWeight / sum) * view.totalKrw - r.valueKrw;
-      const u = unitOf(view.target, r);
-      const amount = u === null ? raw : Math.sign(raw) * Math.floor(Math.abs(raw) / u + 1e-9) * u;
-      return suggestion(view.target, r, amount);
-    })
-    .filter((s) => Math.abs(s.amountKrw) >= 0.5);
+  const amounts = new Map<AllocationRow, number>();
+  for (const r of view.rows) {
+    if (!noBuy.has(r.key)) amounts.set(r, floorUnit(view.target, r, (r.targetWeight / sum) * view.totalKrw - r.valueKrw));
+  }
+  const result = tax ? limitOverseasGain(view, amounts, tax) : null;
+  const trades = [...amounts].map(([r, a]) => suggestion(view.target, r, a)).filter((s) => Math.abs(s.amountKrw) >= 0.5);
+  return { trades, tax: result };
+}
+
+/** 매수 단위로 0 쪽 내림 (단위를 모르면 그대로). */
+function floorUnit(target: AllocationTarget, row: AllocationRow, raw: number): number {
+  const u = unitOf(target, row);
+  return u === null ? raw : Math.sign(raw) * Math.floor(Math.abs(raw) / u + 1e-9) * u;
+}
+
+/** 해외 매도 한 건의 실현이익 비율 (매도 금액 1원당). 원화 평균단가를 모르면 매도 금액 전체를 이익으로 본다 (보수적으로). */
+function gainRatio(row: AllocationRow, tax: TaxLimit): number {
+  const price = row.priceKrw !== null && row.priceKrw > 0 ? row.priceKrw : null;
+  const average = tax.averageCostKrw.get(row.key);
+  return price === null || average === undefined ? 1 : 1 - average / price;
+}
+
+const isForeignSell = (r: AllocationRow, a: number) => a < 0 && r.isForeign && !r.isCash;
+
+/**
+ * 해외 매도의 실현이익 합이 남은 한도(한도 − 올해 실현손익, 손실 매도만큼 늘어남)를 넘으면,
+ * 이익 나는 해외 매도를 모두 같은 비율로 줄이고(매수 단위로 내림), 덜 판 만큼 매수(+ 금액)도 같은 비율로 줄인다.
+ */
+function limitOverseasGain(view: AllocationView, amounts: Map<AllocationRow, number>, tax: TaxLimit): TaxResult {
+  const gains = [...amounts].filter(([r, a]) => isForeignSell(r, a)).map(([r, a]) => [r, -a * gainRatio(r, tax)] as const);
+  const losses = gains.filter(([, g]) => g < 0).reduce((s, [, g]) => s + g, 0);
+  const profit = gains.filter(([, g]) => g > 0).reduce((s, [, g]) => s + g, 0);
+  const available = tax.limitKrw - tax.realizedKrw - losses;
+  const reduced: [AllocationRow, number][] = [];
+  if (profit > available + 1e-6) {
+    const ratio = Math.min(1, Math.max(0, available / profit));
+    for (const [r, g] of gains) {
+      if (g <= 0) continue;
+      const old = amounts.get(r)!;
+      const next = floorUnit(view.target, r, old * ratio);
+      amounts.set(r, next);
+      if (next - old > 0.5) reduced.push([r, next - old]);
+    }
+    const cut = reduced.reduce((s, [, c]) => s + c, 0);
+    const buys = [...amounts].filter(([, a]) => a > 0);
+    const buyTotal = buys.reduce((s, [, a]) => s + a, 0);
+    if (buyTotal > 0 && cut > 0) {
+      const scale = Math.min(1, Math.max(0, (buyTotal - cut) / buyTotal));
+      for (const [r, a] of buys) amounts.set(r, floorUnit(view.target, r, a * scale));
+    }
+  }
+  const planned = [...amounts].filter(([r, a]) => isForeignSell(r, a)).reduce((s, [r, a]) => s + -a * gainRatio(r, tax), 0);
+  return { realizedKrw: tax.realizedKrw, plannedGainKrw: planned, limitKrw: tax.limitKrw, reduced, estimated: tax.estimated };
+}
+
+/** 사고팔기 계산의 해외 양도세 한도 (core TaxLimit). averageCostKrw: 종목 키 → 원화 평균단가(1주). */
+export interface TaxLimit {
+  realizedKrw: number;
+  averageCostKrw: ReadonlyMap<string, number>;
+  limitKrw: number;
+  estimated: boolean;
+}
+
+/** 한도 적용 결과: 올해 실현손익, 이번 매도로 생기는 이익(손실은 −), 한도, 줄인 매도 [종목, 줄인 금액]. */
+export interface TaxResult {
+  realizedKrw: number;
+  plannedGainKrw: number;
+  limitKrw: number;
+  reduced: [AllocationRow, number][];
+  estimated: boolean;
+}
+
+/** 사고팔기 결과. tax 는 양도세 한도를 적용했을 때만. */
+export interface RebalancePlan {
+  trades: TradeSuggestion[];
+  tax: TaxResult | null;
 }

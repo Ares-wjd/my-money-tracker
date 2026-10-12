@@ -15,6 +15,7 @@ import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.AllocationTarget
+import com.mymoneytracker.core.portfolio.ToleranceRule
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -67,6 +68,7 @@ class PortfolioRepository(
                 "includeCash" to target.includeCash,
                 "threshold" to target.threshold,
                 "relative" to target.relative,
+                "upper" to target.upper?.let { mapOf("threshold" to it.threshold, "relative" to it.relative) },
                 "excluded" to target.excluded,
                 "names" to target.names,
                 "units" to target.units,
@@ -298,6 +300,10 @@ class PortfolioRepository(
             noBuy = (get("noBuy") as? List<*>)?.filterIsInstance<String>().orEmpty(),
             // 예전 설정에는 상대 기준이 없다 (절대 기준만)
             relative = getDouble("relative"),
+            // 상단 기준을 따로 쓸 때만 있다
+            upper = (get("upper") as? Map<*, *>)?.let { m ->
+                (m["threshold"] as? Number)?.let { ToleranceRule(it.toDouble(), (m["relative"] as? Number)?.toDouble()) }
+            },
         )
     }
 

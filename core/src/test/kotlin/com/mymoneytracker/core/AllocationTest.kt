@@ -126,7 +126,7 @@ class AllocationTest {
     @Test
     fun rebalanceToExactTargets() {
         val view = AllocationCalculator.view(target, summary.accounts, null)
-        val trades = AllocationCalculator.rebalance(view).associateBy { it.row.key }
+        val trades = AllocationCalculator.rebalance(view).trades.associateBy { it.row.key }
         // 1주 100원 단위로 0 쪽 내림: −250 → −200, +250 → +200
         assertEquals(-200.0, trades.getValue("KR:360750").amountKrw, 1e-9)
         assertEquals(200.0, trades.getValue("KR:AAA").amountKrw, 1e-9)
@@ -228,7 +228,7 @@ class AllocationTest {
     @Test
     fun rebalanceRoundsTowardZeroByUnit() {
         val view = AllocationCalculator.view(target.copy(units = mapOf("KR:360750" to 1000.0)), summary.accounts, null)
-        val trades = AllocationCalculator.rebalance(view).associateBy { it.row.key }
+        val trades = AllocationCalculator.rebalance(view).trades.associateBy { it.row.key }
         // 360750: −250 → 단위 1000원이면 0 → 목록에서 빠짐. AAA: +250, 1주 100원 → 200
         assertFalse("KR:360750" in trades)
         assertEquals(200.0, trades.getValue("KR:AAA").amountKrw, 1e-9)
@@ -246,7 +246,7 @@ class AllocationTest {
         // 넣은 뒤 3000 → S&P 목표 1500(부족 0), 예수금 600(부족 100). 남는 400 은 S&P 50 : 예수금 20 비율
         assertEquals(400.0 * 50 / 70, byKey.getValue("KR:360750").amountKrw, 0.02)
         assertEquals(500.0 - byKey.getValue("KR:360750").amountKrw, byKey.getValue("CASH").amountKrw, 1e-6)
-        assertFalse(AllocationCalculator.rebalance(view).any { it.row.key == "KR:AAA" })
+        assertFalse(AllocationCalculator.rebalance(view).trades.any { it.row.key == "KR:AAA" })
     }
 
     @Test

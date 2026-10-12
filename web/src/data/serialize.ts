@@ -102,6 +102,7 @@ export function allocationTargetDoc(t: AllocationTarget) {
     includeCash: t.includeCash,
     threshold: t.threshold,
     relative: t.relative,
+    upper: t.upper,
     createdAt: createdAt(t.createdAt),
     excluded: t.excluded,
     names: t.names,
