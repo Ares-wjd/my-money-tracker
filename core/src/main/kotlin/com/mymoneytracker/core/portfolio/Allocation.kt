@@ -217,13 +217,14 @@ object AllocationCalculator {
                 .filter { r -> units.getValue(r)?.let { it <= leftover + 1e-9 } == true }
                 .map { r -> r to need(r, buys.getValue(r)) }
                 .filter { (r, d) ->
+                    // 예수금 목표가 없으면(0%) 남기는 돈도 목표에서 벗어나므로 살 수 있으면 산다
+                    if (cashRow == null) return@filter true
                     val u = units.getValue(r)!!
-                    val cashChange = if (cashRow != null) abs(cashNeed + u) - abs(cashNeed) else 0.0
-                    val change = abs(d - u) - abs(d) + cashChange
+                    val change = abs(d - u) - abs(d) + abs(cashNeed + u) - abs(cashNeed)
                     // 차이 합이 줄면 산다. 같으면(주식 부족분이 예수금 부족분으로 옮겨갈 뿐이면) 단위 때문에 원래 몫보다
                     // 반 단위 이상 덜 산 종목이고 목표 대비 예수금보다 더 부족할 때만 산다 (비율 배분을 흐트러뜨리지 않게)
                     change < -1e-9 || (
-                        abs(change) <= 1e-9 && cashRow != null &&
+                        abs(change) <= 1e-9 &&
                             ideal.getValue(r) - buys.getValue(r) >= u / 2 - 1e-9 &&
                             d / goal(r) > cashNeed / goal(cashRow)
                         )

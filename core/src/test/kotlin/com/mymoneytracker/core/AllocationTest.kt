@@ -230,4 +230,17 @@ class AllocationTest {
         val prc = plan.trades.firstOrNull { it.row.key == "KR:PRC" }
         assertEquals(300.0, prc?.amountKrw ?: 0.0, 1e-9)
     }
+
+    @Test
+    fun zeroCashTargetSpendsLeftover() {
+        // 예수금 목표 0%(예수금 미포함), 모든 종목 1,000원 단위: 남는 돈은 1,000원 미만이어야 한다
+        val t = target.copy(
+            includeCash = false,
+            targets = mapOf("KR:360750" to 60.0, "KR:AAA" to 40.0),
+            units = mapOf("KR:360750" to 7.0, "KR:AAA" to 7.0),
+        )
+        val plan = AllocationCalculator.buyOnly(AllocationCalculator.view(t, summary.accounts, null), 1000.0)
+        assertTrue(plan.leftoverKrw < 7.0)
+        assertEquals(1000.0, plan.trades.sumOf { it.amountKrw } + plan.leftoverKrw, 1e-6)
+    }
 }

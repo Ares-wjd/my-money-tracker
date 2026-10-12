@@ -232,12 +232,17 @@ export function buyOnly(view: AllocationView, amountKrw: number): BuyPlan {
       const u = units.get(r) ?? null;
       if (u === null || u > leftover + 1e-9) continue;
       const d = need(r, buys.get(r)!);
-      const cashChange = cashRow ? Math.abs(cashNeed + u) - Math.abs(cashNeed) : 0;
-      const change = Math.abs(d - u) - Math.abs(d) + cashChange;
-      // 차이 합이 줄면 산다. 같으면 단위 때문에 원래 몫보다 반 단위 이상 덜 산 종목이고 목표 대비 예수금보다 더 부족할 때만
-      const tieBuy =
-        Math.abs(change) <= 1e-9 && cashRow !== null && ideal.get(r)! - buys.get(r)! >= u / 2 - 1e-9 && d / goal(r) > cashNeed / goal(cashRow);
-      if ((change < -1e-9 || tieBuy) && d > best) {
+      let ok: boolean;
+      if (cashRow === null) {
+        // 예수금 목표가 없으면(0%) 남기는 돈도 목표에서 벗어나므로 살 수 있으면 산다
+        ok = true;
+      } else {
+        const change = Math.abs(d - u) - Math.abs(d) + Math.abs(cashNeed + u) - Math.abs(cashNeed);
+        // 차이 합이 줄면 산다. 같으면 단위 때문에 원래 몫보다 반 단위 이상 덜 산 종목이고 목표 대비 예수금보다 더 부족할 때만
+        const tieBuy = Math.abs(change) <= 1e-9 && ideal.get(r)! - buys.get(r)! >= u / 2 - 1e-9 && d / goal(r) > cashNeed / goal(cashRow);
+        ok = change < -1e-9 || tieBuy;
+      }
+      if (ok && d > best) {
         best = d;
         pick = r;
       }

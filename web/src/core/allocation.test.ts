@@ -178,4 +178,11 @@ describe('비중 (AllocationTest)', () => {
     const prc = buyOnly(allocationView(t, acc, null), 400).trades.find((s) => s.row.key === 'KR:PRC');
     expect(prc?.amountKrw ?? 0).toBeCloseTo(300, 9);
   });
+
+  it('예수금 목표 0% 면 남는 돈을 최대한 줄인다', () => {
+    const t = { ...target, includeCash: false, targets: { 'KR:360750': 60, 'KR:AAA': 40 }, units: { 'KR:360750': 7, 'KR:AAA': 7 } };
+    const plan = buyOnly(allocationView(t, accounts, null), 1000);
+    expect(plan.leftoverKrw).toBeLessThan(7);
+    expect(plan.trades.reduce((s, x) => s + x.amountKrw, 0) + plan.leftoverKrw).toBeCloseTo(1000, 6);
+  });
 });
