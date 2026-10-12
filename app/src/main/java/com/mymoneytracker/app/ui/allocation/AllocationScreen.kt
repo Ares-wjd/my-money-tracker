@@ -54,6 +54,7 @@ import com.mymoneytracker.app.ui.PortfolioViewModel
 import com.mymoneytracker.app.ui.common.AppFilterChip
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.MoneyField
+import com.mymoneytracker.app.ui.common.PlaceholderBadge
 import com.mymoneytracker.app.ui.common.PlaceholderContent
 import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.SegmentedPills
@@ -273,7 +274,19 @@ private fun TableRow(row: AllocationRow, highlighted: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            row.holding?.let { TickerBadge(it.code, it.name, it.market, it.assetType) }
+            // 배지가 없는 줄(예수금·미보유)도 같은 폭의 회색 배지로 이름 시작 위치를 맞춘다
+            val holding = row.holding
+            if (holding != null) {
+                TickerBadge(holding.code, holding.name, holding.market, holding.assetType)
+            } else {
+                PlaceholderBadge(
+                    when {
+                        row.isCash -> "현금"
+                        AllocationCalculator.isCodeless(row.key) || !row.key.contains(':') -> "미보유"
+                        else -> row.key.substringAfter(':')
+                    },
+                )
+            }
             Text(row.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         Text(pct(row.targetWeight), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp), textAlign = TextAlign.End)

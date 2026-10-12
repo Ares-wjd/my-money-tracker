@@ -165,6 +165,16 @@ export const linkedAccountIds = (records: readonly Record[]): Set<string> =>
 export const ACCOUNT_KIND_LABEL: { [K in AccountKind]: string } = {
   GENERAL: '일반(위탁)', ISA: 'ISA', PENSION: '연금저축', IRP: 'IRP', DC: '퇴직연금(DC)', OTHER: '기타',
 };
+
+/** 배지에 쓰는 짧은 계좌 종류 (폰과 같음). */
+export const ACCOUNT_KIND_SHORT: { [K in AccountKind]: string } = {
+  GENERAL: '위탁',
+  ISA: 'ISA',
+  PENSION: '연금',
+  IRP: 'IRP',
+  DC: 'DC',
+  OTHER: '기타',
+};
 export const ASSET_TYPE_LABEL: { [K in AssetType]: string } = { STOCK: '주식', ETF: 'ETF', FUND: '펀드', BOND: '채권' };
 export const MARKET_LABEL: { [K in Market]: string } = {
   KR: '국내', NASDAQ: '나스닥', NYSE: '뉴욕', AMEX: '아멕스', US_OTHER: '미국 기타',

@@ -74,6 +74,14 @@ export function Badge({ children, dark = false }: { children: ReactNode; dark?: 
   return <span className={dark ? 'badge badge-dark' : 'badge'}>{children}</span>;
 }
 
+/** 글자 수에 따라 배지 글자 크기를 줄이는 클래스 (배지 폭은 고정). */
+const lengthClass = (text: string) => (text.length >= 6 ? ' len-6' : text.length === 5 ? ' len-5' : '');
+
+/** 티커 배지 자리를 맞추는 회색 배지 (예수금·아직 안 산 종목 등, 이름 시작 위치를 맞추려고). */
+export function PlaceholderBadge({ text }: { text: string }) {
+  return <span className={`badge ticker placeholder${lengthClass(text)}`}>{text}</span>;
+}
+
 /** 티커 색 구분: 국내 주식 / 해외 주식 / ETF / 펀드·채권 (폰과 같음). */
 export type TickerGroup = 'KR_STOCK' | 'US_STOCK' | 'ETF' | 'OTHER';
 const TICKER_GROUPS: readonly TickerGroup[] = ['KR_STOCK', 'US_STOCK', 'ETF', 'OTHER'];
@@ -88,7 +96,7 @@ export function tickerGroup(market: Market, assetType: AssetType): TickerGroup {
 /** 종목 티커 배지 (코드가 없으면 이름 앞 글자). 색으로 국내·해외·ETF 를 구분한다. */
 export function TickerBadge({ code, name, market, assetType }: { code: string; name: string; market: Market; assetType: AssetType }) {
   const text = (code.trim() || name.trim()).slice(0, 6).toUpperCase() || '?';
-  return <span className={`badge ticker ticker-${tickerGroup(market, assetType)}`}>{text}</span>;
+  return <span className={`badge ticker ticker-${tickerGroup(market, assetType)}${lengthClass(text)}`}>{text}</span>;
 }
 
 /** 티커 색 범례 ([groups] 에 있는 것만). */

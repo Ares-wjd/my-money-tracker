@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Card, TickerBadge, Warning } from '../components/ui';
+import { Card, PlaceholderBadge, TickerBadge, Warning } from '../components/ui';
 import { WonField } from '../components/form';
-import { allocationView, buyOnly, isHighlighted, keyOf, rebalance, type AllocationRow, type AllocationView, type TradeSuggestion } from '../core/allocation';
+import { allocationView, buyOnly, isCodeless, isHighlighted, keyOf, rebalance, type AllocationRow, type AllocationView, type TradeSuggestion } from '../core/allocation';
 import { decimal, manwon, parseDecimal, usd, won } from '../core/format';
 import { useAppData } from '../data/DataContext';
 import { AllocationForm } from '../forms/AllocationForm';
@@ -159,6 +159,13 @@ function manwonShort(value: number): string {
   return won(value);
 }
 
+/** 배지가 없는 줄의 회색 배지 글자: 예수금은 "현금", 미보유 종목은 코드(없으면 "미보유"). */
+function placeholderText(r: AllocationRow): string {
+  if (r.isCash) return '현금';
+  const code = r.key.includes(':') && !isCodeless(r.key) ? r.key.slice(r.key.indexOf(':') + 1) : '';
+  return code ? code.slice(0, 6) : '미보유';
+}
+
 /** 제외한 종목 키 → 종목 이름 (없으면 코드). */
 function excludedName(key: string, holdings: readonly Holding[]): string {
   return holdings.find((h) => keyOf(h) === key)?.name ?? (key.includes(':') ? key.slice(key.indexOf(':') + 1) : key);
@@ -259,7 +266,12 @@ export function AllocationPage() {
                       <tr key={r.key} className={hl ? dir : ''}>
                         <td>
                           <span className="toggle-row">
-                            {r.holding && <TickerBadge code={r.holding.code} name={r.holding.name} market={r.holding.market} assetType={r.holding.assetType} />}
+                            {/* 배지가 없는 줄(예수금·미보유)도 같은 폭의 회색 배지로 이름 시작 위치를 맞춘다 */}
+                            {r.holding ? (
+                              <TickerBadge code={r.holding.code} name={r.holding.name} market={r.holding.market} assetType={r.holding.assetType} />
+                            ) : (
+                              <PlaceholderBadge text={placeholderText(r)} />
+                            )}
                             <span>{r.name}</span>
                           </span>
                         </td>

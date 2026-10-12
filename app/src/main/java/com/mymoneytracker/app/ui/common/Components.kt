@@ -29,6 +29,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.geometry.CornerRadius
@@ -74,6 +75,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mymoneytracker.core.MoneyFormat
 import java.time.Instant
 import java.time.LocalDate
@@ -288,20 +290,38 @@ fun <T> SegmentedPills(
     }
 }
 
-/** 목록 앞의 둥근 사각 배지 (계좌 종류, 종목 티커). */
+/**
+ * 목록 앞의 둥근 사각 배지 (계좌 종류, 종목 티커). 폭을 고정해 글자 수와 상관없이 크기가 같고,
+ * 뒤에 오는 이름의 시작 위치도 같다. 긴 글자(5~6자)는 글자 크기를 줄인다.
+ */
 @Composable
-fun LabelBadge(text: String, container: Color, content: Color, modifier: Modifier = Modifier, minWidth: Int = 40) {
+fun LabelBadge(text: String, container: Color, content: Color, modifier: Modifier = Modifier, width: Int = 44) {
+    val base = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+    val style = when {
+        text.length >= 6 -> base.copy(fontSize = base.fontSize * 0.8f, letterSpacing = (-0.2).sp)
+        text.length == 5 -> base.copy(fontSize = base.fontSize * 0.88f)
+        else -> base
+    }
     Box(
         modifier = modifier
-            .widthIn(min = minWidth.dp)
+            .width(width.dp)
             .heightIn(min = 36.dp)
             .background(container, MaterialTheme.shapes.small)
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 3.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = content, maxLines = 1)
+        Text(text, style = style, color = content, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
     }
 }
+
+/** 티커 배지 자리를 맞추는 회색 배지 (예수금·아직 안 산 종목 등, 이름 시작 위치를 맞추려고). */
+@Composable
+fun PlaceholderBadge(text: String) {
+    LabelBadge(text.take(6), MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.colorScheme.onSurfaceVariant, width = TICKER_BADGE_WIDTH)
+}
+
+/** 티커 배지 폭 (dp) — 6자 코드(예: 360750, GOOGL)가 들어가는 고정 폭. */
+const val TICKER_BADGE_WIDTH = 56
 
 /** 티커 색 구분: 국내 주식 / 해외 주식 / ETF / 펀드·채권. */
 enum class TickerGroup(val label: String) { KR_STOCK("국내"), US_STOCK("해외"), ETF("ETF"), OTHER("펀드·채권") }
@@ -329,7 +349,7 @@ fun tickerColor(group: TickerGroup): Color {
 @Composable
 fun TickerBadge(code: String, name: String, market: Market, assetType: AssetType) {
     val text = code.ifBlank { name.take(2) }.take(6)
-    LabelBadge(text, tickerColor(tickerGroup(market, assetType)), Color.White, minWidth = 52)
+    LabelBadge(text, tickerColor(tickerGroup(market, assetType)), Color.White, width = TICKER_BADGE_WIDTH)
 }
 
 /** 티커 색 범례. [groups] 에 있는 것만 보여준다. */

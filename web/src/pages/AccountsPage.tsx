@@ -3,7 +3,7 @@ import { rate, won } from '../core/format';
 import { AccountForm } from '../forms/AccountForm';
 import { useAppData } from '../data/DataContext';
 import { Badge, Card, ListLink, profitClass } from '../components/ui';
-import { ACCOUNT_KIND_LABEL } from '../model';
+import { ACCOUNT_KIND_SHORT } from '../model';
 import { accountDescription } from './text';
 
 export function AccountsPage() {
@@ -22,7 +22,7 @@ export function AccountsPage() {
           <ListLink
             key={a.account.id}
             to={`/accounts/${a.account.id}`}
-            leading={<Badge>{ACCOUNT_KIND_LABEL[a.account.kind]}</Badge>}
+            leading={<Badge>{ACCOUNT_KIND_SHORT[a.account.kind]}</Badge>}
             title={a.account.name}
             subtitle={[accountDescription(a.account, data.linked.has(a.account.id)), `종목 ${a.holdings.filter((h) => h.position.quantity > 0).length}개`]
               .filter(Boolean)
