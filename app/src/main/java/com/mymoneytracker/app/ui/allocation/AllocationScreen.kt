@@ -363,8 +363,9 @@ private fun TableRow(row: AllocationRow, highlighted: Boolean) {
 private fun TradeLine(s: TradeSuggestion, usdKrw: Double?, prefix: String) {
     val parts = mutableListOf(MoneyFormat.won(kotlin.math.abs(s.amountKrw)))
     if (s.row.isForeign && usdKrw != null && usdKrw > 0) parts += MoneyFormat.usd(kotlin.math.abs(s.amountKrw) / usdKrw)
-    // 1주 단위면 정확한 주 수, 금액 단위(소수점 매수)면 대략 주 수
-    s.shares?.let { parts += if (s.fractional) "약 ${MoneyFormat.decimal(it, 2)}주" else "${MoneyFormat.decimal(it, 0)}주" }
+    // 1주 단위면 정확한 주 수, 금액 단위(소수점 매수)면 대략 주 수 (금현물은 g)
+    val unit = s.row.holding?.assetType?.unit ?: "주"
+    s.shares?.let { parts += if (s.fractional) "약 ${MoneyFormat.decimal(it, 2)}$unit" else "${MoneyFormat.decimal(it, 0)}$unit" }
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(if (s.row.isCash) "예수금으로 남김" else s.row.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(prefix + parts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)

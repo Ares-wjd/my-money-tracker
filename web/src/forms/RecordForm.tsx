@@ -117,8 +117,8 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
             <NumberField label={`배당금 (세후 실수령액, ${CURRENCY_LABEL[holdingCurrency]})`} value={amountText} onChange={setAmountText} preview={(n) => amountPreview(holdingCurrency, n)} />
           ) : (
             <>
-              <NumberField label="수량" value={quantityText} onChange={setQuantityText} />
-              <NumberField label={`단가 (${CURRENCY_LABEL[holdingCurrency]})`} value={priceText} onChange={setPriceText} preview={(n) => amountPreview(holdingCurrency, n)} />
+              <NumberField label={holding?.assetType === 'GOLD' ? '수량 (g)' : '수량'} value={quantityText} onChange={setQuantityText} />
+              <NumberField label={`단가 (${CURRENCY_LABEL[holdingCurrency]}${holding?.assetType === 'GOLD' ? ', 1g당' : ''})`} value={priceText} onChange={setPriceText} preview={(n) => amountPreview(holdingCurrency, n)} />
               <div className="field-row">
                 <NumberField label="수수료" value={feeText} onChange={setFeeText} preview={(n) => amountPreview(holdingCurrency, n)} />
                 <NumberField label="세금" value={taxText} onChange={setTaxText} preview={(n) => amountPreview(holdingCurrency, n)} />

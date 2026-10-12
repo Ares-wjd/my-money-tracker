@@ -48,7 +48,7 @@ service cloud.firestore {
         allow create, update: if isOwner(uid)
           && onlyKeys(['name', 'kind', 'number', 'memo', 'createdAt'])
           && str(data().name, 100)
-          && (!('kind' in data()) || data().kind in ['GENERAL', 'ISA', 'PENSION', 'IRP', 'DC', 'OTHER'])
+          && (!('kind' in data()) || data().kind in ['GENERAL', 'ISA', 'PENSION', 'IRP', 'DC', 'GOLD', 'OTHER'])
           && optStr(data().get('number', null), 40)
           && str(data().memo, 500)
           && num(data().createdAt);
@@ -63,7 +63,7 @@ service cloud.firestore {
           && str(data().name, 200)
           && str(data().code, 40)
           && data().market in ['KR', 'NASDAQ', 'NYSE', 'AMEX', 'US_OTHER']
-          && data().assetType in ['STOCK', 'ETF', 'FUND', 'BOND']
+          && data().assetType in ['STOCK', 'ETF', 'FUND', 'BOND', 'GOLD']
           && optNum(data().get('manualPrice', null))
           && optDate(data().get('manualPriceDate', null))
           && num(data().createdAt);

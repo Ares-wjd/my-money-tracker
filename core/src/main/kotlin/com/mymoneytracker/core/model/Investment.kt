@@ -21,6 +21,17 @@ enum class AssetType(val label: String) {
     ETF("ETF"),
     FUND("펀드"),
     BOND("채권"),
+    /** KRX 금시장 금현물 (1g 단위, 가격은 1g당 원). */
+    GOLD("금현물"),
+    ;
+
+    /** 수량 단위 (금현물은 g). */
+    val unit: String get() = if (this == GOLD) "g" else "주"
+
+    companion object {
+        /** KRX 금 99.99 1kg 종목코드. */
+        const val GOLD_CODE = "M04020000"
+    }
 }
 
 /** 투자 계좌 종류. */
@@ -30,6 +41,8 @@ enum class AccountKind(val label: String) {
     PENSION("연금저축"),
     IRP("IRP"),
     DC("퇴직연금(DC)"),
+    /** 금현물 통장: 금과 원화 예수금만 있다. */
+    GOLD("금현물"),
     OTHER("기타"),
 }
 

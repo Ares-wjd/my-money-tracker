@@ -47,6 +47,7 @@ import com.mymoneytracker.app.ui.records.recordAmountText
 import com.mymoneytracker.app.ui.records.recordDetailText
 import com.mymoneytracker.app.ui.records.recordTitle
 import com.mymoneytracker.core.MoneyFormat
+import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.RecordType
@@ -132,6 +133,8 @@ private fun HoldingDetailContent(
     val position = valuation.position
     val currency = holding.currency
     val records = data.recordsOfHolding(holding.id)
+    // 금현물은 g 단위, 가격은 1g당
+    val perUnit = if (holding.assetType == AssetType.GOLD) " (1g당)" else ""
     // 원화 보기의 해외 종목: 매매일 환율이 모두 있으면 환차익을 반영하고, 없으면 오늘 환율로 단순 환산한다.
     val conversion = DisplayConversion.of(currency, displayCurrency, data.usdKrw)
     val krw = if (displayCurrency == DisplayCurrency.KRW) data.krwView(valuation) else null
@@ -197,11 +200,11 @@ private fun HoldingDetailContent(
         }
         item {
             SectionCard {
-                LabeledValue("보유 수량", MoneyFormat.decimal(position.quantity))
-                LabeledValue("평균단가", krw?.let { MoneyFormat.won(it.averagePriceKrw) + " (매수일 환율)" } ?: shown(position.averagePrice))
+                LabeledValue("보유 수량", MoneyFormat.decimal(position.quantity) + holding.assetType.unit)
+                LabeledValue("평균단가$perUnit", krw?.let { MoneyFormat.won(it.averagePriceKrw) + " (매수일 환율)" } ?: shown(position.averagePrice))
                 LabeledValue("매입금액", krw?.let { MoneyFormat.won(it.costBasisKrw) } ?: shown(position.costBasis))
                 LabeledValue(
-                    "현재가",
+                    "현재가$perUnit",
                     valuation.price?.let { p ->
                         shown(p.price) + (p.date?.let { " (${formatDate(it)})" } ?: "")
                     } ?: "없음",
@@ -266,7 +269,7 @@ private fun PriceDialog(
                     style = MaterialTheme.typography.bodySmall,
                 )
                 NumberField(
-                    "현재가 (${holding.currency.label})",
+                    "현재가 (${holding.currency.label}${if (holding.assetType == AssetType.GOLD) ", 1g당" else ""})",
                     priceText,
                     { priceText = it },
                     preview = { MoneyFormat.amountPreview(holding.currency, it) },

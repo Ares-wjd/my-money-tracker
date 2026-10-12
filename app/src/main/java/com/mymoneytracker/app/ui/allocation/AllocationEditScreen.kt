@@ -60,6 +60,7 @@ import com.mymoneytracker.app.ui.common.TextInput
 import com.mymoneytracker.app.ui.common.TopBarTitle
 import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.core.MoneyFormat
+import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.portfolio.AllocationCalculator
@@ -152,6 +153,8 @@ private fun AllocationForm(
     // 대상 계좌의 종목 (같은 종목은 하나로, 0주 포함)
     val items = linkedMapOf<String, String>()
     holdings.filter { it.accountId in accountIds }.forEach { h -> items.putIfAbsent(AllocationCalculator.keyOf(h), h.name) }
+    // 매수 단위 칸의 기본 표시 (금현물은 1g)
+    val goldKeys = holdings.filter { it.accountId in accountIds && it.assetType == AssetType.GOLD }.map { AllocationCalculator.keyOf(it) }.toSet()
     val held = items.keys.toSet()
     // 직접 추가한 종목, 그리고 이미 목표가 있는데 대상 계좌에 없는 종목(지웠거나 계좌를 뺐을 때)도 남겨 둔다
     manual.forEach { (k, n) -> items.putIfAbsent(k, n) }
@@ -291,7 +294,7 @@ private fun AllocationForm(
                         value = unitTexts[k].orEmpty(),
                         onValueChange = { v -> unitTexts[k] = v.filter { it.isDigit() }.take(9) },
                         label = { Text("매수 단위") },
-                        placeholder = { Text("1주") },
+                        placeholder = { Text(if (k in goldKeys) "1g" else "1주") },
                         suffix = { Text("원") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

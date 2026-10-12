@@ -297,16 +297,19 @@ button.primary.small-button { padding: 8px 14px; }
 .ticker-KR_STOCK { background: #0b7a5e; }
 .ticker-US_STOCK { background: #5a4fcf; }
 .ticker-ETF { background: #a35a08; }
+.ticker-GOLD { background: #856a00; }
 .ticker-OTHER { background: #5b6b64; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .ticker-KR_STOCK { background: #18805f; }
   :root:not([data-theme="light"]) .ticker-US_STOCK { background: #6a5fd9; }
   :root:not([data-theme="light"]) .ticker-ETF { background: #a85d0a; }
+  :root:not([data-theme="light"]) .ticker-GOLD { background: #8c7000; }
   :root:not([data-theme="light"]) .ticker-OTHER { background: #5e6b65; }
 }
 :root[data-theme="dark"] .ticker-KR_STOCK { background: #18805f; }
 :root[data-theme="dark"] .ticker-US_STOCK { background: #6a5fd9; }
 :root[data-theme="dark"] .ticker-ETF { background: #a85d0a; }
+:root[data-theme="dark"] .ticker-GOLD { background: #8c7000; }
 :root[data-theme="dark"] .ticker-OTHER { background: #5e6b65; }
 .legend-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .holdings-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }

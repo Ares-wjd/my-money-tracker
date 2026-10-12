@@ -1,7 +1,7 @@
 // 폰 앱 RecordText 와 같은 기록 표시.
 import { amount, decimal, signedAmount, signedUsd, signedWon } from '../core/format';
 import type { Holding, InvestmentAccount, Record } from '../model';
-import { CURRENCY_LABEL, RECORD_TYPE_LABEL, marketCurrency } from '../model';
+import { CURRENCY_LABEL, RECORD_TYPE_LABEL, marketCurrency, quantityUnit } from '../model';
 
 export interface RecordLookup {
   holding: (id: string) => Holding | undefined;
@@ -66,7 +66,7 @@ export function recordDetailText(record: Record, lookup: RecordLookup): string |
   if (record.type === 'BUY' || record.type === 'SELL') {
     const holding = record.holdingId ? lookup.holding(record.holdingId) : undefined;
     const currency = holding ? marketCurrency(holding.market) : 'KRW';
-    return `${decimal(record.quantity)}주 × ${amount(currency, record.price)}`;
+    return `${decimal(record.quantity)}${quantityUnit(holding?.assetType)} × ${amount(currency, record.price)}`;
   }
   return record.memo.trim() === '' ? null : record.memo;
 }

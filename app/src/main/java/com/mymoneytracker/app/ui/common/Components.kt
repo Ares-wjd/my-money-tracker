@@ -323,13 +323,14 @@ fun PlaceholderBadge(text: String) {
 /** 티커 배지 폭 (dp) — 6자 코드(예: 360750, GOOGL)가 들어가는 고정 폭. */
 const val TICKER_BADGE_WIDTH = 56
 
-/** 티커 색 구분: 국내 주식 / 해외 주식 / ETF / 펀드·채권. */
-enum class TickerGroup(val label: String) { KR_STOCK("국내"), US_STOCK("해외"), ETF("ETF"), OTHER("펀드·채권") }
+/** 티커 색 구분: 국내 주식 / 해외 주식 / ETF / 금현물 / 펀드·채권. */
+enum class TickerGroup(val label: String) { KR_STOCK("국내"), US_STOCK("해외"), ETF("ETF"), GOLD("금현물"), OTHER("펀드·채권") }
 
 fun tickerGroup(market: Market, assetType: AssetType): TickerGroup = when {
     assetType == AssetType.ETF -> TickerGroup.ETF
     assetType == AssetType.STOCK && market == Market.KR -> TickerGroup.KR_STOCK
     assetType == AssetType.STOCK -> TickerGroup.US_STOCK
+    assetType == AssetType.GOLD -> TickerGroup.GOLD
     else -> TickerGroup.OTHER
 }
 
@@ -341,14 +342,15 @@ fun tickerColor(group: TickerGroup): Color {
         TickerGroup.KR_STOCK -> if (dark) Color(0xFF18805F) else Color(0xFF0B7A5E)
         TickerGroup.US_STOCK -> if (dark) Color(0xFF6A5FD9) else Color(0xFF5A4FCF)
         TickerGroup.ETF -> if (dark) Color(0xFFA85D0A) else Color(0xFFA35A08)
+        TickerGroup.GOLD -> if (dark) Color(0xFF8C7000) else Color(0xFF856A00)
         TickerGroup.OTHER -> if (dark) Color(0xFF5E6B65) else Color(0xFF5B6B64)
     }
 }
 
-/** 종목 티커 배지: 코드가 있으면 코드, 없으면 이름 앞 글자. 색으로 국내·해외·ETF 를 구분한다. */
+/** 종목 티커 배지: 코드가 있으면 코드, 없으면 이름 앞 글자 (금현물은 "금현물"). 색으로 국내·해외·ETF 를 구분한다. */
 @Composable
 fun TickerBadge(code: String, name: String, market: Market, assetType: AssetType) {
-    val text = code.ifBlank { name.take(2) }.take(6)
+    val text = if (assetType == AssetType.GOLD) "금현물" else code.ifBlank { name.take(2) }.take(6)
     LabelBadge(text, tickerColor(tickerGroup(market, assetType)), Color.White, width = TICKER_BADGE_WIDTH)
 }
 
@@ -375,6 +377,7 @@ fun AccountKindBadge(kind: AccountKind) {
         AccountKind.PENSION -> Triple("연금", if (dark) Color(0xFF3A2C10) else Color(0xFFFDF3E1), if (dark) Color(0xFFF2C46B) else Color(0xFF8A5A08))
         AccountKind.IRP -> Triple("IRP", if (dark) Color(0xFF3A2C10) else Color(0xFFFDF3E1), if (dark) Color(0xFFF2C46B) else Color(0xFF8A5A08))
         AccountKind.DC -> Triple("DC", if (dark) Color(0xFF3A2C10) else Color(0xFFFDF3E1), if (dark) Color(0xFFF2C46B) else Color(0xFF8A5A08))
+        AccountKind.GOLD -> Triple("금", if (dark) Color(0xFF36300F) else Color(0xFFFAF3D6), if (dark) Color(0xFFE6C850) else Color(0xFF6E5800))
         AccountKind.OTHER -> Triple("기타", MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.colorScheme.onSurfaceVariant)
     }
     LabelBadge(text, container, content)

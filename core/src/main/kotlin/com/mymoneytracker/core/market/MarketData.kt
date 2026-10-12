@@ -49,9 +49,11 @@ data class MarketSnapshot(
 }
 
 object MarketKeys {
-    /** 자동 시세를 받을 수 있는 종목인지 (펀드·채권은 직접 입력). */
+    /** 자동 시세를 받을 수 있는 종목인지 (펀드·채권은 직접 입력, 금현물은 국내 시세 조회). */
     fun quotable(holding: Holding): Boolean =
-        holding.code.isNotBlank() && (holding.assetType == AssetType.STOCK || holding.assetType == AssetType.ETF)
+        holding.code.isNotBlank() && holding.assetType in QUOTABLE_TYPES
+
+    private val QUOTABLE_TYPES = setOf(AssetType.STOCK, AssetType.ETF, AssetType.GOLD)
 
     /** 시세 저장 키. 같은 종목이면 계좌가 달라도 같은 시세를 쓴다. */
     fun of(holding: Holding): String? = if (quotable(holding)) key(holding.market, holding.code) else null

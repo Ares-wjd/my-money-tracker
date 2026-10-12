@@ -4,9 +4,9 @@ import { plusDays } from './dates';
 
 const MIN_DATE = '0000-00-00';
 
-/** 자동 시세를 받을 수 있는 종목인지 (펀드·채권은 직접 입력). */
+/** 자동 시세를 받을 수 있는 종목인지 (펀드·채권은 직접 입력, 금현물은 국내 시세 조회). */
 export function quotable(holding: Holding): boolean {
-  return holding.code.trim() !== '' && (holding.assetType === 'STOCK' || holding.assetType === 'ETF');
+  return holding.code.trim() !== '' && (holding.assetType === 'STOCK' || holding.assetType === 'ETF' || holding.assetType === 'GOLD');
 }
 
 export function marketKey(market: Market, code: string): string {

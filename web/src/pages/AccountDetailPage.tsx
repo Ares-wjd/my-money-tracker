@@ -68,7 +68,7 @@ export function AccountDetailPage() {
             subtitle={ASSET_TYPE_LABEL[v.holding.assetType]}
           />
         </td>
-        <td className="num">{decimal(v.position.quantity)}</td>
+        <td className="num">{decimal(v.position.quantity)}{v.holding.assetType === 'GOLD' ? 'g' : ''}</td>
         <td className="num optional">{krw ? won(krw.averagePriceKrw) : shown(v.position.averagePrice)}</td>
         <td className="num optional">{v.price ? shown(v.price.price) : '없음'}</td>
         <td className="num strong">{v.marketValue === null ? '가격 입력 필요' : shown(v.marketValue)}</td>

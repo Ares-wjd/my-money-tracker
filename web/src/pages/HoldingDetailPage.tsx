@@ -24,6 +24,8 @@ export function HoldingDetailPage() {
   if (!holding || !account || !v) return <NotFound what="종목" />;
 
   const currency = marketCurrency(holding.market);
+  // 금현물은 g 단위, 가격은 1g당
+  const perUnit = holding.assetType === 'GOLD' ? ' (1g당)' : '';
   const c = displayConversion(currency, displayCurrency, data.usdKrw);
   const shown = (value: number) => {
     const converted = convert(c, value);
@@ -105,10 +107,10 @@ export function HoldingDetailPage() {
           </div>
         </Card>
         <Card>
-          <Row label="보유 수량" value={decimal(p.quantity)} />
-          <Row label="평균단가" value={krw ? `${won(krw.averagePriceKrw)} (매수일 환율)` : shown(p.averagePrice)} />
+          <Row label="보유 수량" value={decimal(p.quantity) + (holding.assetType === 'GOLD' ? 'g' : '')} />
+          <Row label={`평균단가${perUnit}`} value={krw ? `${won(krw.averagePriceKrw)} (매수일 환율)` : shown(p.averagePrice)} />
           <Row label="매입금액" value={krw ? won(krw.costBasisKrw) : shown(p.costBasis)} />
-          <Row label="현재가" value={v.price ? shown(v.price.price) + (v.price.date ? ` (${formatDate(v.price.date)})` : '') : '없음'} />
+          <Row label={`현재가${perUnit}`} value={v.price ? shown(v.price.price) + (v.price.date ? ` (${formatDate(v.price.date)})` : '') : '없음'} />
           <button className="text-button align-start" onClick={() => setDialog({ kind: 'price' })}>현재가 직접 입력</button>
           <Row label="누적 배당" value={krw ? won(krw.dividendsKrw) : shown(p.dividends)} />
           <Row

@@ -39,6 +39,7 @@ import com.mymoneytracker.app.ui.common.NumberField
 import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.TextInput
 import com.mymoneytracker.core.MoneyFormat
+import com.mymoneytracker.core.model.AccountKind
 import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.Market
@@ -58,6 +59,8 @@ fun HoldingEditScreen(
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     val existing = holdingId?.let { data?.holding(it) }
+    // 금현물 통장에는 금만 넣는다
+    val goldAccount = data?.account(accountId)?.kind == AccountKind.GOLD
 
     Scaffold(
         topBar = {
@@ -69,12 +72,13 @@ fun HoldingEditScreen(
             )
         },
     ) { padding ->
-        if (holdingId != null && existing == null) {
+        if (data == null || (holdingId != null && existing == null)) {
             LoadingBox(Modifier.padding(padding))
         } else {
             HoldingForm(
                 accountId = accountId,
                 initial = existing,
+                goldAccount = goldAccount,
                 modifier = Modifier.padding(padding),
                 onSave = { holding, initialBuy ->
                     val id = viewModel.saveHolding(holding)
@@ -96,14 +100,19 @@ fun HoldingEditScreen(
 private fun HoldingForm(
     accountId: String,
     initial: Holding?,
+    goldAccount: Boolean,
     modifier: Modifier,
     onSave: (Holding, Record?) -> Unit,
     onDelete: (() -> Unit)?,
 ) {
-    var name by rememberSaveable { mutableStateOf(initial?.name.orEmpty()) }
-    var code by rememberSaveable { mutableStateOf(initial?.code.orEmpty()) }
+    var code by rememberSaveable { mutableStateOf(initial?.code ?: if (goldAccount) AssetType.GOLD_CODE else "") }
     var market by rememberSaveable { mutableStateOf(initial?.market ?: Market.KR) }
-    var assetType by rememberSaveable { mutableStateOf(initial?.assetType ?: AssetType.STOCK) }
+    var assetType by rememberSaveable {
+        mutableStateOf(if (goldAccount) AssetType.GOLD else initial?.assetType ?: AssetType.STOCK)
+    }
+    var name by rememberSaveable { mutableStateOf(initial?.name ?: if (goldAccount) "KRX 금현물" else "") }
+    val gold = assetType == AssetType.GOLD
+    val unitLabel = if (gold) " (g)" else ""
     var hasInitial by rememberSaveable { mutableStateOf(false) }
     var initialQuantity by rememberSaveable { mutableStateOf("") }
     var initialAverage by rememberSaveable { mutableStateOf("") }
@@ -120,8 +129,25 @@ private fun HoldingForm(
     ) {
         TextInput("종목 이름 (예: 삼성전자, Apple)", name, { name = it }, maxLength = 50)
         TextInput("종목 코드 (국내 6자리 / 해외 티커, 펀드·채권은 비워도 됨)", code, { code = it.uppercase().trim() }, maxLength = 20)
-        ChipSelector("시장", Market.entries, market, { "${it.label} (${it.currency.label})" }, { market = it })
-        ChipSelector("자산 유형", AssetType.entries, assetType, { it.label }, { assetType = it })
+        if (gold) {
+            Text(
+                "금현물: KRX 금 99.99 1kg (종목코드 ${AssetType.GOLD_CODE}, 미니금 100g 은 M04020100). 국내(원) 시장, 수량은 g, 가격은 1g당.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            ChipSelector("시장", Market.entries, market, { "${it.label} (${it.currency.label})" }, { market = it })
+        }
+        if (!goldAccount) {
+            ChipSelector("자산 유형", AssetType.entries, assetType, { it.label }, {
+                assetType = it
+                // 금현물은 국내(원) 고정, 코드가 비어 있으면 KRX 금 1kg 코드
+                if (it == AssetType.GOLD) {
+                    market = Market.KR
+                    if (code.isBlank()) code = AssetType.GOLD_CODE
+                }
+            })
+        }
 
         if (initial == null) {
             SectionCard {
@@ -136,9 +162,9 @@ private fun HoldingForm(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    NumberField("보유 수량", initialQuantity, { initialQuantity = it })
+                    NumberField("보유 수량$unitLabel", initialQuantity, { initialQuantity = it })
                     NumberField(
-                        "평균단가 (${market.currency.label})",
+                        "평균단가 (${market.currency.label}${if (gold) ", 1g당" else ""})",
                         initialAverage,
                         { initialAverage = it },
                         preview = { MoneyFormat.amountPreview(market.currency, it) },
@@ -155,7 +181,7 @@ private fun HoldingForm(
                     accountId = accountId,
                     name = name.trim(),
                     code = code.trim(),
-                    market = market,
+                    market = if (gold) Market.KR else market,
                     assetType = assetType,
                     manualPrice = initial?.manualPrice,
                     manualPriceDate = initial?.manualPriceDate,

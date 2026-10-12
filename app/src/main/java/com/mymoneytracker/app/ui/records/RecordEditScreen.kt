@@ -40,6 +40,7 @@ import com.mymoneytracker.app.ui.common.TextInput
 import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.app.ui.common.formatDate
 import com.mymoneytracker.core.MoneyFormat
+import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
@@ -274,9 +275,10 @@ private fun RecordForm(
                         preview = { MoneyFormat.amountPreview(holdingCurrency, it) },
                     )
                 } else {
-                    NumberField("수량", quantityText, { quantityText = it })
+                    val gold = holding?.assetType == AssetType.GOLD
+                    NumberField(if (gold) "수량 (g)" else "수량", quantityText, { quantityText = it })
                     NumberField(
-                        "단가 (${holdingCurrency.label})",
+                        "단가 (${holdingCurrency.label}${if (gold) ", 1g당" else ""})",
                         priceText,
                         { priceText = it },
                         preview = { MoneyFormat.amountPreview(holdingCurrency, it) },

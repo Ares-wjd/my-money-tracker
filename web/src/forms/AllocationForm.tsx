@@ -48,6 +48,8 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
     if (!items.has(keyOf(h))) items.set(keyOf(h), h.name);
   }
   const held = new Set(items.keys());
+  // 매수 단위 칸의 기본 표시 (금현물은 1g)
+  const goldKeys = new Set(data.holdings.filter((h) => accountIds.includes(h.accountId) && h.assetType === 'GOLD').map(keyOf));
   // 직접 추가한 종목, 그리고 이미 목표가 있는데 대상 계좌에 없는 종목(지웠거나 계좌를 뺐을 때)도 남겨 둔다
   for (const [k, n] of Object.entries(manual)) if (!items.has(k)) items.set(k, n);
   for (const k of Object.keys(existing?.targets ?? {})) {
@@ -213,7 +215,7 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
               {k !== CASH_KEY && !off && (
                 <div className="target-sub">
                   <span className="unit-input">
-                    매수 단위 <input inputMode="numeric" aria-label={`${label} 매수 단위 (원)`} placeholder="1주" value={unitTexts[k] ?? ''} onChange={(e) => setUnitTexts({ ...unitTexts, [k]: e.target.value.replace(/[^0-9]/g, '').slice(0, 9) })} />원
+                    매수 단위 <input inputMode="numeric" aria-label={`${label} 매수 단위 (원)`} placeholder={goldKeys.has(k) ? '1g' : '1주'} value={unitTexts[k] ?? ''} onChange={(e) => setUnitTexts({ ...unitTexts, [k]: e.target.value.replace(/[^0-9]/g, '').slice(0, 9) })} />원
                   </span>
                   {unheld && (
                     <span className="unit-input">

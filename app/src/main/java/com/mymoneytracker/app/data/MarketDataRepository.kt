@@ -7,6 +7,7 @@ import com.google.firebase.firestore.SetOptions
 import com.mymoneytracker.core.market.MarketKeys
 import com.mymoneytracker.core.market.MarketSnapshot
 import com.mymoneytracker.core.market.PriceHistory
+import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.PricePoint
@@ -105,6 +106,22 @@ class MarketDataRepository(
     }
 
     /**
+     * 금현물 현재가: 국내 현재가 조회에 KRX 금 코드를 넣고, 안 되면 최근 일별 종가 (전일 종가는 그 전날 종가).
+     */
+    private suspend fun goldQuote(code: String): Quote {
+        val quote = try {
+            kis.domesticQuote(code)
+        } catch (e: ApiException) {
+            if (e.message?.contains("App Key") == true || e.message?.contains("토큰") == true) throw e
+            null
+        }
+        if (quote != null && quote.price > 0) return quote
+        val rows = kis.domesticRecentDaily(code)
+        val latest = rows.firstOrNull() ?: throw ApiException("$code 금현물 시세가 없습니다.")
+        return Quote(latest.close, rows.getOrNull(1)?.close)
+    }
+
+    /**
      * 보유 종목의 현재가와 최신 환율을 받아 저장한다. 실패한 항목은 메시지로 모아 돌려준다.
      */
     suspend fun refreshLatest(holdings: List<Holding>, needsFx: Boolean, forceFx: Boolean = false): List<String> {
@@ -113,7 +130,9 @@ class MarketDataRepository(
         if (kis.hasCredentials) {
             holdings.filter { MarketKeys.quotable(it) }.distinctBy { MarketKeys.of(it) }.forEach { holding ->
                 try {
-                    val quote = if (holding.market == Market.KR) {
+                    val quote = if (holding.assetType == AssetType.GOLD) {
+                        goldQuote(holding.code)
+                    } else if (holding.market == Market.KR) {
                         kis.domesticQuote(holding.code)
                     } else {
                         kis.overseasQuote(holding.market, holding.code)
@@ -166,8 +185,19 @@ class MarketDataRepository(
             if (ranges.isEmpty()) return@forEach
             try {
                 val closes = mutableMapOf<String, Double>()
+                // 금현물: 기간별 일봉이 안 되면 최근 30 영업일 종가만 쓴다 (한 번만 받음)
+                var recent: List<DailyClose>? = null
                 for ((rangeFrom, rangeTo) in ranges) {
-                    if (holding.market == Market.KR) {
+                    if (holding.assetType == AssetType.GOLD) {
+                        val rows = runCatching { kis.domesticDaily(holding.code, rangeFrom, rangeTo) }.getOrNull()
+                        val usable = if (rows.isNullOrEmpty()) {
+                            (recent ?: kis.domesticRecentDaily(holding.code).also { recent = it })
+                                .filter { !it.date.isBefore(rangeFrom) && !it.date.isAfter(rangeTo) }
+                        } else {
+                            rows
+                        }
+                        usable.forEach { closes[it.date.toString()] = it.close }
+                    } else if (holding.market == Market.KR) {
                         var chunkEnd = rangeTo
                         while (!chunkEnd.isBefore(rangeFrom)) {
                             val chunkStart = maxOf(rangeFrom, chunkEnd.minusDays(130)) // 한 번에 최대 100 영업일

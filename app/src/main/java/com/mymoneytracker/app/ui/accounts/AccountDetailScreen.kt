@@ -464,7 +464,7 @@ private fun HoldingRow(
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "${holding.assetType.label} · ${MoneyFormat.decimal(valuation.position.quantity)}주",
+                    "${holding.assetType.label} · ${MoneyFormat.decimal(valuation.position.quantity)}${holding.assetType.unit}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

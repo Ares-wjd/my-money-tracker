@@ -5,7 +5,7 @@ import { allocationView, buyOnly, isCodeless, isHighlighted, keyOf, rebalance, t
 import { decimal, manwon, parseDecimal, usd, won } from '../core/format';
 import { useAppData } from '../data/DataContext';
 import { AllocationForm } from '../forms/AllocationForm';
-import type { Holding } from '../model';
+import { quantityUnit, type Holding } from '../model';
 import type { AllocationTarget } from '../core/allocation';
 
 type Ring = 'current' | 'target' | 'compare';
@@ -183,8 +183,9 @@ function excludedName(key: string, holdings: readonly Holding[]): string {
 function tradeText(s: TradeSuggestion, usdKrw: number | null): string {
   const parts = [won(Math.abs(s.amountKrw))];
   if (s.row.isForeign && usdKrw) parts.push(usd(Math.abs(s.amountKrw) / usdKrw));
-  // 1주 단위면 정확한 주 수, 금액 단위(소수점 매수)면 대략 주 수
-  if (s.shares !== null) parts.push(s.fractional ? `약 ${decimal(s.shares, 2)}주` : `${decimal(s.shares, 0)}주`);
+  // 1주 단위면 정확한 주 수, 금액 단위(소수점 매수)면 대략 주 수 (금현물은 g)
+  const unit = quantityUnit(s.row.holding?.assetType);
+  if (s.shares !== null) parts.push(s.fractional ? `약 ${decimal(s.shares, 2)}${unit}` : `${decimal(s.shares, 0)}${unit}`);
   return parts.join(' · ');
 }
 

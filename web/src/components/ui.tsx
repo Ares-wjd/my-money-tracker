@@ -82,20 +82,21 @@ export function PlaceholderBadge({ text }: { text: string }) {
   return <span className={`badge ticker placeholder${lengthClass(text)}`}>{text}</span>;
 }
 
-/** 티커 색 구분: 국내 주식 / 해외 주식 / ETF / 펀드·채권 (폰과 같음). */
-export type TickerGroup = 'KR_STOCK' | 'US_STOCK' | 'ETF' | 'OTHER';
-const TICKER_GROUPS: readonly TickerGroup[] = ['KR_STOCK', 'US_STOCK', 'ETF', 'OTHER'];
-const TICKER_LABEL: { [K in TickerGroup]: string } = { KR_STOCK: '국내', US_STOCK: '해외', ETF: 'ETF', OTHER: '펀드·채권' };
+/** 티커 색 구분: 국내 주식 / 해외 주식 / ETF / 금현물 / 펀드·채권 (폰과 같음). */
+export type TickerGroup = 'KR_STOCK' | 'US_STOCK' | 'ETF' | 'GOLD' | 'OTHER';
+const TICKER_GROUPS: readonly TickerGroup[] = ['KR_STOCK', 'US_STOCK', 'ETF', 'GOLD', 'OTHER'];
+const TICKER_LABEL: { [K in TickerGroup]: string } = { KR_STOCK: '국내', US_STOCK: '해외', ETF: 'ETF', GOLD: '금현물', OTHER: '펀드·채권' };
 
 export function tickerGroup(market: Market, assetType: AssetType): TickerGroup {
   if (assetType === 'ETF') return 'ETF';
   if (assetType === 'STOCK') return market === 'KR' ? 'KR_STOCK' : 'US_STOCK';
+  if (assetType === 'GOLD') return 'GOLD';
   return 'OTHER';
 }
 
-/** 종목 티커 배지 (코드가 없으면 이름 앞 글자). 색으로 국내·해외·ETF 를 구분한다. */
+/** 종목 티커 배지 (코드가 없으면 이름 앞 글자, 금현물은 "금현물"). 색으로 국내·해외·ETF 를 구분한다. */
 export function TickerBadge({ code, name, market, assetType }: { code: string; name: string; market: Market; assetType: AssetType }) {
-  const text = (code.trim() || name.trim()).slice(0, 6).toUpperCase() || '?';
+  const text = assetType === 'GOLD' ? '금현물' : (code.trim() || name.trim()).slice(0, 6).toUpperCase() || '?';
   return <span className={`badge ticker ticker-${tickerGroup(market, assetType)}${lengthClass(text)}`}>{text}</span>;
 }
 

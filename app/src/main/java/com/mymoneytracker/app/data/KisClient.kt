@@ -180,6 +180,28 @@ class KisClient(private val store: SecureStore) {
         return Quote(price, prevClose)
     }
 
+    /**
+     * 국내 최근 일별 종가 (최근 30 영업일, 최신순). 기간별 조회·현재가 조회가 안 되는 종목(KRX 금현물 등)의 대신 쓰는 값.
+     * 전일 종가는 두 번째 줄의 종가.
+     */
+    suspend fun domesticRecentDaily(code: String): List<DailyClose> {
+        val r = call(
+            "/uapi/domestic-stock/v1/quotations/inquire-daily-price",
+            "FHKST01010400",
+            mapOf(
+                "FID_COND_MRKT_DIV_CODE" to "J",
+                "FID_INPUT_ISCD" to code,
+                "FID_PERIOD_DIV_CODE" to "D",
+                "FID_ORG_ADJ_PRC" to "0",
+            ),
+        )
+        return r.json.optJSONArray("output")?.objects().orEmpty().mapNotNull { row ->
+            val date = parseYmd(row.str("stck_bsop_date")) ?: return@mapNotNull null
+            val close = row.num("stck_clpr")?.takeIf { it > 0 } ?: return@mapNotNull null
+            DailyClose(date, close)
+        }.sortedByDescending { it.date }
+    }
+
     /** 국내 일별 종가 (수정주가). 한 번에 최대 100 영업일. */
     suspend fun domesticDaily(code: String, from: LocalDate, to: LocalDate): List<DailyClose> {
         val r = call(

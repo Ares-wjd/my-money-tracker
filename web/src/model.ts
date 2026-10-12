@@ -2,8 +2,8 @@
 
 export type Currency = 'KRW' | 'USD';
 export type Market = 'KR' | 'NASDAQ' | 'NYSE' | 'AMEX' | 'US_OTHER';
-export type AssetType = 'STOCK' | 'ETF' | 'FUND' | 'BOND';
-export type AccountKind = 'GENERAL' | 'ISA' | 'PENSION' | 'IRP' | 'DC' | 'OTHER';
+export type AssetType = 'STOCK' | 'ETF' | 'FUND' | 'BOND' | 'GOLD';
+export type AccountKind = 'GENERAL' | 'ISA' | 'PENSION' | 'IRP' | 'DC' | 'GOLD' | 'OTHER';
 export type RecordType =
   | 'DEPOSIT'
   | 'WITHDRAW'
@@ -18,8 +18,8 @@ export type GoalType = 'ONE_TIME' | 'RECURRING';
 
 export const CURRENCIES: readonly Currency[] = ['KRW', 'USD'];
 export const MARKETS: readonly Market[] = ['KR', 'NASDAQ', 'NYSE', 'AMEX', 'US_OTHER'];
-export const ASSET_TYPES: readonly AssetType[] = ['STOCK', 'ETF', 'FUND', 'BOND'];
-export const ACCOUNT_KINDS: readonly AccountKind[] = ['GENERAL', 'ISA', 'PENSION', 'IRP', 'DC', 'OTHER'];
+export const ASSET_TYPES: readonly AssetType[] = ['STOCK', 'ETF', 'FUND', 'BOND', 'GOLD'];
+export const ACCOUNT_KINDS: readonly AccountKind[] = ['GENERAL', 'ISA', 'PENSION', 'IRP', 'DC', 'GOLD', 'OTHER'];
 export const RECORD_TYPES: readonly RecordType[] = [
   'DEPOSIT',
   'WITHDRAW',
@@ -163,7 +163,7 @@ export const linkedAccountIds = (records: readonly Record[]): Set<string> =>
 
 // 화면 표시용 이름 (폰 앱과 같음)
 export const ACCOUNT_KIND_LABEL: { [K in AccountKind]: string } = {
-  GENERAL: '일반(위탁)', ISA: 'ISA', PENSION: '연금저축', IRP: 'IRP', DC: '퇴직연금(DC)', OTHER: '기타',
+  GENERAL: '일반(위탁)', ISA: 'ISA', PENSION: '연금저축', IRP: 'IRP', DC: '퇴직연금(DC)', GOLD: '금현물', OTHER: '기타',
 };
 
 /** 배지에 쓰는 짧은 계좌 종류 (폰과 같음). */
@@ -173,9 +173,14 @@ export const ACCOUNT_KIND_SHORT: { [K in AccountKind]: string } = {
   PENSION: '연금',
   IRP: 'IRP',
   DC: 'DC',
+  GOLD: '금',
   OTHER: '기타',
 };
-export const ASSET_TYPE_LABEL: { [K in AssetType]: string } = { STOCK: '주식', ETF: 'ETF', FUND: '펀드', BOND: '채권' };
+export const ASSET_TYPE_LABEL: { [K in AssetType]: string } = { STOCK: '주식', ETF: 'ETF', FUND: '펀드', BOND: '채권', GOLD: '금현물' };
+/** KRX 금 99.99 1kg 종목코드. */
+export const GOLD_CODE = 'M04020000';
+/** 수량 단위 (금현물은 g). */
+export const quantityUnit = (assetType: AssetType | undefined): string => (assetType === 'GOLD' ? 'g' : '주');
 export const MARKET_LABEL: { [K in Market]: string } = {
   KR: '국내', NASDAQ: '나스닥', NYSE: '뉴욕', AMEX: '아멕스', US_OTHER: '미국 기타',
 };

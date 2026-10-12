@@ -50,10 +50,11 @@ fun recordAmountText(record: Record, data: PortfolioData, accountId: String): St
 
 /** 매매 기록의 부가 설명 (수량 × 단가). */
 fun recordDetailText(record: Record, data: PortfolioData): String? {
-    val holdingCurrency = record.holdingId?.let { data.holding(it)?.currency } ?: Currency.KRW
+    val holding = record.holdingId?.let { data.holding(it) }
+    val holdingCurrency = holding?.currency ?: Currency.KRW
     return when (record.type) {
         RecordType.BUY, RecordType.SELL ->
-            "${MoneyFormat.decimal(record.quantity)}주 × ${MoneyFormat.amount(holdingCurrency, record.price)}"
+            "${MoneyFormat.decimal(record.quantity)}${holding?.assetType?.unit ?: "주"} × ${MoneyFormat.amount(holdingCurrency, record.price)}"
         else -> record.memo.ifBlank { null }
     }
 }

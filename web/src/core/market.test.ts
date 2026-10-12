@@ -1,6 +1,6 @@
 // core MarketDataTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
-import type { MarketSnapshot, PricePoint } from '../model';
+import { GOLD_CODE, quantityUnit, type MarketSnapshot, type PricePoint } from '../model';
 import { currentPrice, dailyChangeRate, keyOf, latestUsdKrw, marketKey, priceAt, tradeUsdKrw, usdKrwAt } from './market';
 import { holding } from './testData';
 
@@ -19,6 +19,14 @@ describe('시세 (MarketDataTest)', () => {
     expect(keyOf({ ...stock, assetType: 'FUND' })).toBeNull();
     expect(keyOf(stock)).toBe('KR_005930');
     expect(marketKey('NASDAQ', 'aapl')).toBe('US_AAPL');
+  });
+
+  it('금현물은 KRX 금 코드로 시세를 받는다', () => {
+    const gold = holding({ id: 'g', accountId: 'a', name: '금', code: GOLD_CODE, market: 'KR', assetType: 'GOLD' });
+    expect(keyOf(gold)).toBe('KR_M04020000');
+    expect(keyOf({ ...gold, code: '' })).toBeNull();
+    expect(quantityUnit('GOLD')).toBe('g');
+    expect(quantityUnit('ETF')).toBe('주');
   });
 
   it('휴장일은 직전 종가', () => {

@@ -33,6 +33,15 @@ class MarketDataTest {
     }
 
     @Test
+    fun goldIsQuotedByKrxCode() {
+        val gold = Holding(id = "g", accountId = "a", name = "금", code = AssetType.GOLD_CODE, market = Market.KR, assetType = AssetType.GOLD)
+        assertEquals("KR_M04020000", MarketKeys.of(gold))
+        assertNull(MarketKeys.of(gold.copy(code = "")))
+        assertEquals("g", AssetType.GOLD.unit)
+        assertEquals("주", AssetType.ETF.unit)
+    }
+
+    @Test
     fun closeOnOrBeforeSkipsHolidays() {
         val s = snapshot()
         assertEquals(110.0, PriceLookup.at(stock, s, d5)!!.price, 1e-9)
