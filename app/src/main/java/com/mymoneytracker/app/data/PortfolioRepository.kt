@@ -68,6 +68,8 @@ class PortfolioRepository(
                 "threshold" to target.threshold,
                 "excluded" to target.excluded,
                 "names" to target.names,
+                "units" to target.units,
+                "prices" to target.prices,
                 F_CREATED_AT to if (target.createdAt > 0) target.createdAt else System.currentTimeMillis(),
             ),
         ).logFailure("비중 설정 저장")
@@ -241,6 +243,14 @@ class PortfolioRepository(
         )
     }
 
+    /** { 키: 숫자 } 맵 (숫자가 아닌 값은 버린다). */
+    private fun numberMap(value: Any?): Map<String, Double> =
+        (value as? Map<*, *>)?.mapNotNull { (k, v) ->
+            val key = k as? String ?: return@mapNotNull null
+            val number = (v as? Number)?.toDouble() ?: return@mapNotNull null
+            key to number
+        }?.toMap().orEmpty()
+
     private fun DocumentSnapshot.toAllocationTarget(): AllocationTarget? {
         val name = getString("name") ?: return null
         val targets = (get("targets") as? Map<*, *>)?.mapNotNull { (k, v) ->
@@ -262,6 +272,8 @@ class PortfolioRepository(
                 val value = v as? String ?: return@mapNotNull null
                 key to value
             }?.toMap().orEmpty(),
+            units = numberMap(get("units")),
+            prices = numberMap(get("prices")),
         )
     }
 

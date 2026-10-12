@@ -167,7 +167,8 @@ function excludedName(key: string, holdings: readonly Holding[]): string {
 function tradeText(s: TradeSuggestion, usdKrw: number | null): string {
   const parts = [won(Math.abs(s.amountKrw))];
   if (s.row.isForeign && usdKrw) parts.push(usd(Math.abs(s.amountKrw) / usdKrw));
-  if (s.shares !== null) parts.push(`약 ${decimal(s.shares, 0)}주`);
+  // 1주 단위면 정확한 주 수, 금액 단위(소수점 매수)면 대략 주 수
+  if (s.shares !== null) parts.push(s.fractional ? `약 ${decimal(s.shares, 2)}주` : `${decimal(s.shares, 0)}주`);
   return parts.join(' · ');
 }
 
@@ -187,7 +188,8 @@ export function AllocationPage() {
   };
   const view = selected ? allocationView(selected, data.summary.accounts, data.usdKrw) : null;
   const amount = parseDecimal(amountText) ?? 0;
-  const buys = view ? buyOnly(view, amount) : [];
+  const plan = view ? buyOnly(view, amount) : { trades: [], leftoverKrw: 0 };
+  const buys = plan.trades;
   const trades = view ? rebalance(view) : [];
 
   return (
@@ -275,15 +277,21 @@ export function AllocationPage() {
           </Card>
 
           <Card title="매수 계산기">
-            <p className="muted small">넣을 돈을 입력하면, 팔지 않고 사기만 해서 목표에 가장 가까워지도록 종목별로 얼마를 살지 알려 드립니다. 계좌에 없는 종목은 현재가가 없어 주 수는 나오지 않습니다.</p>
+            <p className="muted small">넣을 돈을 입력하면, 팔지 않고 사기만 해서 목표에 가장 가까워지도록 종목별로 얼마를 살지 알려 드립니다. 매수 단위(1주 또는 금액 단위)에 맞춰 내림하고, 남은 돈은 가장 부족한 종목부터 더 삽니다. 계좌에 없는 종목은 현재가를 넣어야 주 수가 나옵니다.</p>
             <WonField label="이번에 넣을 돈" value={amountText} onChange={setAmountText} preview={manwon} quick />
             {amount > 0 && buys.length === 0 && <p className="muted small">목표 비중이 있는 종목이 없습니다.</p>}
             {buys.map((s) => (
               <div key={s.row.key} className="row">
-                <span>{s.row.name}</span>
+                <span>{s.row.isCash ? '예수금으로 남김' : s.row.name}</span>
                 <strong>{tradeText(s, data.usdKrw)}</strong>
               </div>
             ))}
+            {amount > 0 && plan.leftoverKrw >= 1 && (
+              <div className="row muted">
+                <span>남는 돈 (매수 단위 때문에)</span>
+                <span>{won(plan.leftoverKrw)}</span>
+              </div>
+            )}
             <button className="text-button align-start" aria-expanded={showRebalance} onClick={() => setShowRebalance(!showRebalance)}>
               팔기까지 해서 정확히 맞추려면 {showRebalance ? '▴' : '▾'}
             </button>

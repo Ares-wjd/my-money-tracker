@@ -220,14 +220,20 @@ private fun AllocationContent(
         item {
             SectionCard(title = "매수 계산기") {
                 Text(
-                    "넣을 돈을 입력하면, 팔지 않고 사기만 해서 목표에 가장 가까워지도록 종목별로 얼마를 살지 알려 드립니다. 계좌에 없는 종목은 현재가가 없어 주 수는 나오지 않습니다.",
+                    "넣을 돈을 입력하면, 팔지 않고 사기만 해서 목표에 가장 가까워지도록 종목별로 얼마를 살지 알려 드립니다. 매수 단위(1주 또는 금액 단위)에 맞춰 내림하고, 남은 돈은 가장 부족한 종목부터 더 삽니다. 계좌에 없는 종목은 현재가를 넣어야 주 수가 나옵니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 MoneyField("이번에 넣을 돈", amountText, { amountText = it }, quick = true, modifier = Modifier.padding(top = 4.dp))
-                val buys = AllocationCalculator.buyOnly(view, amount)
-                if (amount > 0 && buys.isEmpty()) Text("목표 비중이 있는 종목이 없습니다.", style = MaterialTheme.typography.bodySmall)
-                buys.forEach { TradeLine(it, usdKrw, prefix = "") }
+                val plan = AllocationCalculator.buyOnly(view, amount)
+                if (amount > 0 && plan.trades.isEmpty()) Text("목표 비중이 있는 종목이 없습니다.", style = MaterialTheme.typography.bodySmall)
+                plan.trades.forEach { TradeLine(it, usdKrw, prefix = "") }
+                if (amount > 0 && plan.leftoverKrw >= 1) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Text("남는 돈 (매수 단위 때문에)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                        Text(MoneyFormat.won(plan.leftoverKrw), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 TextButton(onClick = { showRebalance = !showRebalance }, contentPadding = PaddingValues(0.dp)) {
                     Text("팔기까지 해서 정확히 맞추려면 " + if (showRebalance) "▴" else "▾")
                 }
@@ -272,9 +278,10 @@ private fun TableRow(row: AllocationRow, highlighted: Boolean) {
 private fun TradeLine(s: TradeSuggestion, usdKrw: Double?, prefix: String) {
     val parts = mutableListOf(MoneyFormat.won(kotlin.math.abs(s.amountKrw)))
     if (s.row.isForeign && usdKrw != null && usdKrw > 0) parts += MoneyFormat.usd(kotlin.math.abs(s.amountKrw) / usdKrw)
-    s.shares?.let { parts += "약 ${MoneyFormat.decimal(it, 0)}주" }
+    // 1주 단위면 정확한 주 수, 금액 단위(소수점 매수)면 대략 주 수
+    s.shares?.let { parts += if (s.fractional) "약 ${MoneyFormat.decimal(it, 2)}주" else "${MoneyFormat.decimal(it, 0)}주" }
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(s.row.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(if (s.row.isCash) "예수금으로 남김" else s.row.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(prefix + parts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
     }
 }

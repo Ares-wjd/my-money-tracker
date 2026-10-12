@@ -186,6 +186,18 @@ export function latestQuoteDate(snapshot: MarketSnapshot): string | null {
   return result;
 }
 
+/** { 키: 숫자 } 맵 (숫자가 아닌 값은 버린다). */
+function numberMap(v: unknown): { [key: string]: number } {
+  const out: { [key: string]: number } = {};
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    for (const [k, x] of Object.entries(v as Data)) {
+      const n = num(x);
+      if (n !== null) out[k] = n;
+    }
+  }
+  return out;
+}
+
 export function toAllocationTarget(id: string, d: Data): AllocationTarget | null {
   const name = str(d.name);
   if (name === null) return null;
@@ -208,5 +220,7 @@ export function toAllocationTarget(id: string, d: Data): AllocationTarget | null
     names: d.names && typeof d.names === 'object' && !Array.isArray(d.names)
       ? Object.fromEntries(Object.entries(d.names as Data).filter((e): e is [string, string] => typeof e[1] === 'string'))
       : {},
+    units: numberMap(d.units),
+    prices: numberMap(d.prices),
   };
 }

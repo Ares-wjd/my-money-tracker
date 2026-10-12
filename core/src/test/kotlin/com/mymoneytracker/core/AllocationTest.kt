@@ -75,7 +75,7 @@ class AllocationTest {
     fun buyOnlyFillsDeficits() {
         val view = AllocationCalculator.view(target, summary.accounts, null)
         // 넣은 뒤 합계 3000 → 목표 1500/900/600, 부족분 0/400/100
-        val buys = AllocationCalculator.buyOnly(view, 500.0).associateBy { it.row.key }
+        val buys = AllocationCalculator.buyOnly(view, 500.0).trades.associateBy { it.row.key }
         assertEquals(setOf("KR:AAA", "CASH"), buys.keys)
         assertEquals(400.0, buys.getValue("KR:AAA").amountKrw, 1e-9)
         assertEquals(4.0, buys.getValue("KR:AAA").shares!!, 1e-9)
@@ -85,10 +85,12 @@ class AllocationTest {
         // (금 ETF 1주 50원 추가 → 넣은 뒤 합계 3050, 목표 1525/915/610, 부족분 25/415/110, 합 550 > 500)
         val withGold = records + Record(id = "5", accountId = "a", type = RecordType.BUY, date = day, holdingId = "h4", quantity = 1.0, price = 50.0)
         val accounts2 = PortfolioCalculator.summarize(listOf(isa, other), listOf(sp1, bond, sp2, gold), withGold, null).accounts
-        val small = AllocationCalculator.buyOnly(AllocationCalculator.view(target, accounts2, null), 500.0).associateBy { it.row.key }
-        assertEquals(500.0 * 25 / 550, small.getValue("KR:360750").amountKrw, 1e-9)
-        assertEquals(500.0 * 415 / 550, small.getValue("KR:AAA").amountKrw, 1e-9)
-        assertEquals(500.0 * 110 / 550, small.getValue("CASH").amountKrw, 1e-9)
+        // 금액 단위를 0.01원으로 두면 내림 영향 없이 비율 그대로
+        val fine = target.copy(units = mapOf("KR:360750" to 0.01, "KR:AAA" to 0.01))
+        val small = AllocationCalculator.buyOnly(AllocationCalculator.view(fine, accounts2, null), 500.0).trades.associateBy { it.row.key }
+        assertEquals(500.0 * 25 / 550, small.getValue("KR:360750").amountKrw, 0.02)
+        assertEquals(500.0 * 415 / 550, small.getValue("KR:AAA").amountKrw, 0.02)
+        assertEquals(500.0 * 110 / 550, small.getValue("CASH").amountKrw, 0.02)
         assertFalse("KR:GLD1" in small)
     }
 
@@ -96,8 +98,9 @@ class AllocationTest {
     fun rebalanceToExactTargets() {
         val view = AllocationCalculator.view(target, summary.accounts, null)
         val trades = AllocationCalculator.rebalance(view).associateBy { it.row.key }
-        assertEquals(-250.0, trades.getValue("KR:360750").amountKrw, 1e-9)
-        assertEquals(250.0, trades.getValue("KR:AAA").amountKrw, 1e-9)
+        // 1주 100원 단위로 0 쪽 내림: −250 → −200, +250 → +200
+        assertEquals(-200.0, trades.getValue("KR:360750").amountKrw, 1e-9)
+        assertEquals(200.0, trades.getValue("KR:AAA").amountKrw, 1e-9)
         assertFalse("CASH" in trades)
     }
 
@@ -112,7 +115,7 @@ class AllocationTest {
         assertEquals(2000.0, view.totalKrw, 1e-9)
         assertEquals(listOf("KR:360750", "CASH"), view.rows.map { it.key })
         assertEquals(0.75, view.rows.first().currentWeight, 1e-9)
-        assertFalse(AllocationCalculator.buyOnly(view, 1000.0).any { it.row.key == "KR:AAA" })
+        assertFalse(AllocationCalculator.buyOnly(view, 1000.0).trades.any { it.row.key == "KR:AAA" })
     }
 
     @Test
@@ -129,7 +132,7 @@ class AllocationTest {
         assertEquals("Invesco QQQM", q.name)
         assertEquals(0.0, q.currentWeight, 1e-9)
         assertTrue(q.isForeign)
-        val buy = AllocationCalculator.buyOnly(view, 1000.0).first { it.row.key == key }
+        val buy = AllocationCalculator.buyOnly(view, 1000.0).trades.first { it.row.key == key }
         assertTrue(buy.amountKrw > 0)
         assertEquals(null, buy.shares)
     }
@@ -142,5 +145,63 @@ class AllocationTest {
         assertEquals(AllocationCalculator.keyOf(nyse), AllocationCalculator.keyOf(other))
         assertEquals("KR:360750", AllocationCalculator.keyOf(sp1))
         assertEquals("id:f", AllocationCalculator.keyOf(Holding(id = "f", accountId = "a", name = "펀드", market = Market.KR)))
+    }
+
+    @Test
+    fun wholeShareUnitsAndLeftover() {
+        // 1주 100원 종목: 400원 → 4주, 남는 돈은 가장 부족한 종목부터 한 주씩
+        val view = AllocationCalculator.view(target, summary.accounts, null)
+        val plan = AllocationCalculator.buyOnly(view, 450.0)
+        val byKey = plan.trades.associateBy { it.row.key }
+        // 이상적: 넣은 뒤 2950 → 목표 1475/885/590, 부족분 0/385/90 → 내림 AAA 300(3주)
+        // 남은 150 원: AAA 부족 85 > 0 → 1주 더 (400), 남은 50 원은 예수금으로 (남는 돈 0)
+        assertEquals(400.0, byKey.getValue("KR:AAA").amountKrw, 1e-9)
+        assertEquals(4.0, byKey.getValue("KR:AAA").shares!!, 1e-9)
+        assertFalse(byKey.getValue("KR:AAA").fractional)
+        assertEquals(50.0, byKey.getValue("CASH").amountKrw, 1e-9)
+        assertEquals(0.0, plan.leftoverKrw, 1e-9)
+        // 예수금을 빼면 남는 돈으로 표시
+        val noCash = AllocationCalculator.view(target.copy(includeCash = false, targets = mapOf("KR:360750" to 60.0, "KR:AAA" to 40.0)), summary.accounts, null)
+        val p2 = AllocationCalculator.buyOnly(noCash, 450.0)
+        assertEquals(450.0 - p2.trades.sumOf { it.amountKrw }, p2.leftoverKrw, 1e-9)
+        assertTrue(p2.leftoverKrw < 100.0)
+    }
+
+    @Test
+    fun moneyUnitAndManualPrice() {
+        // 금액 단위 30원: 385 → 360 (12단위), 소수 주 수 3.6주
+        val view = AllocationCalculator.view(target.copy(units = mapOf("KR:AAA" to 30.0)), summary.accounts, null)
+        val aaa = AllocationCalculator.buyOnly(view, 450.0).trades.first { it.row.key == "KR:AAA" }
+        assertTrue(aaa.fractional)
+        assertEquals(0.0, aaa.amountKrw % 30.0, 1e-9)
+        assertEquals(aaa.amountKrw / 100.0, aaa.shares!!, 1e-9)
+
+        // 종목코드 없이 직접 추가 + 현재가 직접 입력 (해외 $10, 환율 1000 → 1주 10,000원)
+        val ipo = AllocationCalculator.codelessKey(foreign = true, id = "abc")
+        assertTrue(AllocationCalculator.isCodeless(ipo))
+        val t2 = target.copy(
+            targets = mapOf("KR:360750" to 50.0, "KR:AAA" to 30.0, ipo to 20.0),
+            includeCash = false,
+            names = mapOf(ipo to "상장 예정 공모주"),
+            prices = mapOf(ipo to 10.0),
+        )
+        val v2 = AllocationCalculator.view(t2, summary.accounts, 1000.0)
+        val row = v2.rows.first { it.key == ipo }
+        assertEquals("상장 예정 공모주", row.name)
+        assertEquals(10_000.0, row.priceKrw!!, 1e-9)
+        assertTrue(row.isForeign)
+        val plan = AllocationCalculator.buyOnly(v2, 50_000.0)
+        val buy = plan.trades.first { it.row.key == ipo }
+        assertEquals(0.0, buy.amountKrw % 10_000.0, 1e-9)
+        assertEquals(buy.amountKrw / 10_000.0, buy.shares!!, 1e-9)
+    }
+
+    @Test
+    fun rebalanceRoundsTowardZeroByUnit() {
+        val view = AllocationCalculator.view(target.copy(units = mapOf("KR:360750" to 1000.0)), summary.accounts, null)
+        val trades = AllocationCalculator.rebalance(view).associateBy { it.row.key }
+        // 360750: −250 → 단위 1000원이면 0 → 목록에서 빠짐. AAA: +250, 1주 100원 → 200
+        assertFalse("KR:360750" in trades)
+        assertEquals(200.0, trades.getValue("KR:AAA").amountKrw, 1e-9)
     }
 }

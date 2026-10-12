@@ -1,11 +1,22 @@
 import { useState } from 'react';
 import { FormActions, Modal, NumberField, TextField } from '../components/form';
-import { CASH_KEY, keyOf, manualKey, type AllocationTarget } from '../core/allocation';
+import { CASH_KEY, codelessKey, isCodeless, keyOf, manualKey, type AllocationTarget } from '../core/allocation';
 import { decimal, parseDecimal } from '../core/format';
 import { useAppData, useData } from '../data/DataContext';
 import { deleteAllocationTarget, saveAllocationTarget } from '../data/writes';
 
-/** 비중 설정 만들기·편집: 이름, 대상 계좌, 예수금 포함, 강조 기준, 종목별 목표 %. */
+type Texts = { [key: string]: string };
+
+const toTexts = (m: { [key: string]: number } | undefined): Texts =>
+  Object.fromEntries(Object.entries(m ?? {}).map(([k, v]) => [k, decimal(v, 4).replace(/,/g, '')]));
+const isForeignKey = (k: string) => k.startsWith('US:') || k.startsWith('manual-us:');
+const without = <T,>(m: { [key: string]: T }, k: string) => {
+  const next = { ...m };
+  delete next[k];
+  return next;
+};
+
+/** 비중 설정 만들기·편집: 이름, 대상 계좌, 예수금 포함, 강조 기준, 종목별 목표 %·매수 단위, 제외, 직접 추가. */
 export function AllocationForm({ existing, onClose, onSaved }: { existing: AllocationTarget | null; onClose: () => void; onSaved?: (id: string) => void }) {
   const { uid } = useData();
   const data = useAppData();
@@ -14,17 +25,22 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
   const [includeCash, setIncludeCash] = useState(existing?.includeCash ?? false);
   const [thresholdText, setThresholdText] = useState(existing ? decimal(existing.threshold, 2).replace(/,/g, '') : '3');
   const [excluded, setExcluded] = useState<string[]>(existing?.excluded ?? []);
-  // 계좌에 없는(아직 안 산) 종목: 종목 키 → 이름
+  // 계좌에 없는(아직 안 산) 종목: 종목 키 → 이름, 직접 입력한 현재가
   const [manual, setManual] = useState<{ [key: string]: string }>(existing?.names ?? {});
+  const [priceTexts, setPriceTexts] = useState<Texts>(() => toTexts(existing?.prices));
+  const [texts, setTexts] = useState<Texts>(() => toTexts(existing?.targets));
+  // 매수 단위 (비우면 1주 단위, 금액이면 그 금액 단위)
+  const [unitTexts, setUnitTexts] = useState<Texts>(() => toTexts(existing?.units));
+  const [bulkMoney, setBulkMoney] = useState(false);
+  const [bulkText, setBulkText] = useState('1000');
+  // 직접 추가 입력
   const [adding, setAdding] = useState(false);
   const [addForeign, setAddForeign] = useState(true);
   const [addCode, setAddCode] = useState('');
   const [addName, setAddName] = useState('');
-  const [texts, setTexts] = useState<{ [key: string]: string }>(() =>
-    Object.fromEntries(Object.entries(existing?.targets ?? {}).map(([k, v]) => [k, decimal(v, 2).replace(/,/g, '')])),
-  );
+  const [addPrice, setAddPrice] = useState('');
 
-  // 대상 계좌의 종목 (같은 종목은 하나로, 0주 포함 — 아직 안 산 종목도 목표에 넣을 수 있게)
+  // 대상 계좌의 종목 (같은 종목은 하나로, 0주 포함)
   const items = new Map<string, string>();
   for (const h of data.holdings.filter((h) => accountIds.includes(h.accountId))) {
     if (!items.has(keyOf(h))) items.set(keyOf(h), h.name);
@@ -37,41 +53,69 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
   }
   const keys = [...items.keys()];
   if (includeCash) keys.push(CASH_KEY);
-  // 제외한 종목은 목표 % 를 받지 않고 계산에서 뺀다
+  const stockKeys = keys.filter((k) => k !== CASH_KEY);
+
   const isExcluded = (k: string) => excluded.includes(k);
   const percent = (k: string) => (isExcluded(k) ? 0 : parseDecimal(texts[k] ?? '') ?? 0);
   const sum = keys.reduce((s, k) => s + percent(k), 0);
   const threshold = parseDecimal(thresholdText);
-  const invalid = keys.some((k) => !isExcluded(k) && (texts[k] ?? '').trim() !== '' && (parseDecimal(texts[k]) === null || percent(k) < 0 || percent(k) > 100));
+  const badNumber = (t: string | undefined, max = Infinity) => (t ?? '').trim() !== '' && ((parseDecimal(t!) ?? -1) < 0 || (parseDecimal(t!) ?? 0) > max);
+  const invalidPercent = keys.some((k) => !isExcluded(k) && badNumber(texts[k], 100));
+  const invalidUnit = stockKeys.some((k) => badNumber(unitTexts[k]) || badNumber(priceTexts[k]));
 
   const problem =
     name.trim() === '' ? '이름을 입력하세요.'
       : accountIds.length === 0 ? '대상 계좌를 고르세요.'
-        : invalid ? '목표 비중은 0~100% 로 입력하세요.'
-          : Math.abs(sum - 100) > 0.01 ? `목표 합계가 100% 가 되어야 합니다 (지금 ${decimal(sum, 2)}%).`
-            : threshold === null || threshold < 0 || threshold > 100 ? '강조 기준은 0~100%p 로 입력하세요.'
-              : null;
+        : invalidPercent ? '목표 비중은 0~100% 로 입력하세요.'
+          : invalidUnit ? '매수 단위·현재가를 확인하세요.'
+            : Math.abs(sum - 100) > 0.01 ? `목표 합계가 100% 가 되어야 합니다 (지금 ${decimal(sum, 2)}%).`
+              : threshold === null || threshold < 0 || threshold > 100 ? '강조 기준은 0~100%p 로 입력하세요.'
+                : null;
 
+  // 직접 추가: 이름은 필수, 종목코드는 선택 (코드가 없으면 계좌 종목과 자동 연결되지 않는 키)
   const addKey = addCode.trim() === '' ? null : manualKey(addForeign, addCode);
-  const addProblem = addKey === null ? null : items.has(addKey) || addKey === CASH_KEY ? '이미 목록에 있는 종목입니다.' : null;
+  const addProblem =
+    addName.trim() === '' && addCode.trim() === '' ? null
+      : addKey !== null && items.has(addKey) ? '이미 목록에 있는 종목입니다.'
+        : addCode.trim() === '' && addName.trim() === '' ? '이름을 입력하세요.'
+          : null;
+  const canAdd = (addName.trim() !== '' || addCode.trim() !== '') && addProblem === null && !badNumber(addPrice);
   const addManual = () => {
-    if (addKey === null || addProblem) return;
-    setManual({ ...manual, [addKey]: addName.trim() || addCode.trim().toUpperCase() });
+    if (!canAdd) return;
+    const key = addKey ?? codelessKey(addForeign, Date.now().toString(36));
+    setManual({ ...manual, [key]: addName.trim() || addCode.trim().toUpperCase() });
+    if (addPrice.trim() !== '') setPriceTexts({ ...priceTexts, [key]: addPrice.trim() });
     setAddCode('');
     setAddName('');
+    setAddPrice('');
     setAdding(false);
   };
   const removeManual = (k: string) => {
-    const nextManual = { ...manual };
-    delete nextManual[k];
-    const nextTexts = { ...texts };
-    delete nextTexts[k];
-    setManual(nextManual);
-    setTexts(nextTexts);
+    setManual(without(manual, k));
+    setTexts(without(texts, k));
+    setUnitTexts(without(unitTexts, k));
+    setPriceTexts(without(priceTexts, k));
+  };
+  // 종목코드 없이 넣은 종목을 계좌의 실제 종목으로 바꾸기: 목표 %·매수 단위를 옮긴다
+  const relink = (from: string, to: string) => {
+    setTexts({ ...without(texts, from), [to]: texts[from] ?? '' });
+    setUnitTexts({ ...without(unitTexts, from), ...(unitTexts[from] ? { [to]: unitTexts[from] } : {}) });
+    setManual(without(manual, from));
+    setPriceTexts(without(priceTexts, from));
+  };
+  const relinkTargets = [...held].filter((k) => percent(k) === 0 && !isExcluded(k));
+
+  const applyBulk = () => {
+    const next: Texts = { ...unitTexts };
+    for (const k of stockKeys) next[k] = bulkMoney ? bulkText : '';
+    setUnitTexts(next);
   };
 
   const toggleAccount = (id: string) =>
     setAccountIds(accountIds.includes(id) ? accountIds.filter((x) => x !== id) : [...accountIds, id]);
+
+  const numbers = (t: Texts, allowed: (k: string) => boolean) =>
+    Object.fromEntries(Object.entries(t).filter(([k, v]) => allowed(k) && (parseDecimal(v) ?? 0) > 0).map(([k, v]) => [k, parseDecimal(v)!]));
 
   const save = async () => {
     const targets: { [key: string]: number } = {};
@@ -80,8 +124,10 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
       id: existing?.id ?? '', name: name.trim(), accountIds, targets, includeCash, threshold: threshold ?? 3, createdAt: existing?.createdAt ?? 0,
       // 지금 대상 계좌에 있는 종목만 제외 목록에 남긴다
       excluded: excluded.filter((k) => held.has(k)),
-      // 직접 추가한 이름은 아직 계좌에 없는 종목만 (사서 계좌에 생기면 종목 이름을 쓴다)
+      // 직접 추가한 이름·현재가는 아직 계좌에 없는 종목만 (사서 계좌에 생기면 종목 이름·시세를 쓴다)
       names: Object.fromEntries(Object.entries(manual).filter(([k]) => !held.has(k))),
+      prices: numbers(priceTexts, (k) => !held.has(k) && items.has(k)),
+      units: numbers(unitTexts, (k) => items.has(k)),
     });
     onSaved?.(id);
   };
@@ -104,41 +150,83 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
         예수금도 비중에 넣기
       </label>
       <NumberField label="차이 강조 기준 (%p)" value={thresholdText} onChange={setThresholdText} preview={(n) => `목표와 ±${decimal(n, 2)}%p 이상 차이 나면 강조`} />
+
+      <div className="sub-card">
+        <span className="field-label">매수 단위 일괄 적용</span>
+        <div className="toggle-row">
+          <div className="choices" role="radiogroup" aria-label="매수 단위">
+            {[false, true].map((m) => (
+              <button type="button" key={String(m)} role="radio" aria-checked={bulkMoney === m} className={bulkMoney === m ? 'choice on' : 'choice'} onClick={() => setBulkMoney(m)}>
+                {bulkMoney === m && <span aria-hidden="true">✓ </span>}
+                {m ? '금액 단위' : '1주 단위'}
+              </button>
+            ))}
+          </div>
+          {bulkMoney && (
+            <span className="unit-input">
+              <input inputMode="numeric" aria-label="일괄 금액 단위 (원)" value={bulkText} onChange={(e) => setBulkText(e.target.value.replace(/[^0-9]/g, '').slice(0, 9))} />원
+            </span>
+          )}
+          <button type="button" className="small-button" onClick={applyBulk} disabled={bulkMoney && !(Number(bulkText) > 0)}>모든 종목에 적용</button>
+        </div>
+        <span className="field-hint">적용한 뒤에도 아래에서 종목마다 다시 고칠 수 있습니다. 매수 단위를 비우면 1주 단위입니다.</span>
+      </div>
+
       <div className="field">
         <span className="field-label">목표 비중 (%)</span>
-        <span className="field-hint">아직 안 산 종목은 아래 [+ 계좌에 없는 종목 직접 추가]로 넣을 수 있습니다 (나중에 사면 자동으로 연결). 비중에서 뺄 종목은 [제외]를 고르세요.</span>
+        <span className="field-hint">아직 안 산 종목(상장 전 공모주, 장외 채권 등)은 아래 [+ 계좌에 없는 종목 직접 추가]로 넣을 수 있습니다. 비중에서 뺄 종목은 [제외]를 고르세요.</span>
         {keys.map((k) => {
-          const label = k === CASH_KEY ? '예수금' : items.get(k);
+          const label = k === CASH_KEY ? '예수금' : items.get(k) ?? k;
           const off = isExcluded(k);
+          const unheld = k !== CASH_KEY && !held.has(k);
           return (
-            <div key={k} className={off ? 'target-row excluded' : 'target-row'}>
-              <span>
-                {label} <span className="muted small">{k === CASH_KEY ? '' : k.replace(/^id:.*/, '')}</span>
-                {off && <span className="muted small"> · 제외</span>}
-                {!held.has(k) && k !== CASH_KEY && <span className="muted small"> · 미보유</span>}
-              </span>
-              <span className="target-inputs">
-                {off ? (
-                  <span className="muted small">계산에서 뺌</span>
-                ) : (
-                  <input
-                    inputMode="decimal"
-                    aria-label={`${label} 목표 %`}
-                    value={texts[k] ?? ''}
-                    placeholder="0"
-                    onChange={(e) => setTexts({ ...texts, [k]: e.target.value.replace(/[^0-9.]/g, '').slice(0, 6) })}
-                  />
-                )}
-                {k !== CASH_KEY && !held.has(k) && (
-                  <button type="button" className="icon-button" aria-label={`${label} 빼기`} onClick={() => removeManual(k)}>✕</button>
-                )}
-                {k !== CASH_KEY && held.has(k) && (
-                  <label className="check small">
-                    <input type="checkbox" checked={off} onChange={() => setExcluded(off ? excluded.filter((x) => x !== k) : [...excluded, k])} />
-                    제외
-                  </label>
-                )}
-              </span>
+            <div key={k} className={off ? 'target-item excluded' : 'target-item'}>
+              <div className="target-row">
+                <span>
+                  {label}{' '}
+                  <span className="muted small">
+                    {k === CASH_KEY || k.startsWith('id:') || isCodeless(k) ? '' : k}
+                    {off ? ' · 제외' : unheld ? ' · 미보유' : ''}
+                  </span>
+                </span>
+                <span className="target-inputs">
+                  {off ? (
+                    <span className="muted small">계산에서 뺌</span>
+                  ) : (
+                    <span className="unit-input">
+                      <input inputMode="decimal" aria-label={`${label} 목표 %`} value={texts[k] ?? ''} placeholder="0" onChange={(e) => setTexts({ ...texts, [k]: e.target.value.replace(/[^0-9.]/g, '').slice(0, 6) })} />%
+                    </span>
+                  )}
+                  {unheld && <button type="button" className="icon-button" aria-label={`${label} 빼기`} onClick={() => removeManual(k)}>✕</button>}
+                  {k !== CASH_KEY && held.has(k) && (
+                    <label className="check small">
+                      <input type="checkbox" checked={off} onChange={() => setExcluded(off ? excluded.filter((x) => x !== k) : [...excluded, k])} />
+                      제외
+                    </label>
+                  )}
+                </span>
+              </div>
+              {k !== CASH_KEY && !off && (
+                <div className="target-sub">
+                  <span className="unit-input">
+                    매수 단위 <input inputMode="numeric" aria-label={`${label} 매수 단위 (원)`} placeholder="1주" value={unitTexts[k] ?? ''} onChange={(e) => setUnitTexts({ ...unitTexts, [k]: e.target.value.replace(/[^0-9]/g, '').slice(0, 9) })} />원
+                  </span>
+                  {unheld && (
+                    <span className="unit-input">
+                      현재가 <input inputMode="decimal" aria-label={`${label} 현재가`} placeholder="모름" value={priceTexts[k] ?? ''} onChange={(e) => setPriceTexts({ ...priceTexts, [k]: e.target.value.replace(/[^0-9.]/g, '').slice(0, 12) })} />
+                      {isForeignKey(k) ? '$' : '원'}
+                    </span>
+                  )}
+                  {isCodeless(k) && relinkTargets.length > 0 && (
+                    <select aria-label={`${label} 계좌 종목으로 바꾸기`} value="" onChange={(e) => e.target.value && relink(k, e.target.value)}>
+                      <option value="">계좌 종목으로 바꾸기…</option>
+                      {relinkTargets.map((t) => (
+                        <option key={t} value={t}>{items.get(t)}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -153,13 +241,15 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
               ))}
             </div>
             <div className="field-row">
-              <TextField label="종목코드" placeholder={addForeign ? '예: QQQM' : '예: 005930'} value={addCode} onChange={(v) => setAddCode(v.replace(/[^0-9A-Za-z.\-]/g, '').slice(0, 20))} />
-              <TextField label="종목 이름" placeholder={addForeign ? '예: Invesco QQQM' : '예: 삼성전자'} value={addName} onChange={setAddName} maxLength={60} />
+              <TextField label="종목 이름" placeholder={addForeign ? '예: Invesco QQQM' : '예: 삼성전자, 장외 국채 2030'} value={addName} onChange={setAddName} maxLength={60} />
+              <TextField label="종목코드 (없으면 비워 두기)" placeholder={addForeign ? '예: QQQM' : '예: 005930'} value={addCode} onChange={(v) => setAddCode(v.replace(/[^0-9A-Za-z.\-]/g, '').slice(0, 20))} />
             </div>
+            <NumberField label={`현재가 (선택, ${addForeign ? '달러' : '원'})`} value={addPrice} onChange={setAddPrice} preview={(n) => (addForeign ? `$${decimal(n, 2)}` : `${decimal(n, 0)}원`)} />
+            <span className="field-hint">종목코드가 있으면 나중에 사서 계좌에 생길 때 자동으로 연결됩니다. 없으면 [계좌 종목으로 바꾸기]로 연결하세요.</span>
             {addProblem && <p className="warning">{addProblem}</p>}
             <div className="confirm-buttons">
               <button type="button" onClick={() => setAdding(false)}>취소</button>
-              <button type="button" className="primary" disabled={addKey === null || !!addProblem} onClick={addManual}>추가</button>
+              <button type="button" className="primary" disabled={!canAdd} onClick={addManual}>추가</button>
             </div>
           </div>
         ) : (

@@ -1,6 +1,6 @@
 // core AllocationTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
-import { CASH_KEY, allocationView, buyOnly, isHighlighted, keyOf, manualKey, rebalance, type AllocationTarget } from './allocation';
+import { CASH_KEY, allocationView, buyOnly, codelessKey, isCodeless, isHighlighted, keyOf, manualKey, rebalance, type AllocationTarget } from './allocation';
 import { summarize } from './portfolio';
 import { account, holding, record } from './testData';
 
@@ -20,7 +20,7 @@ const records = [
 const accounts = summarize([isa, other], [sp1, bond, sp2, gold], records, null).accounts;
 const target: AllocationTarget = {
   id: '', name: '자산배분', accountIds: ['a', 'b'], targets: { 'KR:360750': 50, 'KR:AAA': 30, [CASH_KEY]: 20 },
-  includeCash: true, threshold: 3, createdAt: 0, excluded: [], names: {},
+  includeCash: true, threshold: 3, createdAt: 0, excluded: [], names: {}, units: {}, prices: {},
 };
 const byKey = <T extends { key: string }>(rows: T[]) => new Map(rows.map((r) => [r.key, r]));
 
@@ -57,7 +57,7 @@ describe('비중 (AllocationTest)', () => {
 
   it('팔지 않고 사기만 해서 부족분을 채운다', () => {
     const view = allocationView(target, accounts, null);
-    const buys = byKey(buyOnly(view, 500).map((s) => ({ ...s, key: s.row.key })));
+    const buys = byKey(buyOnly(view, 500).trades.map((s) => ({ ...s, key: s.row.key })));
     expect([...buys.keys()].sort()).toEqual(['CASH', 'KR:AAA']);
     expect(buys.get('KR:AAA')!.amountKrw).toBeCloseTo(400, 9);
     expect(buys.get('KR:AAA')!.shares).toBe(4);
@@ -66,17 +66,20 @@ describe('비중 (AllocationTest)', () => {
 
     const withGold = [...records, record({ id: '5', accountId: 'a', type: 'BUY', date: day, holdingId: 'h4', quantity: 1, price: 50 })];
     const accounts2 = summarize([isa, other], [sp1, bond, sp2, gold], withGold, null).accounts;
-    const small = byKey(buyOnly(allocationView(target, accounts2, null), 500).map((s) => ({ ...s, key: s.row.key })));
-    expect(small.get('KR:360750')!.amountKrw).toBeCloseTo((500 * 25) / 550, 9);
-    expect(small.get('KR:AAA')!.amountKrw).toBeCloseTo((500 * 415) / 550, 9);
-    expect(small.get('CASH')!.amountKrw).toBeCloseTo((500 * 110) / 550, 9);
+    // 금액 단위를 0.01원으로 두면 내림 영향 없이 비율 그대로
+    const fine = { ...target, units: { 'KR:360750': 0.01, 'KR:AAA': 0.01 } };
+    const small = byKey(buyOnly(allocationView(fine, accounts2, null), 500).trades.map((s) => ({ ...s, key: s.row.key })));
+    expect(Math.abs(small.get('KR:360750')!.amountKrw - (500 * 25) / 550)).toBeLessThan(0.02);
+    expect(Math.abs(small.get('KR:AAA')!.amountKrw - (500 * 415) / 550)).toBeLessThan(0.02);
+    expect(Math.abs(small.get('CASH')!.amountKrw - (500 * 110) / 550)).toBeLessThan(0.02);
     expect(small.has('KR:GLD1')).toBe(false);
   });
 
   it('사고팔아 정확히 맞추기', () => {
     const trades = byKey(rebalance(allocationView(target, accounts, null)).map((s) => ({ ...s, key: s.row.key })));
-    expect(trades.get('KR:360750')!.amountKrw).toBeCloseTo(-250, 9);
-    expect(trades.get('KR:AAA')!.amountKrw).toBeCloseTo(250, 9);
+    // 1주 100원 단위로 0 쪽 내림: −250 → −200, +250 → +200
+    expect(trades.get('KR:360750')!.amountKrw).toBeCloseTo(-200, 9);
+    expect(trades.get('KR:AAA')!.amountKrw).toBeCloseTo(200, 9);
     expect(trades.has('CASH')).toBe(false);
   });
 
@@ -85,7 +88,7 @@ describe('비중 (AllocationTest)', () => {
     expect(view.totalKrw).toBe(2000);
     expect(view.rows.map((r) => r.key)).toEqual(['KR:360750', 'CASH']);
     expect(view.rows[0].currentWeight).toBeCloseTo(0.75, 9);
-    expect(buyOnly(view, 1000).some((s) => s.row.key === 'KR:AAA')).toBe(false);
+    expect(buyOnly(view, 1000).trades.some((s) => s.row.key === 'KR:AAA')).toBe(false);
   });
 
   it('계좌에 없는 종목을 직접 추가', () => {
@@ -100,7 +103,7 @@ describe('비중 (AllocationTest)', () => {
     expect(q.name).toBe('Invesco QQQM');
     expect(q.currentWeight).toBe(0);
     expect(q.isForeign).toBe(true);
-    const buy = buyOnly(view, 1000).find((s) => s.row.key === key)!;
+    const buy = buyOnly(view, 1000).trades.find((s) => s.row.key === key)!;
     expect(buy.amountKrw).toBeGreaterThan(0);
     expect(buy.shares).toBeNull();
   });
@@ -112,5 +115,49 @@ describe('비중 (AllocationTest)', () => {
     expect(keyOf(other)).toBe(keyOf(nyse));
     expect(keyOf(sp1)).toBe('KR:360750');
     expect(keyOf(holding({ id: 'f', accountId: 'a', name: '펀드' }))).toBe('id:f');
+  });
+
+  it('1주 단위로 내리고 남은 돈은 가장 부족한 종목·예수금으로', () => {
+    const view = allocationView(target, accounts, null);
+    const plan = buyOnly(view, 450);
+    const t = byKey(plan.trades.map((s) => ({ ...s, key: s.row.key })));
+    expect(t.get('KR:AAA')!.amountKrw).toBeCloseTo(400, 9);
+    expect(t.get('KR:AAA')!.shares).toBe(4);
+    expect(t.get('KR:AAA')!.fractional).toBe(false);
+    expect(t.get('CASH')!.amountKrw).toBeCloseTo(50, 9);
+    expect(plan.leftoverKrw).toBe(0);
+    const noCash = allocationView({ ...target, includeCash: false, targets: { 'KR:360750': 60, 'KR:AAA': 40 } }, accounts, null);
+    const p2 = buyOnly(noCash, 450);
+    expect(p2.leftoverKrw).toBeCloseTo(450 - p2.trades.reduce((s, x) => s + x.amountKrw, 0), 9);
+    expect(p2.leftoverKrw).toBeLessThan(100);
+  });
+
+  it('금액 단위와 직접 입력한 현재가', () => {
+    const view = allocationView({ ...target, units: { 'KR:AAA': 30 } }, accounts, null);
+    const aaa = buyOnly(view, 450).trades.find((s) => s.row.key === 'KR:AAA')!;
+    expect(aaa.fractional).toBe(true);
+    expect(aaa.amountKrw % 30).toBeCloseTo(0, 9);
+    expect(aaa.shares).toBeCloseTo(aaa.amountKrw / 100, 9);
+
+    const ipo = codelessKey(true, 'abc');
+    expect(isCodeless(ipo)).toBe(true);
+    const v2 = allocationView(
+      { ...target, targets: { 'KR:360750': 50, 'KR:AAA': 30, [ipo]: 20 }, includeCash: false, names: { [ipo]: '상장 예정 공모주' }, prices: { [ipo]: 10 } },
+      accounts,
+      1000,
+    );
+    const row = v2.rows.find((r) => r.key === ipo)!;
+    expect(row.name).toBe('상장 예정 공모주');
+    expect(row.priceKrw).toBe(10_000);
+    expect(row.isForeign).toBe(true);
+    const buy = buyOnly(v2, 50_000).trades.find((s) => s.row.key === ipo)!;
+    expect(buy.amountKrw % 10_000).toBeCloseTo(0, 9);
+    expect(buy.shares).toBeCloseTo(buy.amountKrw / 10_000, 9);
+  });
+
+  it('사고팔기도 매수 단위로 0 쪽 내림', () => {
+    const trades = byKey(rebalance(allocationView({ ...target, units: { 'KR:360750': 1000 } }, accounts, null)).map((s) => ({ ...s, key: s.row.key })));
+    expect(trades.has('KR:360750')).toBe(false);
+    expect(trades.get('KR:AAA')!.amountKrw).toBeCloseTo(200, 9);
   });
 });

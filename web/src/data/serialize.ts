@@ -103,5 +103,7 @@ export function allocationTargetDoc(t: AllocationTarget) {
     createdAt: createdAt(t.createdAt),
     excluded: t.excluded,
     names: t.names,
+    units: t.units,
+    prices: t.prices,
   };
 }

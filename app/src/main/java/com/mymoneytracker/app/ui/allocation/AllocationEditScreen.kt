@@ -1,6 +1,14 @@
 package com.mymoneytracker.app.ui.allocation
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
+import com.mymoneytracker.app.ui.common.MoneyField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -102,6 +110,12 @@ fun AllocationEditScreen(
     }
 }
 
+private fun numberText(value: Double): String = MoneyFormat.decimal(value, 4).replace(",", "")
+
+private fun isForeignKey(key: String) =
+    key.startsWith(AllocationCalculator.US_PREFIX) || key.startsWith(AllocationCalculator.MANUAL_US_PREFIX)
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AllocationForm(
     initial: AllocationTarget?,
@@ -117,41 +131,52 @@ private fun AllocationForm(
     }
     var includeCash by rememberSaveable { mutableStateOf(initial?.includeCash ?: false) }
     var thresholdText by rememberSaveable { mutableStateOf(initial?.threshold?.let { MoneyFormat.decimal(it, 2).replace(",", "") } ?: "3") }
-    val texts = remember {
-        mutableStateMapOf<String, String>().apply {
-            initial?.targets?.forEach { (k, v) -> put(k, MoneyFormat.decimal(v, 2).replace(",", "")) }
-        }
-    }
+    val texts = remember { mutableStateMapOf<String, String>().apply { initial?.targets?.forEach { (k, v) -> put(k, numberText(v)) } } }
+    // 매수 단위 (비우면 1주 단위, 금액이면 그 금액 단위)
+    val unitTexts = remember { mutableStateMapOf<String, String>().apply { initial?.units?.forEach { (k, v) -> put(k, numberText(v)) } } }
     val excluded = remember { mutableStateListOf<String>().apply { addAll(initial?.excluded.orEmpty()) } }
-    // 계좌에 없는(아직 안 산) 종목: 종목 키 → 이름
+    // 계좌에 없는(아직 안 산) 종목: 종목 키 → 이름, 직접 입력한 현재가
     val manual = remember { mutableStateMapOf<String, String>().apply { putAll(initial?.names.orEmpty()) } }
+    val priceTexts = remember { mutableStateMapOf<String, String>().apply { initial?.prices?.forEach { (k, v) -> put(k, numberText(v)) } } }
+    var bulkMoney by rememberSaveable { mutableStateOf(false) }
+    var bulkText by rememberSaveable { mutableStateOf("1000") }
     var adding by rememberSaveable { mutableStateOf(false) }
     var addForeign by rememberSaveable { mutableStateOf(true) }
     var addCode by rememberSaveable { mutableStateOf("") }
     var addName by rememberSaveable { mutableStateOf("") }
+    var addPrice by rememberSaveable { mutableStateOf("") }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
-    // 대상 계좌의 종목 (같은 종목은 하나로, 0주 포함 — 아직 안 산 종목도 목표에 넣을 수 있게)
+    // 대상 계좌의 종목 (같은 종목은 하나로, 0주 포함)
     val items = linkedMapOf<String, String>()
     holdings.filter { it.accountId in accountIds }.forEach { h -> items.putIfAbsent(AllocationCalculator.keyOf(h), h.name) }
     val held = items.keys.toSet()
     // 직접 추가한 종목, 그리고 이미 목표가 있는데 대상 계좌에 없는 종목(지웠거나 계좌를 뺐을 때)도 남겨 둔다
     manual.forEach { (k, n) -> items.putIfAbsent(k, n) }
     initial?.targets?.keys?.filter { it != AllocationCalculator.CASH && it !in items }?.forEach { items[it] = it.substringAfter(':') }
-    val keys = items.keys.toList() + if (includeCash) listOf(AllocationCalculator.CASH) else emptyList()
+    val stockKeys = items.keys.toList()
+    val keys = stockKeys + if (includeCash) listOf(AllocationCalculator.CASH) else emptyList()
+
     // 제외한 종목은 목표 % 를 받지 않고 계산에서 뺀다
     fun percent(k: String) = if (k in excluded) 0.0 else MoneyFormat.parseDecimal(texts[k].orEmpty()) ?: 0.0
+    fun bad(text: String?, max: Double = Double.MAX_VALUE): Boolean {
+        val t = text.orEmpty()
+        if (t.isBlank()) return false
+        val n = MoneyFormat.parseDecimal(t) ?: return true
+        return n < 0 || n > max
+    }
     val sum = keys.sumOf { percent(it) }
     val threshold = MoneyFormat.parseDecimal(thresholdText)
-    val invalid = keys.any { k -> k !in excluded && texts[k].orEmpty().isNotBlank() && (MoneyFormat.parseDecimal(texts[k].orEmpty()) == null || percent(k) !in 0.0..100.0) }
     val problem = when {
         name.isBlank() -> "이름을 입력하세요."
         accountIds.isEmpty() -> "대상 계좌를 고르세요."
-        invalid -> "목표 비중은 0~100% 로 입력하세요."
+        keys.any { it !in excluded && bad(texts[it], 100.0) } -> "목표 비중은 0~100% 로 입력하세요."
+        stockKeys.any { bad(unitTexts[it]) || bad(priceTexts[it]) } -> "매수 단위·현재가를 확인하세요."
         abs(sum - 100) > 0.01 -> "목표 합계가 100% 가 되어야 합니다 (지금 ${MoneyFormat.decimal(sum, 2)}%)."
         threshold == null || threshold !in 0.0..100.0 -> "강조 기준은 0~100%p 로 입력하세요."
         else -> null
     }
+    val relinkTargets = held.filter { percent(it) == 0.0 && it !in excluded }
 
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp),
@@ -178,23 +203,53 @@ private fun AllocationForm(
             { thresholdText = it },
             preview = { "목표와 ±${MoneyFormat.decimal(it, 2)}%p 이상 차이 나면 강조" },
         )
+
+        // 매수 단위 일괄 적용
+        Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = appCardColors()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("매수 단위 일괄 적용", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    AppFilterChip(selected = !bulkMoney, label = "1주 단위", onClick = { bulkMoney = false })
+                    AppFilterChip(selected = bulkMoney, label = "금액 단위", onClick = { bulkMoney = true })
+                }
+                if (bulkMoney) {
+                    MoneyField("금액 단위 (원)", bulkText, { bulkText = it })
+                }
+                OutlinedButton(
+                    onClick = { stockKeys.forEach { k -> unitTexts[k] = if (bulkMoney) bulkText else "" } },
+                    enabled = !bulkMoney || (MoneyFormat.parseDecimal(bulkText) ?: 0.0) > 0,
+                ) { Text("모든 종목에 적용") }
+                Text(
+                    "적용한 뒤에도 아래에서 종목마다 다시 고칠 수 있습니다. 매수 단위를 비우면 1주 단위입니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
         Text("목표 비중 (%)", style = MaterialTheme.typography.titleMedium)
         Text(
-            "아직 안 산 종목은 아래 [+ 계좌에 없는 종목 직접 추가]로 넣을 수 있습니다 (나중에 사면 자동으로 연결). 비중에서 뺄 종목은 [제외]를 고르세요.",
+            "아직 안 산 종목(상장 전 공모주, 장외 채권 등)은 아래 [+ 계좌에 없는 종목 직접 추가]로 넣을 수 있습니다. 비중에서 뺄 종목은 [제외]를 고르세요.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         keys.forEach { k ->
             val off = k in excluded
+            val isCash = k == AllocationCalculator.CASH
+            val unheld = !isCash && k !in held
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        (if (k == AllocationCalculator.CASH) "예수금" else items[k].orEmpty()) +
-                            if (off) " (제외)" else if (k != AllocationCalculator.CASH && k !in held) " (미보유)" else "",
+                        (if (isCash) "예수금" else items[k].orEmpty()) + when {
+                            off -> " (제외)"
+                            unheld -> " (미보유)"
+                            else -> ""
+                        },
                         style = MaterialTheme.typography.bodyLarge,
                         color = if (off) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     )
-                    if (k != AllocationCalculator.CASH && !k.startsWith("id:")) {
+                    if (!isCash && !k.startsWith("id:") && !AllocationCalculator.isCodeless(k)) {
                         Text(k, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -207,16 +262,18 @@ private fun AllocationForm(
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(textAlign = TextAlign.End),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.width(100.dp),
+                        modifier = Modifier.width(96.dp),
                     )
                 }
-                if (k != AllocationCalculator.CASH && k !in held) {
+                if (unheld) {
                     IconButton(onClick = {
                         manual.remove(k)
                         texts.remove(k)
+                        unitTexts.remove(k)
+                        priceTexts.remove(k)
                     }) { Icon(Icons.Filled.Close, contentDescription = "${items[k]} 빼기") }
                 }
-                if (k != AllocationCalculator.CASH && k in held) {
+                if (!isCash && !unheld) {
                     Row(
                         Modifier.clickable { if (off) excluded.remove(k) else excluded.add(k) },
                         verticalAlignment = Alignment.CenterVertically,
@@ -226,10 +283,61 @@ private fun AllocationForm(
                     }
                 }
             }
+            if (!isCash && !off) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = unitTexts[k].orEmpty(),
+                        onValueChange = { v -> unitTexts[k] = v.filter { it.isDigit() }.take(9) },
+                        label = { Text("매수 단위") },
+                        placeholder = { Text("1주") },
+                        suffix = { Text("원") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (unheld) {
+                        OutlinedTextField(
+                            value = priceTexts[k].orEmpty(),
+                            onValueChange = { v -> priceTexts[k] = v.filter { it.isDigit() || it == '.' }.take(12) },
+                            label = { Text("현재가") },
+                            placeholder = { Text("모름") },
+                            suffix = { Text(if (isForeignKey(k)) "$" else "원") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                if (AllocationCalculator.isCodeless(k) && relinkTargets.isNotEmpty()) {
+                    var open by remember { mutableStateOf(false) }
+                    Box {
+                        TextButton(onClick = { open = true }) { Text("계좌 종목으로 바꾸기 ▾") }
+                        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                            relinkTargets.forEach { t ->
+                                DropdownMenuItem(
+                                    text = { Text(items[t].orEmpty()) },
+                                    onClick = {
+                                        // 목표 %·매수 단위를 실제 종목으로 옮긴다
+                                        texts[t] = texts[k].orEmpty()
+                                        unitTexts[k]?.let { unitTexts[t] = it }
+                                        texts.remove(k)
+                                        unitTexts.remove(k)
+                                        manual.remove(k)
+                                        priceTexts.remove(k)
+                                        open = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
+
         if (adding) {
             val addKey = addCode.trim().takeIf { it.isNotEmpty() }?.let { AllocationCalculator.manualKey(addForeign, it) }
-            val addProblem = if (addKey != null && (addKey in items || addKey == AllocationCalculator.CASH)) "이미 목록에 있는 종목입니다." else null
+            val addProblem = if (addKey != null && addKey in items) "이미 목록에 있는 종목입니다." else null
+            val canAdd = (addName.isNotBlank() || addCode.isNotBlank()) && addProblem == null && !bad(addPrice)
             Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = appCardColors()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("계좌에 없는 종목 직접 추가", style = MaterialTheme.typography.labelLarge)
@@ -237,27 +345,40 @@ private fun AllocationForm(
                         AppFilterChip(selected = addForeign, label = "해외", onClick = { addForeign = true })
                         AppFilterChip(selected = !addForeign, label = "국내", onClick = { addForeign = false })
                     }
+                    TextInput(if (addForeign) "종목 이름 (예: Invesco QQQM)" else "종목 이름 (예: 삼성전자, 장외 국채 2030)", addName, { addName = it }, maxLength = 60)
                     OutlinedTextField(
                         value = addCode,
                         onValueChange = { v -> addCode = v.filter { it.isLetterOrDigit() || it == '.' || it == '-' }.take(20) },
-                        label = { Text(if (addForeign) "종목코드 (예: QQQM)" else "종목코드 (예: 005930)") },
+                        label = { Text("종목코드 (없으면 비워 두기)") },
+                        placeholder = { Text(if (addForeign) "예: QQQM" else "예: 005930") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    TextInput(if (addForeign) "종목 이름 (예: Invesco QQQM)" else "종목 이름 (예: 삼성전자)", addName, { addName = it }, maxLength = 60)
+                    NumberField(
+                        "현재가 (선택, ${if (addForeign) "달러" else "원"})",
+                        addPrice,
+                        { addPrice = it },
+                        preview = { if (addForeign) MoneyFormat.usd(it) else MoneyFormat.won(it) },
+                    )
+                    Text(
+                        "종목코드가 있으면 나중에 사서 계좌에 생길 때 자동으로 연결됩니다. 없으면 [계좌 종목으로 바꾸기]로 연결하세요.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     addProblem?.let { WarningText(it) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = { adding = false }) { Text("취소") }
                         TextButton(
                             onClick = {
-                                if (addKey != null && addProblem == null) {
-                                    manual[addKey] = addName.trim().ifBlank { addCode.trim().uppercase() }
-                                    addCode = ""
-                                    addName = ""
-                                    adding = false
-                                }
+                                val key = addKey ?: AllocationCalculator.codelessKey(addForeign, System.currentTimeMillis().toString(36))
+                                manual[key] = addName.trim().ifBlank { addCode.trim().uppercase() }
+                                if (addPrice.isNotBlank()) priceTexts[key] = addPrice.trim()
+                                addCode = ""
+                                addName = ""
+                                addPrice = ""
+                                adding = false
                             },
-                            enabled = addKey != null && addProblem == null,
+                            enabled = canAdd,
                         ) { Text("추가") }
                     }
                 }
@@ -265,6 +386,7 @@ private fun AllocationForm(
         } else {
             TextButton(onClick = { adding = true }) { Text("+ 계좌에 없는 종목 직접 추가") }
         }
+
         if (keys.isNotEmpty()) {
             val left = 100 - sum
             Text(
@@ -281,6 +403,10 @@ private fun AllocationForm(
         problem?.let { WarningText(it) }
         Button(
             onClick = {
+                fun numbers(map: Map<String, String>, allowed: (String) -> Boolean) = map
+                    .filterKeys(allowed)
+                    .mapValues { MoneyFormat.parseDecimal(it.value) ?: 0.0 }
+                    .filterValues { it > 0 }
                 onSave(
                     AllocationTarget(
                         id = initial?.id.orEmpty(),
@@ -292,8 +418,10 @@ private fun AllocationForm(
                         createdAt = initial?.createdAt ?: 0L,
                         // 지금 대상 계좌에 있는 종목만 제외 목록에 남긴다
                         excluded = excluded.filter { it in held },
-                        // 직접 추가한 이름은 아직 계좌에 없는 종목만 (사서 계좌에 생기면 종목 이름을 쓴다)
+                        // 직접 추가한 이름·현재가는 아직 계좌에 없는 종목만 (사서 계좌에 생기면 종목 이름·시세를 쓴다)
                         names = manual.filterKeys { it !in held },
+                        prices = numbers(priceTexts) { it !in held && it in items },
+                        units = numbers(unitTexts) { it in items },
                     ),
                 )
             },
