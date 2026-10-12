@@ -222,5 +222,6 @@ export function toAllocationTarget(id: string, d: Data): AllocationTarget | null
       : {},
     units: numberMap(d.units),
     prices: numberMap(d.prices),
+    noBuy: Array.isArray(d.noBuy) ? d.noBuy.filter((x): x is string => typeof x === 'string') : [],
   };
 }

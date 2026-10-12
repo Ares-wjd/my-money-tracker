@@ -70,6 +70,7 @@ class PortfolioRepository(
                 "names" to target.names,
                 "units" to target.units,
                 "prices" to target.prices,
+                "noBuy" to target.noBuy,
                 F_CREATED_AT to if (target.createdAt > 0) target.createdAt else System.currentTimeMillis(),
             ),
         ).logFailure("비중 설정 저장")
@@ -274,6 +275,7 @@ class PortfolioRepository(
             }?.toMap().orEmpty(),
             units = numberMap(get("units")),
             prices = numberMap(get("prices")),
+            noBuy = (get("noBuy") as? List<*>)?.filterIsInstance<String>().orEmpty(),
         )
     }
 

@@ -204,4 +204,30 @@ class AllocationTest {
         assertFalse("KR:360750" in trades)
         assertEquals(200.0, trades.getValue("KR:AAA").amountKrw, 1e-9)
     }
+
+    @Test
+    fun noBuyHoldingIsSkippedByCalculatorOnly() {
+        // 채권 ETF(AAA)를 "지금 매수 안 함": 표에는 남고, 계산기는 원래 목표 기준으로 나머지만
+        val t = target.copy(noBuy = listOf("KR:AAA"), units = mapOf("KR:360750" to 0.01))
+        val view = AllocationCalculator.view(t, summary.accounts, null)
+        assertTrue(view.rows.any { it.key == "KR:AAA" })
+        val plan = AllocationCalculator.buyOnly(view, 500.0)
+        val byKey = plan.trades.associateBy { it.row.key }
+        assertFalse("KR:AAA" in byKey)
+        // 넣은 뒤 3000 → S&P 목표 1500(부족 0), 예수금 600(부족 100). 남는 400 은 S&P 50 : 예수금 20 비율
+        assertEquals(400.0 * 50 / 70, byKey.getValue("KR:360750").amountKrw, 0.02)
+        assertEquals(500.0 - byKey.getValue("KR:360750").amountKrw, byKey.getValue("CASH").amountKrw, 1e-6)
+        assertFalse(AllocationCalculator.rebalance(view).any { it.row.key == "KR:AAA" })
+    }
+
+    @Test
+    fun prefersMoreShortStockOverCashOnTie() {
+        // 1주 300원짜리 종목이 목표보다 크게 부족하고 예수금은 조금 부족할 때: 1주를 산다 (예수금으로 남기지 않음)
+        val pricey = Holding(id = "p", accountId = "a", name = "비싼 종목", code = "PRC", market = Market.KR, manualPrice = 300.0)
+        val accounts = PortfolioCalculator.summarize(listOf(isa, other), listOf(sp1, bond, sp2, gold, pricey), records, null).accounts
+        val t = target.copy(targets = mapOf("KR:360750" to 40.0, "KR:AAA" to 20.0, "KR:PRC" to 20.0, AllocationCalculator.CASH to 20.0))
+        val plan = AllocationCalculator.buyOnly(AllocationCalculator.view(t, accounts, null), 400.0)
+        val prc = plan.trades.firstOrNull { it.row.key == "KR:PRC" }
+        assertEquals(300.0, prc?.amountKrw ?: 0.0, 1e-9)
+    }
 }

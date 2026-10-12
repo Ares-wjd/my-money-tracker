@@ -159,11 +159,11 @@ function manwonShort(value: number): string {
   return won(value);
 }
 
-/** 배지가 없는 줄의 회색 배지 글자: 예수금은 "현금", 미보유 종목은 코드(없으면 "미보유"). */
+/** 배지가 없는 줄의 회색 배지 글자: 예수금은 "현금", 미보유 종목은 코드(없으면 "티커 없음"). */
 function placeholderText(r: AllocationRow): string {
   if (r.isCash) return '현금';
   const code = r.key.includes(':') && !isCodeless(r.key) ? r.key.slice(r.key.indexOf(':') + 1) : '';
-  return code ? code.slice(0, 6) : '미보유';
+  return code ? code.slice(0, 6) : '티커 없음';
 }
 
 /** 제외한 종목 키 → 종목 이름 (없으면 코드). */
@@ -300,6 +300,9 @@ export function AllocationPage() {
                 <strong>{tradeText(s, data.usdKrw)}</strong>
               </div>
             ))}
+            {selected.noBuy.length > 0 && (
+              <p className="muted small">지금 매수 안 함: {selected.noBuy.map((k) => view.rows.find((r) => r.key === k)?.name ?? excludedName(k, data.holdings)).join(', ')}</p>
+            )}
             {amount > 0 && plan.leftoverKrw >= 1 && (
               <div className="row muted">
                 <span>남는 돈 (매수 단위 때문에)</span>

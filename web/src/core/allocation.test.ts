@@ -20,7 +20,7 @@ const records = [
 const accounts = summarize([isa, other], [sp1, bond, sp2, gold], records, null).accounts;
 const target: AllocationTarget = {
   id: '', name: '자산배분', accountIds: ['a', 'b'], targets: { 'KR:360750': 50, 'KR:AAA': 30, [CASH_KEY]: 20 },
-  includeCash: true, threshold: 3, createdAt: 0, excluded: [], names: {}, units: {}, prices: {},
+  includeCash: true, threshold: 3, createdAt: 0, excluded: [], names: {}, units: {}, prices: {}, noBuy: [],
 };
 const byKey = <T extends { key: string }>(rows: T[]) => new Map(rows.map((r) => [r.key, r]));
 
@@ -159,5 +159,23 @@ describe('비중 (AllocationTest)', () => {
     const trades = byKey(rebalance(allocationView({ ...target, units: { 'KR:360750': 1000 } }, accounts, null)).map((s) => ({ ...s, key: s.row.key })));
     expect(trades.has('KR:360750')).toBe(false);
     expect(trades.get('KR:AAA')!.amountKrw).toBeCloseTo(200, 9);
+  });
+
+  it('지금 매수 안 함 종목은 계산기에서만 뺀다', () => {
+    const view = allocationView({ ...target, noBuy: ['KR:AAA'], units: { 'KR:360750': 0.01 } }, accounts, null);
+    expect(view.rows.some((r) => r.key === 'KR:AAA')).toBe(true);
+    const t = byKey(buyOnly(view, 500).trades.map((s) => ({ ...s, key: s.row.key })));
+    expect(t.has('KR:AAA')).toBe(false);
+    expect(Math.abs(t.get('KR:360750')!.amountKrw - (400 * 50) / 70)).toBeLessThan(0.02);
+    expect(t.get('CASH')!.amountKrw).toBeCloseTo(500 - t.get('KR:360750')!.amountKrw, 6);
+    expect(rebalance(view).some((s) => s.row.key === 'KR:AAA')).toBe(false);
+  });
+
+  it('동점이면 단위 때문에 못 산 더 부족한 종목을 산다', () => {
+    const pricey = holding({ id: 'p', accountId: 'a', name: '비싼 종목', code: 'PRC', manualPrice: 300 });
+    const acc = summarize([isa, other], [sp1, bond, sp2, gold, pricey], records, null).accounts;
+    const t = { ...target, targets: { 'KR:360750': 40, 'KR:AAA': 20, 'KR:PRC': 20, [CASH_KEY]: 20 } };
+    const prc = buyOnly(allocationView(t, acc, null), 400).trades.find((s) => s.row.key === 'KR:PRC');
+    expect(prc?.amountKrw ?? 0).toBeCloseTo(300, 9);
   });
 });

@@ -229,6 +229,13 @@ private fun AllocationContent(
                 val plan = AllocationCalculator.buyOnly(view, amount)
                 if (amount > 0 && plan.trades.isEmpty()) Text("목표 비중이 있는 종목이 없습니다.", style = MaterialTheme.typography.bodySmall)
                 plan.trades.forEach { TradeLine(it, usdKrw, prefix = "") }
+                if (target.noBuy.isNotEmpty()) {
+                    Text(
+                        "지금 매수 안 함: " + target.noBuy.joinToString(", ") { key -> view.rows.firstOrNull { it.key == key }?.name ?: key.substringAfter(':') },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (amount > 0 && plan.leftoverKrw >= 1) {
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                         Text("남는 돈 (매수 단위 때문에)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
@@ -282,7 +289,7 @@ private fun TableRow(row: AllocationRow, highlighted: Boolean) {
                 PlaceholderBadge(
                     when {
                         row.isCash -> "현금"
-                        AllocationCalculator.isCodeless(row.key) || !row.key.contains(':') -> "미보유"
+                        AllocationCalculator.isCodeless(row.key) || !row.key.contains(':') -> "티커 없음"
                         else -> row.key.substringAfter(':')
                     },
                 )

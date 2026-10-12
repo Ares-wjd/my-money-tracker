@@ -29,6 +29,8 @@ data class AllocationTarget(
     val units: Map<String, Double> = emptyMap(),
     /** 직접 입력한 현재가 (계좌에 없는 종목): 종목 키 → 1주 가격 (국내 원, 해외 달러). */
     val prices: Map<String, Double> = emptyMap(),
+    /** 지금 매수 안 함: 비중 표에는 보이지만 매수 계산기에서 빼는 종목 키 (예: 비상장). */
+    val noBuy: List<String> = emptyList(),
 ) {
     val targetSum: Double get() = targets.filterKeys { includeCash || it != AllocationCalculator.CASH }.values.sum()
 }
@@ -179,17 +181,20 @@ object AllocationCalculator {
      */
     fun buyOnly(view: AllocationView, amountKrw: Double): BuyPlan {
         if (amountKrw <= 0) return BuyPlan(emptyList(), 0.0)
-        val rows = view.rows.filter { it.targetWeight > 0 }
-        val targetSum = rows.sumOf { it.targetWeight }
-        if (rows.isEmpty() || targetSum <= 0) return BuyPlan(emptyList(), amountKrw)
+        // 목표 합계는 "지금 매수 안 함" 종목까지 포함한 원래 목표 기준 (나머지 종목의 목표를 부풀리지 않는다)
+        val targetSum = view.rows.sumOf { it.targetWeight }
+        val rows = view.rows.filter { it.targetWeight > 0 && it.key !in view.target.noBuy }
+        val buySum = rows.sumOf { it.targetWeight }
+        if (rows.isEmpty() || targetSum <= 0 || buySum <= 0) return BuyPlan(emptyList(), amountKrw)
         val newTotal = view.totalKrw + amountKrw
         val deficits = rows.associateWith { max(0.0, it.targetWeight / targetSum * newTotal - it.valueKrw) }
         val deficitSum = deficits.values.sum()
         val ideal = if (deficitSum >= amountKrw && deficitSum > 0) {
             rows.associateWith { deficits.getValue(it) / deficitSum * amountKrw }
         } else {
+            // 부족분을 다 채우고 남는 돈은 살 수 있는 종목의 목표 비율로 (빠진 종목 몫을 현금으로 남기지 않는다)
             val left = amountKrw - deficitSum
-            rows.associateWith { deficits.getValue(it) + left * it.targetWeight / targetSum }
+            rows.associateWith { deficits.getValue(it) + left * it.targetWeight / buySum }
         }
         // 매수 단위로 내림 (단위를 모르면 그대로). 예수금은 "사고 남은 돈"이라 마지막에 남은 돈으로 정한다.
         val stocks = rows.filter { !it.isCash }
@@ -203,7 +208,8 @@ object AllocationCalculator {
         // 남은 돈으로 한 단위 더 사기: 목표와의 차이 합이 줄어들 때만, 가장 부족한 종목부터.
         // 예수금 목표가 있으면 남은 돈은 예수금이 되므로 예수금의 목표 차이도 함께 따진다.
         val cashRow = rows.firstOrNull { it.isCash }
-        fun need(r: AllocationRow, bought: Double) = r.targetWeight / targetSum * newTotal - (r.valueKrw + bought)
+        fun goal(r: AllocationRow) = max(1e-9, r.targetWeight / targetSum * newTotal)
+        fun need(r: AllocationRow, bought: Double) = goal(r) - (r.valueKrw + bought)
         var guard = 0
         while (guard++ < 100_000) {
             val cashNeed = cashRow?.let { need(it, leftover) } ?: 0.0
@@ -213,7 +219,14 @@ object AllocationCalculator {
                 .filter { (r, d) ->
                     val u = units.getValue(r)!!
                     val cashChange = if (cashRow != null) abs(cashNeed + u) - abs(cashNeed) else 0.0
-                    abs(d - u) - abs(d) + cashChange < -1e-9
+                    val change = abs(d - u) - abs(d) + cashChange
+                    // 차이 합이 줄면 산다. 같으면(주식 부족분이 예수금 부족분으로 옮겨갈 뿐이면) 단위 때문에 원래 몫보다
+                    // 반 단위 이상 덜 산 종목이고 목표 대비 예수금보다 더 부족할 때만 산다 (비율 배분을 흐트러뜨리지 않게)
+                    change < -1e-9 || (
+                        abs(change) <= 1e-9 && cashRow != null &&
+                            ideal.getValue(r) - buys.getValue(r) >= u / 2 - 1e-9 &&
+                            d / goal(r) > cashNeed / goal(cashRow)
+                        )
                 }
                 .maxByOrNull { it.second }
                 ?: break
@@ -236,6 +249,7 @@ object AllocationCalculator {
         val targetSum = view.rows.sumOf { it.targetWeight }
         if (targetSum <= 0) return emptyList()
         return view.rows
+            .filter { it.key !in view.target.noBuy }
             .map { r ->
                 val raw = r.targetWeight / targetSum * view.totalKrw - r.valueKrw
                 val u = unitOf(view.target, r)

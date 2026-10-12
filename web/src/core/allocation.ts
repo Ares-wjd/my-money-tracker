@@ -25,6 +25,8 @@ export interface AllocationTarget {
   units: { [key: string]: number };
   /** 직접 입력한 현재가 (계좌에 없는 종목): 종목 키 → 1주 가격 (국내 원, 해외 달러) */
   prices: { [key: string]: number };
+  /** 지금 매수 안 함: 비중 표에는 보이지만 매수 계산기에서 빼는 종목 키 (예: 비상장) */
+  noBuy: string[];
 }
 
 /** 비중 표의 한 줄 (종목 하나 또는 예수금). 비중은 0~1. */
@@ -192,16 +194,20 @@ function suggestion(target: AllocationTarget, row: AllocationRow, amountKrw: num
  */
 export function buyOnly(view: AllocationView, amountKrw: number): BuyPlan {
   if (amountKrw <= 0) return { trades: [], leftoverKrw: 0 };
-  const rows = view.rows.filter((r) => r.targetWeight > 0);
-  const sum = rows.reduce((s, r) => s + r.targetWeight, 0);
-  if (rows.length === 0 || sum <= 0) return { trades: [], leftoverKrw: amountKrw };
+  // 목표 합계는 "지금 매수 안 함" 종목까지 포함한 원래 목표 기준 (나머지 종목의 목표를 부풀리지 않는다)
+  const sum = view.rows.reduce((s, r) => s + r.targetWeight, 0);
+  const noBuy = new Set(view.target.noBuy);
+  const rows = view.rows.filter((r) => r.targetWeight > 0 && !noBuy.has(r.key));
+  const buySum = rows.reduce((s, r) => s + r.targetWeight, 0);
+  if (rows.length === 0 || sum <= 0 || buySum <= 0) return { trades: [], leftoverKrw: amountKrw };
   const newTotal = view.totalKrw + amountKrw;
   const deficits = rows.map((r) => Math.max(0, (r.targetWeight / sum) * newTotal - r.valueKrw));
   const deficitSum = deficits.reduce((s, d) => s + d, 0);
   const ideal = new Map<AllocationRow, number>(
     rows.map((r, i) => [
       r,
-      deficitSum >= amountKrw && deficitSum > 0 ? (deficits[i] / deficitSum) * amountKrw : deficits[i] + ((amountKrw - deficitSum) * r.targetWeight) / sum,
+      // 부족분을 다 채우고 남는 돈은 살 수 있는 종목의 목표 비율로 (빠진 종목 몫을 현금으로 남기지 않는다)
+      deficitSum >= amountKrw && deficitSum > 0 ? (deficits[i] / deficitSum) * amountKrw : deficits[i] + ((amountKrw - deficitSum) * r.targetWeight) / buySum,
     ]),
   );
   // 매수 단위로 내림 (단위를 모르면 그대로). 예수금은 "사고 남은 돈"이라 마지막에 남은 돈으로 정한다.
@@ -216,7 +222,8 @@ export function buyOnly(view: AllocationView, amountKrw: number): BuyPlan {
   );
   let leftover = amountKrw - [...buys.values()].reduce((s, b) => s + b, 0);
   const cashRow = rows.find((r) => r.isCash) ?? null;
-  const need = (r: AllocationRow, bought: number) => (r.targetWeight / sum) * newTotal - (r.valueKrw + bought);
+  const goal = (r: AllocationRow) => Math.max(1e-9, (r.targetWeight / sum) * newTotal);
+  const need = (r: AllocationRow, bought: number) => goal(r) - (r.valueKrw + bought);
   for (let guard = 0; guard < 100_000; guard++) {
     const cashNeed = cashRow ? need(cashRow, leftover) : 0;
     let pick: AllocationRow | null = null;
@@ -226,7 +233,11 @@ export function buyOnly(view: AllocationView, amountKrw: number): BuyPlan {
       if (u === null || u > leftover + 1e-9) continue;
       const d = need(r, buys.get(r)!);
       const cashChange = cashRow ? Math.abs(cashNeed + u) - Math.abs(cashNeed) : 0;
-      if (Math.abs(d - u) - Math.abs(d) + cashChange < -1e-9 && d > best) {
+      const change = Math.abs(d - u) - Math.abs(d) + cashChange;
+      // 차이 합이 줄면 산다. 같으면 단위 때문에 원래 몫보다 반 단위 이상 덜 산 종목이고 목표 대비 예수금보다 더 부족할 때만
+      const tieBuy =
+        Math.abs(change) <= 1e-9 && cashRow !== null && ideal.get(r)! - buys.get(r)! >= u / 2 - 1e-9 && d / goal(r) > cashNeed / goal(cashRow);
+      if ((change < -1e-9 || tieBuy) && d > best) {
         best = d;
         pick = r;
       }
@@ -250,7 +261,9 @@ export function buyOnly(view: AllocationView, amountKrw: number): BuyPlan {
 export function rebalance(view: AllocationView): TradeSuggestion[] {
   const sum = view.rows.reduce((s, r) => s + r.targetWeight, 0);
   if (sum <= 0) return [];
+  const noBuy = new Set(view.target.noBuy);
   return view.rows
+    .filter((r) => !noBuy.has(r.key))
     .map((r) => {
       const raw = (r.targetWeight / sum) * view.totalKrw - r.valueKrw;
       const u = unitOf(view.target, r);

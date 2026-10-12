@@ -105,5 +105,6 @@ export function allocationTargetDoc(t: AllocationTarget) {
     names: t.names,
     units: t.units,
     prices: t.prices,
+    noBuy: t.noBuy,
   };
 }

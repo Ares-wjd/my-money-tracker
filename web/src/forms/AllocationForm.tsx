@@ -25,6 +25,8 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
   const [includeCash, setIncludeCash] = useState(existing?.includeCash ?? false);
   const [thresholdText, setThresholdText] = useState(existing ? decimal(existing.threshold, 2).replace(/,/g, '') : '3');
   const [excluded, setExcluded] = useState<string[]>(existing?.excluded ?? []);
+  // 지금 매수 안 함 (비중 표에는 보이고 매수 계산기에서만 뺌)
+  const [noBuy, setNoBuy] = useState<string[]>(existing?.noBuy ?? []);
   // 계좌에 없는(아직 안 산) 종목: 종목 키 → 이름, 직접 입력한 현재가
   const [manual, setManual] = useState<{ [key: string]: string }>(existing?.names ?? {});
   const [priceTexts, setPriceTexts] = useState<Texts>(() => toTexts(existing?.prices));
@@ -128,6 +130,7 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
       names: Object.fromEntries(Object.entries(manual).filter(([k]) => !held.has(k))),
       prices: numbers(priceTexts, (k) => !held.has(k) && items.has(k)),
       units: numbers(unitTexts, (k) => items.has(k)),
+      noBuy: noBuy.filter((k) => items.has(k) && !excluded.includes(k)),
     });
     onSaved?.(id);
   };
@@ -187,6 +190,7 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
                   <span className="muted small">
                     {k === CASH_KEY || k.startsWith('id:') || isCodeless(k) ? '' : k}
                     {off ? ' · 제외' : unheld ? ' · 미보유' : ''}
+                    {!off && noBuy.includes(k) ? ' · 지금 매수 안 함' : ''}
                   </span>
                 </span>
                 <span className="target-inputs">
@@ -217,6 +221,10 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
                       {isForeignKey(k) ? '$' : '원'}
                     </span>
                   )}
+                  <label className="check small">
+                    <input type="checkbox" checked={noBuy.includes(k)} onChange={() => setNoBuy(noBuy.includes(k) ? noBuy.filter((x) => x !== k) : [...noBuy, k])} />
+                    지금 매수 안 함
+                  </label>
                   {isCodeless(k) && relinkTargets.length > 0 && (
                     <select aria-label={`${label} 계좌 종목으로 바꾸기`} value="" onChange={(e) => e.target.value && relink(k, e.target.value)}>
                       <option value="">계좌 종목으로 바꾸기…</option>

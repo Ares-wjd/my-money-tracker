@@ -135,6 +135,8 @@ private fun AllocationForm(
     // 매수 단위 (비우면 1주 단위, 금액이면 그 금액 단위)
     val unitTexts = remember { mutableStateMapOf<String, String>().apply { initial?.units?.forEach { (k, v) -> put(k, numberText(v)) } } }
     val excluded = remember { mutableStateListOf<String>().apply { addAll(initial?.excluded.orEmpty()) } }
+    // 지금 매수 안 함 (비중 표에는 보이고 매수 계산기에서만 뺌)
+    val noBuy = remember { mutableStateListOf<String>().apply { addAll(initial?.noBuy.orEmpty()) } }
     // 계좌에 없는(아직 안 산) 종목: 종목 키 → 이름, 직접 입력한 현재가
     val manual = remember { mutableStateMapOf<String, String>().apply { putAll(initial?.names.orEmpty()) } }
     val priceTexts = remember { mutableStateMapOf<String, String>().apply { initial?.prices?.forEach { (k, v) -> put(k, numberText(v)) } } }
@@ -245,7 +247,7 @@ private fun AllocationForm(
                             off -> " (제외)"
                             unheld -> " (미보유)"
                             else -> ""
-                        },
+                        } + if (!off && k in noBuy) " · 지금 매수 안 함" else "",
                         style = MaterialTheme.typography.bodyLarge,
                         color = if (off) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     )
@@ -307,6 +309,13 @@ private fun AllocationForm(
                             modifier = Modifier.weight(1f),
                         )
                     }
+                }
+                Row(
+                    Modifier.clickable { if (k in noBuy) noBuy.remove(k) else noBuy.add(k) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = k in noBuy, onCheckedChange = { if (it) noBuy.add(k) else noBuy.remove(k) })
+                    Text("지금 매수 안 함 (계산기에서 빼기)", style = MaterialTheme.typography.bodyMedium)
                 }
                 if (AllocationCalculator.isCodeless(k) && relinkTargets.isNotEmpty()) {
                     var open by remember { mutableStateOf(false) }
@@ -422,6 +431,7 @@ private fun AllocationForm(
                         names = manual.filterKeys { it !in held },
                         prices = numbers(priceTexts) { it !in held && it in items },
                         units = numbers(unitTexts) { it in items },
+                        noBuy = noBuy.filter { it in items && it !in excluded },
                     ),
                 )
             },
