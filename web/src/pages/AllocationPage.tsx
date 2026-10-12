@@ -253,8 +253,10 @@ export function AllocationPage() {
                 <tbody>
                   {view.rows.map((r) => {
                     const hl = isHighlighted(view, r);
+                    // 부족은 파랑, 초과는 빨강 (기준 이내는 색 없음)
+                    const dir = r.diffPoints > 0 ? 'over' : 'short';
                     return (
-                      <tr key={r.key} className={hl ? 'highlight' : ''}>
+                      <tr key={r.key} className={hl ? dir : ''}>
                         <td>
                           <span className="toggle-row">
                             {r.holding && <TickerBadge code={r.holding.code} name={r.holding.name} market={r.holding.market} assetType={r.holding.assetType} />}
@@ -265,7 +267,7 @@ export function AllocationPage() {
                         <td className="num">{pct(r.currentWeight)}</td>
                         <td className="num strong">
                           {r.diffPoints > 0 ? '+' : ''}{decimal(r.diffPoints, 1)}%p
-                          {hl && <span className="diff-tag">{r.diffPoints > 0 ? '초과' : '부족'}</span>}
+                          {hl && <span className={`diff-tag ${dir}`}>{r.diffPoints > 0 ? '▲ 초과' : '▼ 부족'}</span>}
                         </td>
                         <td className="num optional">{won(r.valueKrw)}</td>
                       </tr>

@@ -247,12 +247,28 @@ private fun AllocationContent(
     }
 }
 
+/** 비중 차이 색: 부족 = 파랑, 초과 = 빨강 (줄 배경은 옅게, 태그는 진하게 — 태그 글자 대비 4.5:1 이상, 웹과 같은 값). */
+private data class DiffColors(val row: Color, val tag: Color, val tagInk: Color)
+
+@Composable
+private fun diffColors(over: Boolean): DiffColors {
+    val dark = isSystemInDarkTheme()
+    return when {
+        over && !dark -> DiffColors(Color(0xFFFDECEE), Color(0xFFC62436), Color.White)
+        over -> DiffColors(Color(0xFF3B1F24), Color(0xFFFF8A96), Color(0xFF16201C))
+        !dark -> DiffColors(Color(0xFFEAF1FD), Color(0xFF1F5FD1), Color.White)
+        else -> DiffColors(Color(0xFF1D2B45), Color(0xFF8FB4FF), Color(0xFF16201C))
+    }
+}
+
 @Composable
 private fun TableRow(row: AllocationRow, highlighted: Boolean) {
+    val over = row.diffPoints > 0
+    val colors = diffColors(over)
     Row(
         Modifier
             .fillMaxWidth()
-            .then(if (highlighted) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f), RoundedCornerShape(8.dp)) else Modifier)
+            .then(if (highlighted) Modifier.background(colors.row, RoundedCornerShape(8.dp)) else Modifier)
             .padding(vertical = 8.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -268,8 +284,19 @@ private fun TableRow(row: AllocationRow, highlighted: Boolean) {
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
             )
-            // 수익 색과 헷갈리지 않게 색 대신 글자로
-            if (highlighted) Text(if (row.diffPoints > 0) "초과" else "부족", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            // 방향마다 색이 다른 태그 (색만으로 구분하지 않도록 ▲▼·글자 함께)
+            if (highlighted) {
+                Text(
+                    if (over) "▲ 초과" else "▼ 부족",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.tagInk,
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .background(colors.tag, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
         }
     }
 }
