@@ -69,6 +69,7 @@ import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.portfolio.AllocationCalculator
 import com.mymoneytracker.core.portfolio.AllocationRow
+import com.mymoneytracker.core.portfolio.AllocationTarget
 import com.mymoneytracker.core.portfolio.AllocationView
 import com.mymoneytracker.core.portfolio.TradeSuggestion
 import kotlin.math.PI
@@ -216,7 +217,7 @@ private fun AllocationContent(
                     listOf(
                         accountNames.joinToString(", ").ifBlank { "대상 계좌 없음" },
                         "합계 ${MoneyFormat.won(view.totalKrw)}" + if (target.includeCash) " (예수금 포함)" else "",
-                        "강조 ±${MoneyFormat.decimal(target.threshold, 2)}%p",
+                        "허용 범위 ${toleranceLabel(target)}",
                     ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -231,15 +232,23 @@ private fun AllocationContent(
         }
         item {
             SectionCard(title = "목표와 실제") {
+                val outside = view.rows.count { view.highlighted(it) }
+                Text(
+                    (if (outside > 0) "허용 범위 밖 ${outside}종목" else "모든 종목이 허용 범위 안") +
+                        " · 기준 ${toleranceLabel(target)} (목표 0% 종목은 제외)",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = if (outside > 0) FontWeight.Bold else FontWeight.Normal,
+                    color = if (outside > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
                     Text("종목", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                     listOf("목표", "실제", "차이").forEach {
-                        Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(if (it == "차이") 84.dp else 56.dp), textAlign = TextAlign.End)
+                        Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(when (it) { "차이" -> 84.dp; "목표" -> 64.dp; else -> 56.dp }), textAlign = TextAlign.End)
                     }
                 }
                 view.rows.forEachIndexed { i, row ->
                     if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    TableRow(row, view.highlighted(row))
+                    TableRow(row, view.highlighted(row), view.range(row)?.takeIf { row.targetWeight > 0 })
                 }
             }
         }
@@ -308,7 +317,7 @@ private fun diffColors(over: Boolean): DiffColors {
 }
 
 @Composable
-private fun TableRow(row: AllocationRow, highlighted: Boolean) {
+private fun TableRow(row: AllocationRow, highlighted: Boolean, range: Pair<Double, Double>?) {
     val over = row.diffPoints > 0
     val colors = diffColors(over)
     Row(
@@ -334,7 +343,18 @@ private fun TableRow(row: AllocationRow, highlighted: Boolean) {
             }
             Text(row.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
-        Text(pct(row.targetWeight), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp), textAlign = TextAlign.End)
+        // 목표 아래에 허용 범위 (예: 7.5~12.5%)
+        Column(Modifier.width(64.dp), horizontalAlignment = Alignment.End) {
+            Text(pct(row.targetWeight), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End)
+            range?.let { (low, high) ->
+                Text(
+                    "${MoneyFormat.decimal(low, 2)}~${MoneyFormat.decimal(high, 2)}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        }
         Text(pct(row.currentWeight), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp), textAlign = TextAlign.End)
         Column(Modifier.width(84.dp), horizontalAlignment = Alignment.End) {
             Text(
@@ -496,5 +516,19 @@ private fun Donut(view: AllocationView, ring: Ring) {
         if (ring == Ring.COMPARE) {
             Text("바깥 고리: 실제 · 안쪽 고리: 목표", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
         }
+    }
+}
+
+/** 사용 중인 허용 기준 이름 (예: "5/25 룰", "±3%p"). */
+private fun toleranceLabel(target: AllocationTarget): String {
+    val a = target.threshold.takeIf { it > 0 }
+    val r = target.relative?.takeIf { it > 0 }
+    return when {
+        a != null && r != null ->
+            if (a == AllocationCalculator.DEFAULT_ABSOLUTE && r == AllocationCalculator.DEFAULT_RELATIVE) "5/25 룰"
+            else "절대 ${MoneyFormat.decimal(a, 2)}%p · 상대 ${MoneyFormat.decimal(r, 2)}%"
+        a != null -> "±${MoneyFormat.decimal(a, 2)}%p"
+        r != null -> "목표의 ±${MoneyFormat.decimal(r, 2)}%"
+        else -> "강조 안 함"
     }
 }

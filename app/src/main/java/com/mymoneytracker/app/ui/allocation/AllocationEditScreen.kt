@@ -131,7 +131,14 @@ private fun AllocationForm(
         mutableStateListOf<String>().apply { addAll(initial?.accountIds ?: if (accounts.size == 1) listOf(accounts.first().id) else emptyList()) }
     }
     var includeCash by rememberSaveable { mutableStateOf(initial?.includeCash ?: false) }
-    var thresholdText by rememberSaveable { mutableStateOf(initial?.threshold?.let { MoneyFormat.decimal(it, 2).replace(",", "") } ?: "3") }
+    // 허용 범위: 절대 기준 A (%p), 상대 기준 R (%). 새 설정은 5/25 룰, 예전 설정은 A 만 (R 없음)
+    fun bandText(v: Double?) = v?.takeIf { it > 0 }?.let { MoneyFormat.decimal(it, 2).replace(",", "") }.orEmpty()
+    var absoluteText by rememberSaveable {
+        mutableStateOf(if (initial != null) bandText(initial.threshold) else bandText(AllocationCalculator.DEFAULT_ABSOLUTE))
+    }
+    var relativeText by rememberSaveable {
+        mutableStateOf(if (initial != null) bandText(initial.relative) else bandText(AllocationCalculator.DEFAULT_RELATIVE))
+    }
     val texts = remember { mutableStateMapOf<String, String>().apply { initial?.targets?.forEach { (k, v) -> put(k, numberText(v)) } } }
     // 매수 단위 (비우면 1주 단위, 금액이면 그 금액 단위)
     val unitTexts = remember { mutableStateMapOf<String, String>().apply { initial?.units?.forEach { (k, v) -> put(k, numberText(v)) } } }
@@ -171,14 +178,16 @@ private fun AllocationForm(
         return n < 0 || n > max
     }
     val sum = keys.sumOf { percent(it) }
-    val threshold = MoneyFormat.parseDecimal(thresholdText)
+    val absolute = MoneyFormat.parseDecimal(absoluteText) ?: 0.0
+    val relative = MoneyFormat.parseDecimal(relativeText)?.takeIf { it > 0 }
     val problem = when {
         name.isBlank() -> "이름을 입력하세요."
         accountIds.isEmpty() -> "대상 계좌를 고르세요."
         keys.any { it !in excluded && bad(texts[it], 100.0) } -> "목표 비중은 0~100% 로 입력하세요."
         stockKeys.any { bad(unitTexts[it]) || bad(priceTexts[it]) } -> "매수 단위·현재가를 확인하세요."
         abs(sum - 100) > 0.01 -> "목표 합계가 100% 가 되어야 합니다 (지금 ${MoneyFormat.decimal(sum, 2)}%)."
-        threshold == null || threshold !in 0.0..100.0 -> "강조 기준은 0~100%p 로 입력하세요."
+        bad(absoluteText, 100.0) || bad(relativeText, 100.0) -> "허용 범위의 절대·상대 기준은 0~100 으로 입력하세요."
+        absolute <= 0 && relative == null -> "허용 범위의 절대·상대 기준 중 하나는 넣으세요."
         else -> null
     }
     val relinkTargets = held.filter { percent(it) == 0.0 && it !in excluded }
@@ -202,12 +211,32 @@ private fun AllocationForm(
             Text("예수금도 비중에 넣기", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             Switch(checked = includeCash, onCheckedChange = { includeCash = it })
         }
-        NumberField(
-            "차이 강조 기준 (%p)",
-            thresholdText,
-            { thresholdText = it },
-            preview = { "목표와 ±${MoneyFormat.decimal(it, 2)}%p 이상 차이 나면 강조" },
-        )
+        // 허용 범위 (5/25 룰): 허용 편차 = min(A, 목표 × R)
+        Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = appCardColors()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("허용 범위 (벗어나면 부족·초과로 강조)", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    TextButton(onClick = {
+                        absoluteText = bandText(AllocationCalculator.DEFAULT_ABSOLUTE)
+                        relativeText = bandText(AllocationCalculator.DEFAULT_RELATIVE)
+                    }) { Text("5/25 기본값") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField("절대 기준 A (%p)", absoluteText, { absoluteText = it }, modifier = Modifier.weight(1f), supporting = "비우면 안 씀")
+                    NumberField("상대 기준 R (%)", relativeText, { relativeText = it }, modifier = Modifier.weight(1f), supporting = "비우면 안 씀")
+                }
+                val sample = AllocationTarget(name = "", accountIds = emptyList(), targets = emptyMap(), threshold = absolute, relative = relative)
+                val example = listOf(40.0, 10.0).mapNotNull { w ->
+                    AllocationCalculator.band(sample, w)?.let { "목표 ${MoneyFormat.decimal(w, 0)}% → ±${MoneyFormat.decimal(it, 2)}%p" }
+                }
+                Text(
+                    "허용 편차 = min(A, 목표 × R). 목표 0% 종목은 강조하지 않습니다." +
+                        if (example.isNotEmpty()) "\n예: " + example.joinToString(", ") else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
         // 매수 단위 일괄 적용
         Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = appCardColors()) {
@@ -426,7 +455,8 @@ private fun AllocationForm(
                         accountIds = accountIds.toList(),
                         targets = keys.filter { percent(it) > 0 }.associateWith { percent(it) },
                         includeCash = includeCash,
-                        threshold = threshold ?: 3.0,
+                        threshold = absolute,
+                        relative = relative,
                         createdAt = initial?.createdAt ?: 0L,
                         // 지금 대상 계좌에 있는 종목만 제외 목록에 남긴다
                         excluded = excluded.filter { it in held },

@@ -392,3 +392,4 @@ tr.over td { background: var(--over-row); }
 .import-duplicate .import-status { color: var(--muted); }
 .head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .button-link { display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 10px; text-decoration: none; font-weight: 600; }
+.range-hint { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }

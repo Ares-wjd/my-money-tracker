@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Card, PlaceholderBadge, TickerBadge, Warning } from '../components/ui';
 import { WonField } from '../components/form';
-import { allocationView, buyOnly, isCodeless, isHighlighted, keyOf, rebalance, type AllocationRow, type AllocationView, type TradeSuggestion } from '../core/allocation';
+import { allocationView, buyOnly, isCodeless, isHighlighted, keyOf, rebalance, toleranceLabel, toleranceRange, type AllocationRow, type AllocationView, type TradeSuggestion } from '../core/allocation';
 import { decimal, manwon, parseDecimal, usd, won } from '../core/format';
 import { useAppData } from '../data/DataContext';
 import { AllocationForm } from '../forms/AllocationForm';
@@ -241,7 +241,7 @@ export function AllocationPage() {
           >
             <p className="muted small">
               {selected.accountIds.map((id) => data.lookup.account(id)?.name).filter(Boolean).join(', ') || '대상 계좌 없음'}
-              {' · '}합계 {won(view.totalKrw)}{selected.includeCash ? ' (예수금 포함)' : ''} · 강조 ±{decimal(selected.threshold, 2)}%p
+              {' · '}합계 {won(view.totalKrw)}{selected.includeCash ? ' (예수금 포함)' : ''} · 허용 범위 {toleranceLabel(selected)}
             </p>
             {selected.excluded.length > 0 && (
               <p className="muted small">제외: {selected.excluded.map((k) => excludedName(k, data.holdings)).join(', ')}</p>
@@ -258,6 +258,14 @@ export function AllocationPage() {
           </Card>
 
           <Card title="목표와 실제">
+            {(() => {
+              const out = view.rows.filter((r) => isHighlighted(view, r)).length;
+              return (
+                <p className={out > 0 ? 'small strong' : 'muted small'}>
+                  {out > 0 ? `허용 범위 밖 ${out}종목` : '모든 종목이 허용 범위 안'} · 기준 {toleranceLabel(selected)} (목표 0% 종목은 제외)
+                </p>
+              );
+            })()}
             <div className="table-wrap">
               <table className="table">
                 <thead>
@@ -287,7 +295,13 @@ export function AllocationPage() {
                             <span>{r.name}</span>
                           </span>
                         </td>
-                        <td className="num">{pct(r.targetWeight)}</td>
+                        <td className="num">
+                          {pct(r.targetWeight)}
+                          {r.targetWeight > 0 && (() => {
+                            const range = toleranceRange(view, r);
+                            return range ? <span className="range-hint">{decimal(range[0], 2)}~{decimal(range[1], 2)}%</span> : null;
+                          })()}
+                        </td>
                         <td className="num">{pct(r.currentWeight)}</td>
                         <td className="num strong">
                           {r.diffPoints > 0 ? '+' : ''}{decimal(r.diffPoints, 1)}%p

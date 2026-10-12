@@ -66,6 +66,7 @@ class PortfolioRepository(
                 "targets" to target.targets,
                 "includeCash" to target.includeCash,
                 "threshold" to target.threshold,
+                "relative" to target.relative,
                 "excluded" to target.excluded,
                 "names" to target.names,
                 "units" to target.units,
@@ -295,6 +296,8 @@ class PortfolioRepository(
             units = numberMap(get("units")),
             prices = numberMap(get("prices")),
             noBuy = (get("noBuy") as? List<*>)?.filterIsInstance<String>().orEmpty(),
+            // 예전 설정에는 상대 기준이 없다 (절대 기준만)
+            relative = getDouble("relative"),
         )
     }
 

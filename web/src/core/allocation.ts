@@ -14,8 +14,10 @@ export interface AllocationTarget {
   targets: { [key: string]: number };
   /** 예수금을 비중에 넣을지 */
   includeCash: boolean;
-  /** 차이 강조 기준 (%p) */
+  /** 허용 범위의 절대 기준 A (%p). 0 이면 쓰지 않음. 예전 "차이 강조 기준" */
   threshold: number;
+  /** 허용 범위의 상대 기준 R (%, 0~100). null·0 이면 쓰지 않음 (예전 설정은 null) */
+  relative: number | null;
   createdAt: number;
   /** 비중 계산에서 뺄 종목 키 */
   excluded: string[];
@@ -116,10 +118,43 @@ export function keyOf(h: Holding): string {
   return h.code.trim() === '' ? `id:${h.id}` : manualKey(marketCurrency(h.market) === 'USD', h.code);
 }
 
-/** 강조할 줄: |차이| 가 기준 이상. */
-export function isHighlighted(view: AllocationView, row: AllocationRow): boolean {
-  return view.target.threshold > 0 && Math.abs(row.diffPoints) >= view.target.threshold - 1e-9;
+/** 5/25 룰: 절대 5%p, 상대 25%. */
+export const DEFAULT_ABSOLUTE = 5;
+export const DEFAULT_RELATIVE = 25;
+
+/** 허용 편차 (%p) = min(A, W × R). weightPercent 는 목표 비중 W (%). 쓰는 기준이 없으면 null. */
+export function toleranceBand(target: Pick<AllocationTarget, 'threshold' | 'relative'>, weightPercent: number): number | null {
+  const bands: number[] = [];
+  if (target.threshold > 0) bands.push(target.threshold);
+  if (target.relative !== null && target.relative > 0) bands.push((weightPercent * target.relative) / 100);
+  return bands.length === 0 ? null : Math.min(...bands);
 }
+
+/** 허용 범위 [하한, 상한] %. */
+export function toleranceRange(view: AllocationView, row: AllocationRow): [number, number] | null {
+  const w = row.targetWeight * 100;
+  const b = toleranceBand(view.target, w);
+  return b === null ? null : [Math.max(0, w - b), w + b];
+}
+
+/** 강조할 줄: 허용 범위를 벗어남 (|차이| ≥ 허용 편차). 목표 0% 는 강조하지 않는다. */
+export function isHighlighted(view: AllocationView, row: AllocationRow): boolean {
+  if (row.targetWeight <= 0) return false;
+  const b = toleranceBand(view.target, row.targetWeight * 100);
+  return b !== null && Math.abs(row.diffPoints) >= b - 1e-9;
+}
+
+/** 사용 중인 허용 기준 이름 (예: "5/25 룰", "±3%p"). */
+export function toleranceLabel(target: Pick<AllocationTarget, 'threshold' | 'relative'>): string {
+  const a = target.threshold > 0 ? target.threshold : null;
+  const r = target.relative !== null && target.relative > 0 ? target.relative : null;
+  if (a !== null && r !== null) return a === DEFAULT_ABSOLUTE && r === DEFAULT_RELATIVE ? '5/25 룰' : `절대 ${trim(a)}%p · 상대 ${trim(r)}%`;
+  if (a !== null) return `±${trim(a)}%p`;
+  if (r !== null) return `목표의 ±${trim(r)}%`;
+  return '강조 안 함';
+}
+
+const trim = (n: number): string => String(Number(n.toFixed(2)));
 
 /** 대상 계좌들의 종목을 합쳐 실제·목표 비중을 계산한다. */
 export function allocationView(target: AllocationTarget, accounts: readonly AccountSummary[], usdKrw: number | null): AllocationView {

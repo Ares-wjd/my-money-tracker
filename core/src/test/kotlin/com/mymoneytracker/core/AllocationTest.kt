@@ -56,6 +56,35 @@ class AllocationTest {
     }
 
     @Test
+    fun toleranceBandFiveTwentyFive() {
+        val rule = target.copy(threshold = 5.0, relative = 25.0)
+        // 허용 편차 = min(5, W × 25%)
+        assertEquals(5.0, AllocationCalculator.band(rule, 40.0)!!, 1e-9)
+        assertEquals(5.0, AllocationCalculator.band(rule, 20.0)!!, 1e-9)
+        assertEquals(2.5, AllocationCalculator.band(rule, 10.0)!!, 1e-9)
+        assertEquals(0.5, AllocationCalculator.band(rule, 2.0)!!, 1e-9)
+        // 한쪽 기준만
+        assertEquals(3.0, AllocationCalculator.band(rule.copy(threshold = 3.0, relative = null), 10.0)!!, 1e-9)
+        assertEquals(2.5, AllocationCalculator.band(rule.copy(threshold = 0.0), 10.0)!!, 1e-9)
+        assertEquals(null, AllocationCalculator.band(rule.copy(threshold = 0.0, relative = 0.0), 10.0))
+
+        // 목표 50/30/20, 실제 60/20/20 (합계 2500)
+        val view = AllocationCalculator.view(rule, summary.accounts, null)
+        val byKey = view.rows.associateBy { it.key }
+        val sp = byKey.getValue("KR:360750") // 차이 +10, 허용 ±5
+        assertEquals(45.0 to 55.0, view.range(sp))
+        assertTrue(view.highlighted(sp))
+        assertTrue(view.highlighted(byKey.getValue("KR:AAA"))) // 차이 −10, 허용 ±5
+        assertFalse(view.highlighted(byKey.getValue("CASH"))) // 차이 0
+
+        // 목표 0% 종목은 많이 들고 있어도 강조하지 않는다
+        val zero = AllocationCalculator.view(rule.copy(targets = mapOf("KR:360750" to 0.0, "KR:AAA" to 80.0, "CASH" to 20.0)), summary.accounts, null)
+        val zeroRow = zero.rows.first { it.key == "KR:360750" }
+        assertEquals(60.0, zeroRow.diffPoints, 1e-9)
+        assertFalse(zero.highlighted(zeroRow))
+    }
+
+    @Test
     fun excludesCashWhenNotIncluded() {
         val view = AllocationCalculator.view(target.copy(includeCash = false, targets = mapOf("KR:360750" to 60.0, "KR:AAA" to 40.0)), summary.accounts, null)
         assertEquals(2000.0, view.totalKrw, 1e-9)

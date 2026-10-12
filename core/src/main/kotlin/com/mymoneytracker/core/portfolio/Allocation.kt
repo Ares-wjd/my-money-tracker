@@ -18,8 +18,8 @@ data class AllocationTarget(
     val targets: Map<String, Double>,
     /** 예수금을 비중에 넣을지. */
     val includeCash: Boolean = false,
-    /** 차이 강조 기준 (%p). */
-    val threshold: Double = 3.0,
+    /** 허용 범위의 절대 기준 A (%p). 0 이면 쓰지 않음. 예전 "차이 강조 기준". */
+    val threshold: Double = AllocationCalculator.DEFAULT_ABSOLUTE,
     val createdAt: Long = 0L,
     /** 비중 계산에서 뺄 종목 키 (대상 계좌에 있어도 계산하지 않는다). */
     val excluded: List<String> = emptyList(),
@@ -31,6 +31,8 @@ data class AllocationTarget(
     val prices: Map<String, Double> = emptyMap(),
     /** 지금 매수 안 함: 비중 표에는 보이지만 매수 계산기에서 빼는 종목 키 (예: 비상장). */
     val noBuy: List<String> = emptyList(),
+    /** 허용 범위의 상대 기준 R (%, 0~100). null·0 이면 쓰지 않음 (예전 설정은 null). */
+    val relative: Double? = AllocationCalculator.DEFAULT_RELATIVE,
 ) {
     val targetSum: Double get() = targets.filterKeys { includeCash || it != AllocationCalculator.CASH }.values.sum()
 }
@@ -69,8 +71,21 @@ data class AllocationView(
     /** 대상 계좌들의 현재 예수금 (원화, 달러는 환율로). 비중에 넣지 않아도 계산기에서 쓸 수 있다. */
     val cashKrw: Double = 0.0,
 ) {
-    /** 강조할 줄: |차이| 가 기준 이상. */
-    fun highlighted(row: AllocationRow): Boolean = abs(row.diffPoints) >= target.threshold - 1e-9 && target.threshold > 0
+    /** 허용 편차 (%p): min(A, W × R). 쓰는 기준이 없으면 null. */
+    fun band(row: AllocationRow): Double? = AllocationCalculator.band(target, row.targetWeight * 100)
+
+    /** 허용 범위 (하한, 상한) %. */
+    fun range(row: AllocationRow): Pair<Double, Double>? = band(row)?.let { b ->
+        val w = row.targetWeight * 100
+        max(0.0, w - b) to w + b
+    }
+
+    /** 강조할 줄: 허용 범위를 벗어남 (|차이| ≥ 허용 편차). 목표 0% 는 강조하지 않는다. */
+    fun highlighted(row: AllocationRow): Boolean {
+        if (row.targetWeight <= 0) return false
+        val b = band(row) ?: return false
+        return abs(row.diffPoints) >= b - 1e-9
+    }
 }
 
 /**
@@ -83,6 +98,17 @@ data class TradeSuggestion(val row: AllocationRow, val amountKrw: Double, val sh
 data class BuyPlan(val trades: List<TradeSuggestion>, val leftoverKrw: Double, val poolKrw: Double = 0.0, val cashUsedKrw: Double = 0.0)
 
 object AllocationCalculator {
+    /** 5/25 룰: 절대 5%p, 상대 25%. */
+    const val DEFAULT_ABSOLUTE = 5.0
+    const val DEFAULT_RELATIVE = 25.0
+
+    /** 허용 편차 (%p) = min(A, W × R). [weightPercent] 는 목표 비중 W (%). 쓰는 기준이 없으면 null. */
+    fun band(target: AllocationTarget, weightPercent: Double): Double? {
+        val absolute = target.threshold.takeIf { it > 0 }
+        val relative = target.relative?.takeIf { it > 0 }?.let { weightPercent * it / 100 }
+        return listOfNotNull(absolute, relative).minOrNull()
+    }
+
     const val CASH = "CASH"
     const val KR_PREFIX = "KR:"
     const val US_PREFIX = "US:"

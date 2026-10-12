@@ -1,6 +1,6 @@
 // core AllocationTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
-import { CASH_KEY, allocationView, buyOnly, codelessKey, isCodeless, isHighlighted, keyOf, manualKey, rebalance, type AllocationTarget } from './allocation';
+import { CASH_KEY, allocationView, buyOnly, codelessKey, isCodeless, isHighlighted, keyOf, manualKey, rebalance, toleranceBand, toleranceLabel, toleranceRange, type AllocationTarget } from './allocation';
 import { summarize } from './portfolio';
 import { account, holding, record } from './testData';
 
@@ -20,7 +20,7 @@ const records = [
 const accounts = summarize([isa, other], [sp1, bond, sp2, gold], records, null).accounts;
 const target: AllocationTarget = {
   id: '', name: '자산배분', accountIds: ['a', 'b'], targets: { 'KR:360750': 50, 'KR:AAA': 30, [CASH_KEY]: 20 },
-  includeCash: true, threshold: 3, createdAt: 0, excluded: [], names: {}, units: {}, prices: {}, noBuy: [],
+  includeCash: true, threshold: 3, relative: null, createdAt: 0, excluded: [], names: {}, units: {}, prices: {}, noBuy: [],
 };
 const byKey = <T extends { key: string }>(rows: T[]) => new Map(rows.map((r) => [r.key, r]));
 
@@ -39,6 +39,32 @@ describe('비중 (AllocationTest)', () => {
     expect(isHighlighted(view, sp)).toBe(true);
     expect(isHighlighted(view, rows.get('CASH')!)).toBe(false);
     expect(view.rows.map((r) => r.key)).toEqual(['KR:360750', 'KR:AAA', 'CASH']);
+  });
+
+  it('허용 범위 5/25 룰 (목표 0% 는 강조 안 함)', () => {
+    const rule = { ...target, threshold: 5, relative: 25 };
+    expect(toleranceBand(rule, 40)).toBe(5);
+    expect(toleranceBand(rule, 20)).toBe(5);
+    expect(toleranceBand(rule, 10)).toBe(2.5);
+    expect(toleranceBand(rule, 2)).toBe(0.5);
+    expect(toleranceBand({ threshold: 3, relative: null }, 10)).toBe(3);
+    expect(toleranceBand({ threshold: 0, relative: 25 }, 10)).toBe(2.5);
+    expect(toleranceBand({ threshold: 0, relative: 0 }, 10)).toBeNull();
+    expect(toleranceLabel(rule)).toBe('5/25 룰');
+    expect(toleranceLabel({ threshold: 3, relative: null })).toBe('±3%p');
+
+    const view = allocationView(rule, accounts, null);
+    const rows = byKey(view.rows);
+    const sp = rows.get('KR:360750')!;
+    expect(toleranceRange(view, sp)).toEqual([45, 55]);
+    expect(isHighlighted(view, sp)).toBe(true);
+    expect(isHighlighted(view, rows.get('KR:AAA')!)).toBe(true);
+    expect(isHighlighted(view, rows.get('CASH')!)).toBe(false);
+
+    const zero = allocationView({ ...rule, targets: { 'KR:360750': 0, 'KR:AAA': 80, [CASH_KEY]: 20 } }, accounts, null);
+    const zeroRow = zero.rows.find((r) => r.key === 'KR:360750')!;
+    expect(zeroRow.diffPoints).toBeCloseTo(60, 9);
+    expect(isHighlighted(zero, zeroRow)).toBe(false);
   });
 
   it('예수금을 빼면 종목만으로', () => {

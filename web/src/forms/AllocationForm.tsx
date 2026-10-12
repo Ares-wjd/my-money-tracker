@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FormActions, Modal, NumberField, TextField } from '../components/form';
-import { CASH_KEY, codelessKey, isCodeless, keyOf, manualKey, type AllocationTarget } from '../core/allocation';
+import { CASH_KEY, DEFAULT_ABSOLUTE, DEFAULT_RELATIVE, codelessKey, isCodeless, keyOf, manualKey, toleranceBand, type AllocationTarget } from '../core/allocation';
 import { decimal, parseDecimal } from '../core/format';
 import { useAppData, useData } from '../data/DataContext';
 import { deleteAllocationTarget, saveAllocationTarget } from '../data/writes';
@@ -23,7 +23,10 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
   const [name, setName] = useState(existing?.name ?? '');
   const [accountIds, setAccountIds] = useState<string[]>(existing?.accountIds ?? (data.accounts.length === 1 ? [data.accounts[0].id] : []));
   const [includeCash, setIncludeCash] = useState(existing?.includeCash ?? false);
-  const [thresholdText, setThresholdText] = useState(existing ? decimal(existing.threshold, 2).replace(/,/g, '') : '3');
+  // 허용 범위: 절대 기준 A (%p), 상대 기준 R (%). 새 설정은 5/25 룰, 예전 설정은 A 만 (R 없음)
+  const bandText = (n: number | null) => (n !== null && n > 0 ? decimal(n, 2).replace(/,/g, '') : '');
+  const [absoluteText, setAbsoluteText] = useState(existing ? bandText(existing.threshold) : String(DEFAULT_ABSOLUTE));
+  const [relativeText, setRelativeText] = useState(existing ? bandText(existing.relative) : String(DEFAULT_RELATIVE));
   const [excluded, setExcluded] = useState<string[]>(existing?.excluded ?? []);
   // 지금 매수 안 함 (비중 표에는 보이고 매수 계산기에서만 뺌)
   const [noBuy, setNoBuy] = useState<string[]>(existing?.noBuy ?? []);
@@ -62,7 +65,9 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
   const isExcluded = (k: string) => excluded.includes(k);
   const percent = (k: string) => (isExcluded(k) ? 0 : parseDecimal(texts[k] ?? '') ?? 0);
   const sum = keys.reduce((s, k) => s + percent(k), 0);
-  const threshold = parseDecimal(thresholdText);
+  const absolute = parseDecimal(absoluteText);
+  const relative = parseDecimal(relativeText);
+  const band = { threshold: absolute ?? 0, relative: relative !== null && relative > 0 ? relative : null };
   const badNumber = (t: string | undefined, max = Infinity) => (t ?? '').trim() !== '' && ((parseDecimal(t!) ?? -1) < 0 || (parseDecimal(t!) ?? 0) > max);
   const invalidPercent = keys.some((k) => !isExcluded(k) && badNumber(texts[k], 100));
   const invalidUnit = stockKeys.some((k) => badNumber(unitTexts[k]) || badNumber(priceTexts[k]));
@@ -73,8 +78,9 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
         : invalidPercent ? '목표 비중은 0~100% 로 입력하세요.'
           : invalidUnit ? '매수 단위·현재가를 확인하세요.'
             : Math.abs(sum - 100) > 0.01 ? `목표 합계가 100% 가 되어야 합니다 (지금 ${decimal(sum, 2)}%).`
-              : threshold === null || threshold < 0 || threshold > 100 ? '강조 기준은 0~100%p 로 입력하세요.'
-                : null;
+              : badNumber(absoluteText, 100) || badNumber(relativeText, 100) ? '허용 범위의 절대·상대 기준은 0~100 으로 입력하세요.'
+                : band.threshold <= 0 && band.relative === null ? '허용 범위의 절대·상대 기준 중 하나는 넣으세요.'
+                  : null;
 
   // 직접 추가: 이름은 필수, 종목코드는 선택 (코드가 없으면 계좌 종목과 자동 연결되지 않는 키)
   const addKey = addCode.trim() === '' ? null : manualKey(addForeign, addCode);
@@ -125,7 +131,7 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
     const targets: { [key: string]: number } = {};
     for (const k of keys) if (percent(k) > 0) targets[k] = percent(k);
     const id = await saveAllocationTarget(uid, {
-      id: existing?.id ?? '', name: name.trim(), accountIds, targets, includeCash, threshold: threshold ?? 3, createdAt: existing?.createdAt ?? 0,
+      id: existing?.id ?? '', name: name.trim(), accountIds, targets, includeCash, ...band, createdAt: existing?.createdAt ?? 0,
       // 지금 대상 계좌에 있는 종목만 제외 목록에 남긴다
       excluded: excluded.filter((k) => held.has(k)),
       // 직접 추가한 이름·현재가는 아직 계좌에 없는 종목만 (사서 계좌에 생기면 종목 이름·시세를 쓴다)
@@ -154,7 +160,22 @@ export function AllocationForm({ existing, onClose, onSaved }: { existing: Alloc
         <input type="checkbox" checked={includeCash} onChange={(e) => setIncludeCash(e.target.checked)} />
         예수금도 비중에 넣기
       </label>
-      <NumberField label="차이 강조 기준 (%p)" value={thresholdText} onChange={setThresholdText} preview={(n) => `목표와 ±${decimal(n, 2)}%p 이상 차이 나면 강조`} />
+      <div className="sub-card">
+        <div className="sub-card-head">
+          <span className="field-label">허용 범위 (벗어나면 부족·초과로 강조)</span>
+          <button type="button" className="small-button" onClick={() => { setAbsoluteText(String(DEFAULT_ABSOLUTE)); setRelativeText(String(DEFAULT_RELATIVE)); }}>5/25 기본값</button>
+        </div>
+        <div className="field-row">
+          <NumberField label="절대 기준 A (%p)" value={absoluteText} onChange={setAbsoluteText} placeholder="안 씀" />
+          <NumberField label="상대 기준 R (%)" value={relativeText} onChange={setRelativeText} placeholder="안 씀" />
+        </div>
+        <p className="muted small">
+          허용 편차 = min(A, 목표 × R). 하나를 비우면 그 기준은 쓰지 않습니다. 목표 0% 종목은 강조하지 않습니다.
+          {band.threshold > 0 || band.relative !== null
+            ? ` 예: 목표 40% → ±${decimal(toleranceBand(band, 40) ?? 0, 2)}%p, 목표 10% → ±${decimal(toleranceBand(band, 10) ?? 0, 2)}%p`
+            : ''}
+        </p>
+      </div>
 
       <div className="sub-card">
         <span className="field-label">매수 단위 일괄 적용</span>

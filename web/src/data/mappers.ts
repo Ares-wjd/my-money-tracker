@@ -216,6 +216,7 @@ export function toAllocationTarget(id: string, d: Data): AllocationTarget | null
     targets,
     includeCash: d.includeCash === true,
     threshold: num(d.threshold) ?? 3,
+    relative: num(d.relative),
     createdAt: num(d.createdAt) ?? 0,
     excluded: Array.isArray(d.excluded) ? d.excluded.filter((x): x is string => typeof x === 'string') : [],
     names: d.names && typeof d.names === 'object' && !Array.isArray(d.names)
