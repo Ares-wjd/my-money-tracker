@@ -201,8 +201,8 @@ export function AccountDetailPage() {
         title={`기록 ${records.length}건`}
         action={
           <div className="head-actions">
-            {/* 한투 연결 계좌는 매수·매도를 불러오므로 직접 추가하지 않는다 (중복 방지). */}
-            {!linked && <Link className="button-link small-button" to={`/accounts/${accountId}/import`}>표로 일괄 입력</Link>}
+            {/* 표로 일괄 입력 (입출금·매매·배당 — 연결 계좌는 매매 표를 빼고 보여준다) */}
+            <Link className="button-link small-button" to={`/accounts/${accountId}/import`}>표로 일괄 입력</Link>
             <AddRecordMenu
               // 환전은 직접 입력 계좌의 예수금 계산용 (연결 계좌는 예수금을 불러온다)
               types={ADDABLE.filter((t) => !linked || (t !== 'BUY' && t !== 'SELL' && t !== 'EXCHANGE'))}

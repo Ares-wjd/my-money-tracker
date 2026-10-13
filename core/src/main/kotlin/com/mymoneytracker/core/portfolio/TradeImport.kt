@@ -27,10 +27,14 @@ object TradeImport {
     const val COST = 6
 
     private val ETF_BRANDS = listOf("KODEX", "TIGER", "ACE", "SOL", "RISE", "KBSTAR", "HANARO", "ARIRANG", "KOSEF", "PLUS", "TIMEFOLIO", "1Q", "KIWOOM")
-    private val HEADER_WORDS = HEADERS + listOf("일자", "거래일", "구분", "종목", "코드", "단가", "가격", "매매가", "비용", "수수료")
+    // 표 일괄 입력(매매·입출금·배당)의 제목 줄 글자
+    private val HEADER_WORDS = HEADERS + listOf(
+        "일자", "거래일", "구분", "종목", "코드", "단가", "가격", "매매가", "비용", "수수료",
+        "입출금", "입금", "출금", "금액", "배당", "원화", "외화",
+    )
 
-    /** 빈 표 (줄 수만큼 빈 칸). */
-    fun emptyGrid(rows: Int = 10): List<List<String>> = List(rows) { List(COLUMNS) { "" } }
+    /** 빈 표 (줄 수만큼 빈 칸, 칸 수는 표마다). */
+    fun emptyGrid(rows: Int = 10, columns: Int = COLUMNS): List<List<String>> = List(rows) { List(columns) { "" } }
 
     /** 붙여 넣은 글 → 줄·칸 (탭·줄바꿈으로 구분, 마지막 빈 줄은 버림, 칸을 감싼 따옴표는 뗀다). */
     fun splitClipboard(text: String): List<List<String>> {
@@ -55,17 +59,17 @@ object TradeImport {
      * [row], [col] 칸부터 붙여 넣는다: 오른쪽·아래로 채우고, 줄이 모자라면 늘리고(최대 [MAX_ROWS]), 오른쪽으로 넘치는 칸은 버린다.
      * 제목 줄은 건너뛴다.
      */
-    fun paste(grid: List<List<String>>, row: Int, col: Int, text: String): List<List<String>> {
+    fun paste(grid: List<List<String>>, row: Int, col: Int, text: String, columns: Int = COLUMNS): List<List<String>> {
         val pasted = splitClipboard(text).filterNot { isHeaderRow(it) }
         if (pasted.isEmpty()) return grid
         val result = grid.map { it.toMutableList() }.toMutableList()
         pasted.forEachIndexed { i, cells ->
             val r = row + i
             if (r >= MAX_ROWS) return@forEachIndexed
-            while (result.size <= r) result += MutableList(COLUMNS) { "" }
+            while (result.size <= r) result += MutableList(columns) { "" }
             cells.forEachIndexed { j, cell ->
                 val c = col + j
-                if (c < COLUMNS) result[r][c] = cell
+                if (c < columns) result[r][c] = cell
             }
         }
         return result

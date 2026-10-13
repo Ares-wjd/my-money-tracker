@@ -387,7 +387,7 @@ tr.over td { background: var(--over-row); }
 .import-cell.col-4 input { width: 88px; }
 .import-cell.col-5 input { width: 64px; }
 .import-cell.col-6 input { width: 80px; }
-.import-status { min-width: 170px; white-space: normal; }
+.table td.import-status { min-width: 170px; max-width: 320px; white-space: pre-line; }
 .import-error .import-status { color: var(--error); font-weight: 600; }
 .import-duplicate .import-status { color: var(--muted); }
 .head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -395,3 +395,9 @@ tr.over td { background: var(--over-row); }
 .range-hint { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
 .add-rows { display: inline-flex; gap: 4px; align-items: center; }
 .add-rows input { font: inherit; width: 72px; color: var(--ink); background: var(--ground); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.import-warning .import-status { color: var(--chart-invested); font-weight: 600; }
+.import-cash .import-cell.col-1 input { width: 64px; }
+.import-cash .import-cell.col-2 input { width: 120px; }
+.import-dividend .import-cell.col-1 input { width: 92px; }
+.import-dividend .import-cell.col-2 input { width: 150px; }
+.import-dividend .import-cell.col-3 input, .import-dividend .import-cell.col-4 input { width: 96px; }

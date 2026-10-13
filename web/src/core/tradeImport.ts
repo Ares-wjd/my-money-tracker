@@ -10,12 +10,17 @@ export const IMPORT_MAX_ROWS = 300;
 export const COL = { DATE: 0, SIDE: 1, NAME: 2, CODE: 3, PRICE: 4, QUANTITY: 5, COST: 6 } as const;
 
 const ETF_BRANDS = ['KODEX', 'TIGER', 'ACE', 'SOL', 'RISE', 'KBSTAR', 'HANARO', 'ARIRANG', 'KOSEF', 'PLUS', 'TIMEFOLIO', '1Q', 'KIWOOM'];
-const HEADER_WORDS = [...IMPORT_HEADERS, '일자', '거래일', '구분', '종목', '코드', '단가', '가격', '매매가', '비용', '수수료'];
+// 표 일괄 입력(매매·입출금·배당)의 제목 줄 글자
+const HEADER_WORDS = [
+  ...IMPORT_HEADERS, '일자', '거래일', '구분', '종목', '코드', '단가', '가격', '매매가', '비용', '수수료',
+  '입출금', '입금', '출금', '금액', '배당', '원화', '외화',
+];
 
 export type Grid = string[][];
 
 /** 빈 표 (줄 수만큼 빈 칸). */
-export const emptyGrid = (rows = 10): Grid => Array.from({ length: rows }, () => Array<string>(IMPORT_COLUMNS).fill(''));
+/** 빈 표 (줄 수만큼 빈 칸, 칸 수는 표마다). */
+export const emptyGrid = (rows = 10, columns: number = IMPORT_COLUMNS): Grid => Array.from({ length: rows }, () => Array<string>(columns).fill(''));
 
 /** 붙여 넣은 글 → 줄·칸 (탭·줄바꿈으로 구분, 마지막 빈 줄은 버림, 칸을 감싼 따옴표는 뗀다). */
 export function splitClipboard(text: string): Grid {
@@ -38,17 +43,17 @@ export function isHeaderRow(cells: readonly string[]): boolean {
 }
 
 /** [row], [col] 칸부터 붙여 넣는다: 오른쪽·아래로 채우고, 줄이 모자라면 늘리고(최대 300), 오른쪽으로 넘치는 칸은 버린다. 제목 줄은 건너뛴다. */
-export function pasteInto(grid: Grid, row: number, col: number, text: string): Grid {
+export function pasteInto(grid: Grid, row: number, col: number, text: string, columns: number = IMPORT_COLUMNS): Grid {
   const pasted = splitClipboard(text).filter((cells) => !isHeaderRow(cells));
   if (pasted.length === 0) return grid;
   const result = grid.map((r) => [...r]);
   pasted.forEach((cells, i) => {
     const r = row + i;
     if (r >= IMPORT_MAX_ROWS) return;
-    while (result.length <= r) result.push(Array<string>(IMPORT_COLUMNS).fill(''));
+    while (result.length <= r) result.push(Array<string>(columns).fill(''));
     cells.forEach((cell, j) => {
       const c = col + j;
-      if (c < IMPORT_COLUMNS) result[r][c] = cell;
+      if (c < columns) result[r][c] = cell;
     });
   });
   return result;

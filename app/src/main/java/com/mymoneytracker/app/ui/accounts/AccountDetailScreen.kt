@@ -160,15 +160,14 @@ fun AccountDetailScreen(
                             },
                         )
                     }
-                    if (!linkedHere) {
-                        DropdownMenuItem(
-                            text = { Text("표로 일괄 입력 (매수·매도)") },
-                            onClick = {
-                                menuOpen = false
-                                onImportTrades()
-                            },
-                        )
-                    }
+                    // 표로 일괄 입력 (입출금·매매·배당 — 연결 계좌는 매매 표를 빼고 보여준다)
+                    DropdownMenuItem(
+                        text = { Text("표로 일괄 입력") },
+                        onClick = {
+                            menuOpen = false
+                            onImportTrades()
+                        },
+                    )
                 }
             }
         },

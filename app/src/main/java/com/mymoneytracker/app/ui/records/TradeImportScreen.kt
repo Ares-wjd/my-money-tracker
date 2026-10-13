@@ -56,28 +56,44 @@ import com.mymoneytracker.app.ui.common.ChipSelector
 import com.mymoneytracker.app.ui.common.ConfirmDialog
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.SectionCard
+import com.mymoneytracker.app.ui.common.SegmentedPills
 import com.mymoneytracker.app.ui.common.TopBarTitle
 import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.CashCalculator
+import com.mymoneytracker.core.portfolio.CashFlowImport
+import com.mymoneytracker.core.portfolio.DividendImport
 import com.mymoneytracker.core.portfolio.TradeImport
 
-/** 칸 폭 (dp): 날짜 / 매매구분 / 종목명 / 종목코드 / 평단가 / 수량 / 제비용합 */
-private val CELL_WIDTHS = listOf(104, 64, 140, 92, 92, 68, 84)
+/** 표 종류: 칸 제목과 칸 폭 (dp). */
+private enum class ImportKind(val label: String, val headers: List<String>, val widths: List<Int>) {
+    CASH("입출금", CashFlowImport.HEADERS, listOf(104, 64, 120)),
+    TRADE("매매", TradeImport.HEADERS, listOf(104, 64, 140, 92, 92, 68, 84)),
+    DIVIDEND("배당", DividendImport.HEADERS, listOf(104, 92, 140, 96, 96)),
+    ;
+
+    val columns: Int get() = headers.size
+}
+
 private const val INDEX_WIDTH = 28
 private const val STATUS_WIDTH = 176
 
+/** 줄 하나의 인식 결과 (표 종류와 상관없이 화면에 보여줄 것). */
+private data class RowView(val status: TradeImport.Status, val text: String, val warning: Boolean = false)
+
 /** 표를 화면 회전 등에도 남긴다 (칸 = 탭, 줄 = 줄바꿈. 칸에는 탭·줄바꿈이 들어가지 않는다). */
-private val GridSaver = Saver<List<List<String>>, String>(
+private fun gridSaver(columns: Int) = Saver<List<List<String>>, String>(
     save = { grid -> grid.joinToString("\n") { it.joinToString("\t") } },
-    restore = { text -> text.split("\n").map { line -> List(TradeImport.COLUMNS) { line.split("\t").getOrNull(it).orEmpty() } } },
+    restore = { text -> text.split("\n").map { line -> List(columns) { line.split("\t").getOrNull(it).orEmpty() } } },
 )
 
 /**
- * 표로 일괄 입력 (매수·매도): 빈 표에 엑셀·구글시트에서 복사한 칸을 붙여 넣으면, 고른 칸부터 오른쪽·아래로 채운다.
- * 줄마다 인식 결과를 보여주고, [저장]을 누르면 새 종목과 기록을 한꺼번에 저장한다.
+ * 표로 일괄 입력 (입출금 · 매매 · 배당): 빈 표에 엑셀·구글시트에서 복사한 칸을 붙여 넣으면, 고른 칸부터 오른쪽·아래로 채운다.
+ * 줄마다 인식 결과를 보여주고, [저장]을 누르면 기록(매매는 새 종목도)을 한꺼번에 저장한다.
+ * 한투 연결 계좌는 매매를 불러오므로 입출금·배당만.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -88,14 +104,37 @@ fun TradeImportScreen(
     onDone: () -> Unit,
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
-    var grid by rememberSaveable(stateSaver = GridSaver) { mutableStateOf(TradeImport.emptyGrid()) }
+    val apiStatus by viewModel.apiStatus.collectAsStateWithLifecycle()
+    val linked = apiStatus.linkedAccountId == accountId ||
+        data?.let { CashCalculator.isBrokerLinked(accountId, it.records) } == true
+    val kinds = ImportKind.entries.filter { !linked || it != ImportKind.TRADE }
+    var kindName by rememberSaveable { mutableStateOf(if (linked) ImportKind.CASH.name else ImportKind.TRADE.name) }
+    val kind = kinds.firstOrNull { it.name == kindName } ?: kinds.first()
+    // 표 종류마다 따로 (바꿔도 입력한 칸이 남는다)
+    var cashGrid by rememberSaveable(stateSaver = gridSaver(ImportKind.CASH.columns)) { mutableStateOf(TradeImport.emptyGrid(10, ImportKind.CASH.columns)) }
+    var tradeGrid by rememberSaveable(stateSaver = gridSaver(ImportKind.TRADE.columns)) { mutableStateOf(TradeImport.emptyGrid()) }
+    var dividendGrid by rememberSaveable(stateSaver = gridSaver(ImportKind.DIVIDEND.columns)) { mutableStateOf(TradeImport.emptyGrid(10, ImportKind.DIVIDEND.columns)) }
+    val grid = when (kind) {
+        ImportKind.CASH -> cashGrid
+        ImportKind.TRADE -> tradeGrid
+        ImportKind.DIVIDEND -> dividendGrid
+    }
+    val setGrid: (List<List<String>>) -> Unit = { value ->
+        when (kind) {
+            ImportKind.CASH -> cashGrid = value
+            ImportKind.TRADE -> tradeGrid = value
+            ImportKind.DIVIDEND -> dividendGrid = value
+        }
+    }
+    val columns = kind.columns
     // 표 아래에서 고친 새 종목 (키 → 시장·유형)
     val overrides = remember { mutableStateMapOf<String, TradeImport.NewHolding>() }
     var confirmLeave by rememberSaveable { mutableStateOf(false) }
     var confirmClear by rememberSaveable { mutableStateOf(false) }
     var addRowsText by rememberSaveable { mutableStateOf("") }
     val hasContent = grid.any { row -> row.any { it.isNotBlank() } }
-    val leave = { if (hasContent) confirmLeave = true else onBack() }
+    val anyContent = listOf(cashGrid, tradeGrid, dividendGrid).any { g -> g.any { row -> row.any { it.isNotBlank() } } }
+    val leave = { if (anyContent) confirmLeave = true else onBack() }
     BackHandler(onBack = leave)
 
     Scaffold(
@@ -115,9 +154,51 @@ fun TradeImportScreen(
         }
         val accountHoldings = current.holdings.filter { it.accountId == accountId }
         val accountRecords = current.records.filter { it.accountId == accountId }
-        val analysis = remember(grid, current.holdings, current.records, overrides.toMap()) {
-            TradeImport.analyze(grid, accountId, accountHoldings, current.holdings, accountRecords, overrides.toMap())
+        val analysis = remember(tradeGrid, current.holdings, current.records, overrides.toMap()) {
+            TradeImport.analyze(tradeGrid, accountId, accountHoldings, current.holdings, accountRecords, overrides.toMap())
         }
+        val cashRows = remember(cashGrid, current.records) { CashFlowImport.analyze(cashGrid, accountId, accountRecords) }
+        val dividendRows = remember(dividendGrid, current.holdings, current.records) {
+            DividendImport.analyze(dividendGrid, accountHoldings, accountRecords)
+        }
+        // 표 종류와 상관없이 화면에 보여줄 줄별 결과
+        val views: List<RowView> = when (kind) {
+            ImportKind.TRADE -> analysis.rows.map { row ->
+                // 수량 단위 (금현물은 g)
+                val unit = row.holding?.assetType?.unit
+                    ?: analysis.newHoldings.firstOrNull { it.key == row.newKey }?.assetType?.unit ?: "주"
+                RowView(row.status, statusText(row, unit))
+            }
+            ImportKind.CASH -> cashRows.map { row ->
+                RowView(
+                    row.status,
+                    when (row.status) {
+                        TradeImport.Status.EMPTY -> ""
+                        TradeImport.Status.ERROR -> row.error.orEmpty()
+                        TradeImport.Status.DUPLICATE -> "중복 의심 (저장 안 함)"
+                        TradeImport.Status.OK -> (if (row.type == RecordType.DEPOSIT) "입금 " else "출금 ") + MoneyFormat.won(row.amount)
+                    },
+                )
+            }
+            ImportKind.DIVIDEND -> dividendRows.map { row ->
+                RowView(
+                    row.status,
+                    when (row.status) {
+                        TradeImport.Status.EMPTY -> ""
+                        TradeImport.Status.ERROR -> row.error.orEmpty()
+                        TradeImport.Status.DUPLICATE -> "중복 의심 (저장 안 함)"
+                        TradeImport.Status.OK -> {
+                            val h = row.holding!!
+                            "${h.name} · 배당 " + MoneyFormat.amount(h.currency, row.amount) + (row.warning?.let { "\n$it" } ?: "")
+                        }
+                    },
+                    warning = row.warning != null,
+                )
+            }
+        }
+        val errorRows = views.withIndex().filter { it.value.status == TradeImport.Status.ERROR }.map { it.index }
+        val saveCount = views.count { it.status == TradeImport.Status.OK }
+        val duplicateCount = views.count { it.status == TradeImport.Status.DUPLICATE }
         val hScroll = rememberScrollState()
 
         LazyColumn(
@@ -125,37 +206,40 @@ fun TradeImportScreen(
             contentPadding = PaddingValues(bottom = 32.dp),
         ) {
             item {
-                Text(
-                    "엑셀·구글시트에서 복사한 칸을, 채우기 시작할 칸을 누르고 붙여 넣으세요. 고른 칸부터 오른쪽·아래로 채워지고 줄은 자동으로 늘어납니다. " +
-                        "열이나 줄을 나눠 여러 번 붙여 넣어도 됩니다. 수량은 매수 +, 매도 −(예: -3)로 쓰고, 매매구분은 비워도 됩니다. 표는 좌우로 밀어 볼 수 있습니다.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp),
-                )
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SegmentedPills(kinds, kind, { it.label }, { kindName = it.name })
+                    Text(
+                        "엑셀·구글시트에서 복사한 칸을, 채우기 시작할 칸을 누르고 붙여 넣으세요. 고른 칸부터 오른쪽·아래로 채워지고 줄은 자동으로 늘어납니다. " +
+                            "열이나 줄을 나눠 여러 번 붙여 넣어도 됩니다. 표는 좌우로 밀어 볼 수 있습니다. " +
+                            when (kind) {
+                                ImportKind.CASH -> "금액은 입금 +, 출금 −(예: -300000)로 쓰고, 입출금 칸은 비워도 됩니다 (원화). 이체는 기록 추가에서 직접 넣으세요."
+                                ImportKind.TRADE -> "수량은 매수 +, 매도 −(예: -3)로 쓰고, 매매구분은 비워도 됩니다."
+                                ImportKind.DIVIDEND -> "종목은 종목코드로 찾고 종목명은 확인용입니다. 세후 금액을 국내 종목은 원화배당금, 해외 종목은 외화배당금 칸에 넣으세요."
+                            },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            item { HeaderRow(hScroll) }
+            item { HeaderRow(kind, hScroll) }
             itemsIndexed(grid) { r, cells ->
-                val row = analysis.rows.getOrNull(r)
-                // 수량 단위 (금현물은 g)
-                val unit = row?.holding?.assetType?.unit
-                    ?: analysis.newHoldings.firstOrNull { it.key == row?.newKey }?.assetType?.unit ?: "주"
                 GridRow(
                     index = r,
                     cells = cells,
-                    row = row,
-                    unit = unit,
+                    view = views.getOrNull(r),
+                    widths = kind.widths,
                     scroll = hScroll,
                     onCellChange = { c, old, value ->
-                        grid = if (value.contains('\t') || value.contains('\n')) {
+                        setGrid(if (value.contains('\t') || value.contains('\n')) {
                             // 붙여넣기: 원래 글 뒤에 붙었으면 붙인 부분만
                             val pasted = if (old.isNotEmpty() && value.startsWith(old)) value.substring(old.length) else value
-                            TradeImport.paste(grid, r, c, pasted)
+                            TradeImport.paste(grid, r, c, pasted, columns)
                         } else {
                             grid.mapIndexed { i, row -> if (i == r) row.mapIndexed { j, v -> if (j == c) value else v } else row }
-                        }
+                        })
                     },
                     onRemove = {
-                        grid = grid.filterIndexed { i, _ -> i != r }.ifEmpty { TradeImport.emptyGrid(1) }
+                        setGrid(grid.filterIndexed { i, _ -> i != r }.ifEmpty { TradeImport.emptyGrid(1, columns) })
                     },
                 )
             }
@@ -168,7 +252,7 @@ fun TradeImportScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     OutlinedButton(
-                        onClick = { grid = grid + TradeImport.emptyGrid(minOf(5, room)) },
+                        onClick = { setGrid(grid + TradeImport.emptyGrid(minOf(5, room), columns)) },
                         enabled = room > 0,
                     ) { Text("+ 5줄 추가") }
                     // 원하는 만큼 줄 추가 (표 전체 최대 300줄)
@@ -176,7 +260,7 @@ fun TradeImportScreen(
                         Cell(addRowsText, 56) { v -> addRowsText = v.filter { it.isDigit() }.take(3) }
                         OutlinedButton(
                             onClick = {
-                                grid = grid + TradeImport.emptyGrid(addRows)
+                                setGrid(grid + TradeImport.emptyGrid(addRows, columns))
                                 addRowsText = ""
                             },
                             enabled = addRows > 0,
@@ -185,7 +269,7 @@ fun TradeImportScreen(
                     OutlinedButton(onClick = { confirmClear = true }, enabled = hasContent) { Text("표 비우기") }
                 }
             }
-            if (analysis.newHoldings.isNotEmpty()) {
+            if (kind == ImportKind.TRADE && analysis.newHoldings.isNotEmpty()) {
                 item {
                     SectionCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), title = "새로 만들 종목 ${analysis.newHoldings.size}개") {
                         Text(
@@ -207,26 +291,31 @@ fun TradeImportScreen(
                 }
             }
             item {
-                val errors = analysis.errorRows
-                val count = analysis.saveCount
+                val errors = errorRows
+                val count = saveCount
+                val newCount = if (kind == ImportKind.TRADE) analysis.newHoldings.size else 0
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "저장할 기록 ${count}건" +
-                            (if (analysis.newHoldings.isNotEmpty()) " · 새 종목 ${analysis.newHoldings.size}개" else "") +
-                            (if (analysis.duplicateCount > 0) " · 중복 의심 ${analysis.duplicateCount}건 제외" else ""),
+                        "저장할 ${kind.label} 기록 ${count}건" +
+                            (if (newCount > 0) " · 새 종목 ${newCount}개" else "") +
+                            (if (duplicateCount > 0) " · 중복 의심 ${duplicateCount}건 제외" else ""),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                     )
                     when {
                         errors.isNotEmpty() -> WarningText(
-                            "오류가 있는 줄: " + errors.take(10).joinToString(", ") { "${it.index + 1}번" } +
+                            "오류가 있는 줄: " + errors.take(10).joinToString(", ") { "${it + 1}번" } +
                                 (if (errors.size > 10) " 외 ${errors.size - 10}줄" else "") + " — 고치거나 줄을 빼세요.",
                         )
                         count == 0 -> WarningText("저장할 줄이 없습니다. 표에 붙여 넣거나 입력하세요.")
                     }
                     Button(
                         onClick = {
-                            viewModel.saveImport(accountId, analysis)
+                            when (kind) {
+                                ImportKind.TRADE -> viewModel.saveImport(accountId, analysis)
+                                ImportKind.CASH -> viewModel.saveImportedRecords(CashFlowImport.build(cashRows, accountId))
+                                ImportKind.DIVIDEND -> viewModel.saveImportedRecords(DividendImport.build(dividendRows, accountId))
+                            }
                             onDone()
                         },
                         enabled = errors.isEmpty() && count > 0,
@@ -249,11 +338,11 @@ fun TradeImportScreen(
     if (confirmClear) {
         ConfirmDialog(
             title = "표 비우기",
-            text = "입력한 칸을 모두 지웁니다.",
+            text = "이 표(${kind.label})에 입력한 칸을 모두 지웁니다.",
             confirmLabel = "비우기",
             onConfirm = {
-                grid = TradeImport.emptyGrid()
-                overrides.clear()
+                setGrid(TradeImport.emptyGrid(10, columns))
+                if (kind == ImportKind.TRADE) overrides.clear()
             },
             onDismiss = { confirmClear = false },
         )
@@ -261,7 +350,7 @@ fun TradeImportScreen(
 }
 
 @Composable
-private fun HeaderRow(scroll: ScrollState) {
+private fun HeaderRow(kind: ImportKind, scroll: ScrollState) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -271,8 +360,8 @@ private fun HeaderRow(scroll: ScrollState) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("#", Modifier.width(INDEX_WIDTH.dp), style = MaterialTheme.typography.labelMedium)
-        TradeImport.HEADERS.forEachIndexed { i, h ->
-            Text(h, Modifier.width(CELL_WIDTHS[i].dp).padding(horizontal = 2.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        kind.headers.forEachIndexed { i, h ->
+            Text(h, Modifier.width(kind.widths[i].dp).padding(horizontal = 2.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
         }
         Text("인식 결과", Modifier.width(STATUS_WIDTH.dp).padding(start = 6.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
     }
@@ -282,13 +371,13 @@ private fun HeaderRow(scroll: ScrollState) {
 private fun GridRow(
     index: Int,
     cells: List<String>,
-    row: TradeImport.Row?,
-    unit: String,
+    view: RowView?,
+    widths: List<Int>,
     scroll: ScrollState,
     onCellChange: (col: Int, old: String, value: String) -> Unit,
     onRemove: () -> Unit,
 ) {
-    val error = row?.status == TradeImport.Status.ERROR
+    val error = view?.status == TradeImport.Status.ERROR
     Row(
         Modifier
             .fillMaxWidth()
@@ -298,18 +387,19 @@ private fun GridRow(
     ) {
         Text("${index + 1}", Modifier.width(INDEX_WIDTH.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         cells.forEachIndexed { c, value ->
-            Cell(value, CELL_WIDTHS[c]) { onCellChange(c, value, it) }
+            Cell(value, widths[c]) { onCellChange(c, value, it) }
         }
         Text(
-            statusText(row, unit),
+            view?.text.orEmpty(),
             Modifier.width(STATUS_WIDTH.dp).padding(start = 6.dp),
             style = MaterialTheme.typography.labelMedium,
             color = when {
                 error -> MaterialTheme.colorScheme.error
-                row?.status == TradeImport.Status.DUPLICATE -> MaterialTheme.colorScheme.onSurfaceVariant
+                view?.status == TradeImport.Status.DUPLICATE -> MaterialTheme.colorScheme.onSurfaceVariant
+                view?.warning == true -> MaterialTheme.colorScheme.tertiary
                 else -> MaterialTheme.colorScheme.onSurface
             },
-            maxLines = 2,
+            maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
         IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {

@@ -320,6 +320,14 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         return records.size
     }
 
+    /** 표로 일괄 입력 저장 (입출금·배당): 기록을 한꺼번에 저장한다. */
+    fun saveImportedRecords(records: List<Record>) {
+        if (records.isEmpty()) return
+        repository.importTrades(emptyMap(), records)
+        _message.value = "${records.size}건을 저장했습니다."
+        syncHistorySoon()
+    }
+
     fun deleteRecord(recordId: String) = repository.deleteRecord(recordId)
 
     fun saveManualUsdKrw(rate: Double?) = repository.saveManualUsdKrw(rate)
