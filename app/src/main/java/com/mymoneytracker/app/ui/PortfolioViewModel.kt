@@ -20,7 +20,7 @@ import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.chart.ChartCalculator
 import com.mymoneytracker.core.chart.ChartInterval
 import com.mymoneytracker.core.chart.ChartPoint
-import com.mymoneytracker.core.market.MarketKeys
+import com.mymoneytracker.core.market.HistoryRanges
 import com.mymoneytracker.core.market.MarketSnapshot
 import com.mymoneytracker.core.market.PriceLookup
 import com.mymoneytracker.core.model.AssetType
@@ -239,7 +239,8 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     private val chartSelection = MutableStateFlow(ChartSelection())
     private val chartLoading = MutableStateFlow(false)
     private val chartErrors = MutableStateFlow<List<String>>(emptyList())
-    private var chartJob: Job? = null
+    private var historyJob: Job? = null
+    private var historyCheckedAt = 0L
 
     val chart: StateFlow<ChartState> = combine(data, chartSelection, chartLoading, chartErrors) { current, selection, loading, errors ->
         if (current == null) return@combine ChartState(selection, loading = true)
@@ -268,7 +269,6 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         viewModelScope.launch {
             data.filterNotNull().first()
             refreshQuotes(silent = true)
-            loadChartHistory()
             ensureTradeFx()
         }
     }
@@ -294,7 +294,10 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         repository.deleteHolding(holdingId, current.records)
     }
 
-    fun saveRecord(record: Record) = repository.saveRecord(record)
+    fun saveRecord(record: Record) {
+        repository.saveRecord(record)
+        syncHistorySoon()
+    }
 
     /**
      * 표로 일괄 입력 저장: 새 종목([TradeImport.NewHolding]) → 매매 기록. 저장한 기록 수를 돌려준다.
@@ -313,6 +316,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         val records = TradeImport.build(analysis.rows, accountId) { key -> key }.map { it.second }
         repository.importTrades(newHoldings.filterKeys { key -> records.any { it.holdingId == key } }, records)
         _message.value = "${records.size}건을 저장했습니다."
+        syncHistorySoon()
         return records.size
     }
 
@@ -393,6 +397,8 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
                 .getOrElse { listOf("시세 새로고침 실패") }
             _refresh.value = RefreshState(running = false, lastRefreshedAt = System.currentTimeMillis(), errors = errors.distinct())
             if (!silent && errors.isEmpty()) _message.value = "시세와 환율을 새로 받았습니다."
+            // 새로고침 뒤 과거 시세도 확인 (30분에 한 번, 이미 받은 기간은 건너뜀)
+            syncHistory()
         }
     }
 
@@ -400,46 +406,67 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
 
     fun selectChartInterval(interval: ChartInterval) {
         chartSelection.value = chartSelection.value.copy(interval = interval, rangeFactor = 1)
-        loadChartHistory()
     }
 
     fun selectChartAccount(accountId: String?) {
         chartSelection.value = chartSelection.value.copy(accountId = accountId)
-        loadChartHistory()
     }
 
     fun showEarlierChart() {
         chartSelection.value = chartSelection.value.copy(rangeFactor = chartSelection.value.rangeFactor + 1)
-        loadChartHistory()
     }
 
-    /** 그래프 기간의 과거 종가·환율을 받아 둔다. 받은 값은 캐시되어 그래프가 자동으로 다시 계산된다. */
-    private fun loadChartHistory() {
+    /**
+     * 보유했던 기간의 과거 종가와 해외 종목·달러가 있던 기간의 환율을 뒤에서 받아 Firestore 에 저장한다.
+     * 그래프(폰·PC 웹)는 저장된 값만 쓰므로 보기 단위를 바꿔도 조회하지 않는다. 30분에 한 번 확인하고, [force] 면 바로.
+     * 이미 받은 기간은 건너뛰므로 처음 한 번 이후에는 새로 생긴 날짜만 받는다.
+     */
+    private fun syncHistory(force: Boolean = false) {
         val current = data.value ?: return
-        if (!_apiStatus.value.hasKis && !_apiStatus.value.hasExim) return
-        val selection = chartSelection.value
-        chartJob?.cancel()
-        chartJob = viewModelScope.launch {
-            val today = LocalDate.now()
-            val targetRecords = current.records.filter {
-                selection.accountId == null || it.accountId == selection.accountId || it.toAccountId == selection.accountId
-            }
-            val first = targetRecords.minOfOrNull { it.date } ?: return@launch
-            val dates = ChartCalculator.pointDates(selection.interval, today, first, selection.rangeFactor)
-            val holdingIds = targetRecords.mapNotNull { it.holdingId }.toSet()
-            val holdings = current.holdings.filter { it.id in holdingIds && MarketKeys.quotable(it) }
-            val needsFx = targetRecords.any { it.currency == Currency.USD } ||
-                holdings.any { it.currency == Currency.USD }
+        val status = _apiStatus.value
+        if (!status.hasKis && !status.hasExim) return
+        if (historyJob?.isActive == true) return
+        val now = System.currentTimeMillis()
+        if (!force && now - historyCheckedAt < HISTORY_INTERVAL_MS) return
+        historyCheckedAt = now
+        historyJob = viewModelScope.launch {
             chartLoading.value = true
             val errors = mutableListOf<String>()
+            val today = LocalDate.now()
             runCatching {
-                if (holdings.isNotEmpty() && _apiStatus.value.hasKis) {
-                    errors += marketRepository.ensurePriceHistory(holdings, dates.first().minusDays(7), today)
+                if (status.hasKis) {
+                    errors += marketRepository.ensureHistory(HistoryRanges.prices(current.holdings, current.records, today))
                 }
-                if (needsFx) errors += marketRepository.ensureFx(dates)
+                HistoryRanges.fx(current.holdings, current.records, today)?.let { (from, _) ->
+                    val (used, fxErrors) = marketRepository.backfillFx(from, fxBudgetLeft())
+                    spendFxBudget(used)
+                    errors += fxErrors
+                }
             }.onFailure { errors += "과거 시세를 받지 못했습니다." }
             chartErrors.value = errors.distinct()
             chartLoading.value = false
+        }
+    }
+
+    /** 오늘 과거 환율 채우기에 더 쓸 수 있는 수출입은행 호출 수 (하루 1,000회 한도 중 [FX_DAILY_BUDGET]). */
+    private fun fxBudgetLeft(): Int {
+        val today = LocalDate.now().toString()
+        val used = if (displayPrefs.getString(KEY_FX_DAY, null) == today) displayPrefs.getInt(KEY_FX_CALLS, 0) else 0
+        return (FX_DAILY_BUDGET - used).coerceAtLeast(0)
+    }
+
+    private fun spendFxBudget(calls: Int) {
+        if (calls <= 0) return
+        val today = LocalDate.now().toString()
+        val used = if (displayPrefs.getString(KEY_FX_DAY, null) == today) displayPrefs.getInt(KEY_FX_CALLS, 0) else 0
+        displayPrefs.edit().putString(KEY_FX_DAY, today).putInt(KEY_FX_CALLS, used + calls).apply()
+    }
+
+    /** 기록을 저장한 뒤 (과거 날짜 매수 등으로) 새로 필요해진 과거 시세를 받는다. 저장이 화면 데이터에 반영될 때까지 잠깐 기다린다. */
+    private fun syncHistorySoon() {
+        viewModelScope.launch {
+            delay(HISTORY_AFTER_SAVE_MS)
+            syncHistory(force = true)
         }
     }
 
@@ -590,6 +617,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             delay(1_500)
             refreshQuotes(silent = true)
             ensureTradeFx()
+            syncHistory(force = true)
         }
     }
 
@@ -613,6 +641,12 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         private const val KEY_ALLOCATION = "allocation_selected"
         private const val KEY_ALLOCATION_RING = "allocation_ring"
         private const val KEY_ALLOCATION_USE_CASH = "allocation_use_cash"
+        private const val KEY_FX_DAY = "fx_backfill_day"
+        private const val KEY_FX_CALLS = "fx_backfill_calls"
+        /** 과거 환율 채우기에 하루에 쓸 수 있는 수출입은행 호출 수 (한도 1,000회 중 나머지는 최신·매매일 환율용). */
+        private const val FX_DAILY_BUDGET = 600
+        private const val HISTORY_INTERVAL_MS = 30 * 60 * 1000L
+        private const val HISTORY_AFTER_SAVE_MS = 3_000L
 
         fun factory(uid: String): ViewModelProvider.Factory = viewModelFactory {
             initializer { PortfolioViewModel(this[APPLICATION_KEY]!!, uid) }

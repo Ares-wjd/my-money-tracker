@@ -16,6 +16,8 @@ export interface ChartPoint {
   valueKrw: number;
   investedKrw: number;
   dividendsKrw: number;
+  /** 그날 가격이 없는 보유 종목이 있는지 (폰이 아직 과거 종가를 받지 않음 → 평가금이 낮게 나옴) */
+  missingPrice?: boolean;
 }
 
 function endOfMonth(year: number, month: number): string {
@@ -83,7 +85,7 @@ export function series(
       (h) => (isToday ? currentPrice(h, snapshot) : priceAt(h, snapshot, date)),
       date,
     );
-    return { date, valueKrw: summary.valueKrw, investedKrw: summary.investedKrw, dividendsKrw: summary.dividendsKrw };
+    return { date, valueKrw: summary.valueKrw, investedKrw: summary.investedKrw, dividendsKrw: summary.dividendsKrw, missingPrice: summary.missingPrice };
   });
 }
 

@@ -3,7 +3,7 @@ import { CHART_INTERVALS, CHART_INTERVAL_LABEL, hasEarlier, pointDates, series, 
 import { formatDate, formatShortDate, today as todayOf } from '../core/dates';
 import { signedWon, won } from '../core/format';
 import type { AppData } from '../data/DataContext';
-import { profitClass } from './ui';
+import { profitClass, Warning } from './ui';
 
 /** 축 눈금용 짧은 금액: 1.2억, 1,278만, 5,000 */
 export function compactWon(value: number): string {
@@ -185,8 +185,13 @@ export function AssetChart({ data }: { data: AppData }) {
               </svg>
             </div>
           )}
+          {points.some((p) => p.missingPrice) && (
+            <Warning>
+              {points.filter((p) => p.missingPrice).length}개 날짜는 아직 과거 종가가 없어 평가금이 낮게 나옵니다. 폰 앱을 열면 보유 기간의 과거 시세를 받아 저장합니다 (처음 한 번은 시간이 걸림).
+            </Warning>
+          )}
           <div className="chart-foot">
-            <span className="muted small">과거 종가·환율은 폰 앱이 받아 둔 만큼만 반영됩니다 (없는 날은 그 전 값 사용).</span>
+            <span className="muted small">과거 종가·환율은 폰 앱이 받아 둔 값을 씁니다 (휴일은 그 전 거래일 값).</span>
             {earlier && <button className="text-button" onClick={() => setRangeFactor(rangeFactor + 1)}>이전 기간 더 보기</button>}
           </div>
         </>

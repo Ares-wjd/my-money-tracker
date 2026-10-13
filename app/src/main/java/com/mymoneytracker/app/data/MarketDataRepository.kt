@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.mymoneytracker.core.market.HistoryRanges
 import com.mymoneytracker.core.market.MarketKeys
 import com.mymoneytracker.core.market.MarketSnapshot
 import com.mymoneytracker.core.market.PriceHistory
@@ -11,11 +12,13 @@ import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.PricePoint
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 import java.util.TreeMap
 
@@ -39,6 +42,13 @@ class MarketDataRepository(
     private val liveQuotes = MutableStateFlow<Map<String, LiveQuote>>(emptyMap())
     private val lastPersistedAt = mutableMapOf<String, Long>()
     private var lastFxAttemptAt = 0L
+
+    /** Firestore 에 저장된 시세를 한 번이라도 읽었는지 (읽기 전에는 이미 받은 기간을 몰라 다시 받게 되므로 기다린다). */
+    private val loaded = CompletableDeferred<Unit>()
+
+    private suspend fun awaitLoaded() {
+        withTimeoutOrNull(LOAD_TIMEOUT_MS) { loaded.await() }
+    }
 
     /** Firestore 캐시 + 메모리의 최신 현재가. */
     fun snapshot(): Flow<MarketSnapshot> = combine(storedSnapshot(), liveQuotes) { stored, live ->
@@ -100,6 +110,7 @@ class MarketDataRepository(
                 }
             }
             cache = MarketSnapshot(prices, fx)
+            loaded.complete(Unit)
             trySend(cache)
         }
         awaitClose { registration.remove() }
@@ -167,27 +178,38 @@ class MarketDataRepository(
         return errors
     }
 
-    /** 그래프에 필요한 기간의 일별 종가를 받아 둔다 (이미 받은 기간은 건너뛴다). */
-    suspend fun ensurePriceHistory(holdings: List<Holding>, from: LocalDate, to: LocalDate): List<String> {
+    /**
+     * 보유 기간의 일별 종가를 받아 저장한다 ([HistoryRanges.prices]). 이미 받은 기간은 건너뛰고, 오늘은 현재가를 쓰므로 어제까지만.
+     * 받은 종가는 Firestore 에 저장되어 그래프(폰·PC 웹)가 다시 조회하지 않고 쓴다.
+     */
+    suspend fun ensureHistory(ranges: List<HistoryRanges.Range>): List<String> {
+        if (ranges.isEmpty()) return emptyList()
         if (!kis.hasCredentials) return listOf("한국투자증권 API 키가 없어 과거 시세를 받지 못했습니다.")
+        awaitLoaded()
         val errors = mutableListOf<String>()
-        val end = minOf(to, LocalDate.now())
-        holdings.filter { MarketKeys.quotable(it) }.distinctBy { MarketKeys.of(it) }.forEach { holding ->
-            val key = MarketKeys.of(holding) ?: return@forEach
+        val yesterday = LocalDate.now().minusDays(1)
+        ranges.forEach { range ->
+            val holding = range.holding
+            val key = range.key
+            val from = range.from
+            val end = minOf(range.to, yesterday)
+            if (end.isBefore(from)) return@forEach
             val (coveredFrom, coveredTo) = docMeta[key] ?: (null to null)
-            val ranges = mutableListOf<Pair<LocalDate, LocalDate>>()
+            // 아직 받지 않은 앞·뒤 기간만
+            val missing = mutableListOf<Pair<LocalDate, LocalDate>>()
             if (coveredFrom == null || coveredTo == null) {
-                ranges += from to end
+                missing += from to end
             } else {
-                if (from.isBefore(coveredFrom)) ranges += from to coveredFrom.minusDays(1)
-                if (end.isAfter(coveredTo)) ranges += coveredTo.plusDays(1) to end
+                if (from.isBefore(coveredFrom)) missing += from to coveredFrom.minusDays(1)
+                // 마지막으로 받은 날도 다시 받는다 (예전 버전은 장중에 오늘 종가를 저장했을 수 있어서)
+                if (end.isAfter(coveredTo)) missing += coveredTo to end
             }
-            if (ranges.isEmpty()) return@forEach
+            if (missing.isEmpty()) return@forEach
             try {
                 val closes = mutableMapOf<String, Double>()
                 // 금현물: 기간별 일봉이 안 되면 최근 30 영업일 종가만 쓴다 (한 번만 받음)
                 var recent: List<DailyClose>? = null
-                for ((rangeFrom, rangeTo) in ranges) {
+                for ((rangeFrom, rangeTo) in missing) {
                     if (holding.assetType == AssetType.GOLD) {
                         val rows = runCatching { kis.domesticDaily(holding.code, rangeFrom, rangeTo) }.getOrNull()
                         val usable = if (rows.isNullOrEmpty()) {
@@ -232,6 +254,40 @@ class MarketDataRepository(
             }
         }
         return errors
+    }
+
+    /**
+     * [from] ~ 어제의 일별 환율을 최근 날짜부터 채운다 (이미 받은 날·"없음"으로 저장한 휴일은 건너뜀).
+     * 수출입은행 호출은 최대 [budget] 회. 돌려주는 값: (쓴 호출 수, 오류).
+     */
+    suspend fun backfillFx(from: LocalDate, budget: Int): Pair<Int, List<String>> {
+        if (!exim.hasKey || budget <= 0) return 0 to emptyList()
+        awaitLoaded()
+        val today = LocalDate.now()
+        var calls = 0
+        val found = mutableMapOf<String, Double>()
+        return try {
+            var day = today.minusDays(1)
+            while (!day.isBefore(from) && calls < budget) {
+                if (cache.usdKrw[day] == null) {
+                    found[day.toString()] = exim.usdKrw(day) ?: -1.0
+                    calls++
+                    // 중간에 끊겨도 받은 만큼은 남도록 나눠 저장
+                    if (found.size >= FX_SAVE_CHUNK) {
+                        saveFx(found.toMap())
+                        found.clear()
+                    }
+                }
+                day = day.minusDays(1)
+            }
+            calls to emptyList()
+        } catch (e: ApiException) {
+            calls to listOf(e.message.orEmpty())
+        } catch (e: Exception) {
+            calls to listOf("환율: 네트워크 오류")
+        } finally {
+            if (found.isNotEmpty()) saveFx(found)
+        }
     }
 
     /** 그래프 날짜들의 환율을 받아 둔다 (이미 받은 날짜·오늘은 건너뛴다). */
@@ -301,5 +357,7 @@ class MarketDataRepository(
         const val FX_DOC = "fx_USD"
         const val PERSIST_INTERVAL_MS = 15 * 60 * 1000L
         const val FX_INTERVAL_MS = 30 * 60 * 1000L
+        const val LOAD_TIMEOUT_MS = 10_000L
+        const val FX_SAVE_CHUNK = 50
     }
 }
