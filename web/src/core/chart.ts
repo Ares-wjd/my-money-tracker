@@ -1,15 +1,14 @@
 // core 의 ChartCalculator 와 같은 규칙.
 import type { Holding, InvestmentAccount, MarketSnapshot, Record } from '../model';
-import { plusDays, plusMonths } from './dates';
+import { plusDays } from './dates';
 import { currentPrice, latestUsdKrw, priceAt, usdKrwAt } from './market';
 import { summarize } from './portfolio';
 
 export type ChartInterval = 'DAY_1' | 'DAY_5' | 'DAY_10' | 'MONTH' | 'YEAR';
 export const CHART_INTERVALS: readonly ChartInterval[] = ['DAY_1', 'DAY_5', 'DAY_10', 'MONTH', 'YEAR'];
 export const CHART_INTERVAL_LABEL: { [K in ChartInterval]: string } = { DAY_1: '1일', DAY_5: '5일', DAY_10: '10일', MONTH: '1달', YEAR: '1년' };
-/** 일 단위 보기의 간격(일)과 기본 표시 기간(개월). */
+/** 일 단위 보기의 간격(일). */
 const STEP_DAYS: { [K in ChartInterval]: number } = { DAY_1: 1, DAY_5: 5, DAY_10: 10, MONTH: 0, YEAR: 0 };
-const DEFAULT_MONTHS: { [K in ChartInterval]: number | null } = { DAY_1: 3, DAY_5: 6, DAY_10: 12, MONTH: null, YEAR: null };
 
 export interface ChartPoint {
   date: string;
@@ -17,7 +16,7 @@ export interface ChartPoint {
   investedKrw: number;
   dividendsKrw: number;
   /** 그날 가격이 없는 보유 종목이 있는지 (폰이 아직 과거 종가를 받지 않음 → 평가금이 낮게 나옴) */
-  missingPrice?: boolean;
+  missingPrice: boolean;
 }
 
 function endOfMonth(year: number, month: number): string {
@@ -26,11 +25,10 @@ function endOfMonth(year: number, month: number): string {
 }
 
 /**
- * 그래프의 점 날짜 (오래된 순). 마지막 점은 항상 [today].
+ * 그래프의 점 날짜 (오래된 순, 첫 기록일부터 전체 기간). 마지막 점은 항상 [today].
  * @param firstDate 첫 기록 날짜. 이보다 앞선 점은 만들지 않는다.
- * @param rangeFactor "이전 기간 더 보기" 를 누를 때마다 1씩 늘어난다 (일 단위 보기에서만 사용).
  */
-export function pointDates(interval: ChartInterval, today: string, firstDate: string, rangeFactor = 1): string[] {
+export function pointDates(interval: ChartInterval, today: string, firstDate: string): string[] {
   if (firstDate > today) return [today];
   const [fy, fm] = [Number(firstDate.slice(0, 4)), Number(firstDate.slice(5, 7))];
   const [ty, tm] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))];
@@ -44,19 +42,9 @@ export function pointDates(interval: ChartInterval, today: string, firstDate: st
     for (let y = fy; y < ty; y++) dates.push(`${String(y).padStart(4, '0')}-12-31`);
     return [...dates, today];
   }
-  const months = (DEFAULT_MONTHS[interval] ?? 3) * Math.max(1, rangeFactor);
-  const monthStart = plusMonths(today, -months);
-  const start = firstDate > monthStart ? firstDate : monthStart;
   const dates: string[] = [];
-  for (let d = today; d >= start; d = plusDays(d, -STEP_DAYS[interval])) dates.push(d);
+  for (let d = today; d >= firstDate; d = plusDays(d, -STEP_DAYS[interval])) dates.push(d);
   return dates.reverse();
-}
-
-/** 일 단위 보기에서 더 이전 기간이 남아 있는지. */
-export function hasEarlier(interval: ChartInterval, today: string, firstDate: string, rangeFactor: number): boolean {
-  const months = DEFAULT_MONTHS[interval];
-  if (months === null) return false;
-  return plusMonths(today, -months * Math.max(1, rangeFactor)) > firstDate;
 }
 
 /**

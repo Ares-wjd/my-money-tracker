@@ -11,7 +11,6 @@ import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
@@ -35,10 +34,10 @@ class ChartCalculatorTest {
     fun dayPointsStepBackFromToday() {
         val dates = ChartCalculator.pointDates(ChartInterval.DAY_5, today, today.minusDays(12))
         assertEquals(listOf(today.minusDays(10), today.minusDays(5), today), dates)
-        val limited = ChartCalculator.pointDates(ChartInterval.DAY_1, today, LocalDate.of(2020, 1, 1))
-        assertEquals(today.minusMonths(3), limited.first())
-        assertTrue(ChartCalculator.hasEarlier(ChartInterval.DAY_1, today, LocalDate.of(2020, 1, 1), 1))
-        assertFalse(ChartCalculator.hasEarlier(ChartInterval.MONTH, today, LocalDate.of(2020, 1, 1), 1))
+        // 전체 기간: 첫 기록일부터
+        val all = ChartCalculator.pointDates(ChartInterval.DAY_1, today, LocalDate.of(2020, 1, 1))
+        assertEquals(LocalDate.of(2020, 1, 1), all.first())
+        assertEquals(today, all.last())
     }
 
     @Test

@@ -16,7 +16,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,7 +56,6 @@ fun AssetChartCard(
     accounts: List<InvestmentAccount>,
     onSelectInterval: (ChartInterval) -> Unit,
     onSelectAccount: (String?) -> Unit,
-    onShowEarlier: () -> Unit,
 ) {
     SectionCard(title = "자산 추이") {
         SegmentedPills(ChartInterval.entries, state.selection.interval, { it.label }, onSelectInterval)
@@ -72,7 +70,11 @@ fun AssetChartCard(
         }
         if (state.points.size < 2) {
             Text(
-                if (state.loading) "과거 시세를 받는 중입니다..." else "기록이 쌓이면 그래프가 표시됩니다.",
+                when {
+                    state.loading -> "과거 시세를 받는 중입니다..."
+                    state.computing -> "그래프를 계산하는 중입니다..."
+                    else -> "기록이 쌓이면 그래프가 표시됩니다."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -82,10 +84,14 @@ fun AssetChartCard(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Legend(chartValueColor(), dashed = false, label = "평가금")
             Legend(chartInvestedColor(), dashed = true, label = "투자금")
-            if (state.loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-        }
-        if (state.hasEarlier) {
-            TextButton(onClick = onShowEarlier) { Text("이전 기간 더 보기") }
+            if (state.loading || state.computing) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text(
+                    if (state.loading) "과거 시세를 받는 중" else "그래프 계산 중",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         state.errors.take(3).forEach { WarningText(it) }
     }

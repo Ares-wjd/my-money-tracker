@@ -47,7 +47,8 @@ class MarketDataRepository(
     /** Firestore 에 저장된 시세를 한 번이라도 읽었는지 (읽기 전에는 이미 받은 기간을 몰라 다시 받게 되므로 기다린다). */
     private val loaded = CompletableDeferred<Unit>()
 
-    private suspend fun awaitLoaded() {
+    /** 저장된 시세를 한 번 읽을 때까지 기다린다 (그래프 계산도 시세를 읽은 뒤에). */
+    suspend fun awaitLoaded() {
         withTimeoutOrNull(LOAD_TIMEOUT_MS) { loaded.await() }
     }
 

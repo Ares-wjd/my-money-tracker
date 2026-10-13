@@ -22,7 +22,7 @@ class UserDataDeleter(private val db: FirebaseFirestore) {
     private companion object {
         val COLLECTIONS = listOf(
             "accounts", "holdings", "records", "settings", "marketData", "savingsAccounts", "savingsGoals",
-            "savingsGoalGroups", "allocationTargets",
+            "savingsGoalGroups", "allocationTargets", "chartDaily",
         )
     }
 }

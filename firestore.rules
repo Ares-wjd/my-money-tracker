@@ -118,6 +118,22 @@ service cloud.firestore {
           && (!('rates' in data()) || (data().rates is map && data().rates.size() <= 20000));
       }
 
+      // 그래프 일별 값 (계좌마다 미리 계산해 저장)
+      match /chartDaily/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && id.size() <= 120
+          && onlyKeys(['v', 'from', 'to', 'days', 'recSig', 'accSig', 'priceSig', 'anchor'])
+          && num(data().v)
+          && date(data().from)
+          && date(data().to)
+          && optDate(data().get('anchor', null))
+          && str(data().accSig, 20)
+          && data().days is map && data().days.size() <= 20000
+          && data().recSig is map && data().recSig.size() <= 20000
+          && data().priceSig is map && data().priceSig.size() <= 20000;
+      }
+
       // 목적통장
       match /savingsAccounts/{id} {
         allow read, delete: if isOwner(uid);

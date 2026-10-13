@@ -207,7 +207,6 @@ private fun HomeContent(
                 accounts = current.accounts,
                 onSelectInterval = viewModel::selectChartInterval,
                 onSelectAccount = viewModel::selectChartAccount,
-                onShowEarlier = viewModel::showEarlierChart,
             )
         }
 

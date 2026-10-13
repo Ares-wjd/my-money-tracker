@@ -21,7 +21,9 @@ import {
   toSavingsGoalGroup,
   toAllocationTarget,
   toSettings,
+  toStoredChart,
 } from './mappers';
+import type { StoredChart } from '../core/chartStore';
 import type { AllocationTarget } from '../core/allocation';
 
 /** 로그인한 사용자의 전체 데이터 (users/{uid} 이하). 폰과 같은 문서를 실시간으로 받는다. */
@@ -35,10 +37,12 @@ export interface UserData {
   savingsGoals: SavingsGoal[];
   savingsGoalGroups: SavingsGoalGroup[];
   allocationTargets: AllocationTarget[];
+  /** 미리 계산해 저장한 그래프 일별 값 (계좌 id → 값). 읽을 수 없으면(보안 규칙 게시 전 등) null → 그래프를 바로 계산 */
+  charts: Map<string, StoredChart> | null;
 }
 
 type Key = keyof UserData;
-const KEYS: readonly Key[] = ['accounts', 'holdings', 'records', 'settings', 'market', 'savingsAccounts', 'savingsGoals', 'savingsGoalGroups', 'allocationTargets'];
+const KEYS: readonly Key[] = ['accounts', 'holdings', 'records', 'settings', 'market', 'savingsAccounts', 'savingsGoals', 'savingsGoalGroups', 'allocationTargets', 'charts'];
 
 export interface UserDataState {
   /** 모든 컬렉션의 첫 응답이 오기 전에는 null */
@@ -85,6 +89,18 @@ export function useUserData(uid: string): UserDataState {
         collection(user, 'marketData'),
         (snapshot) => set('market', toMarketSnapshot(snapshot.docs.map((d) => ({ id: d.id, data: d.data() })))),
         fail('시세'),
+      ),
+      onSnapshot(
+        collection(user, 'chartDaily'),
+        (snapshot) => {
+          const charts = new Map<string, StoredChart>();
+          for (const d of snapshot.docs) {
+            const chart = toStoredChart(d.data());
+            if (chart) charts.set(d.id, chart);
+          }
+          set('charts', charts);
+        },
+        () => set('charts', null),
       ),
     ];
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());

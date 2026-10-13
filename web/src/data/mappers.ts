@@ -18,6 +18,7 @@ import {
   type SavingsSubAccount,
 } from '../model';
 import type { AllocationTarget, ToleranceRule } from '../core/allocation';
+import type { DayValue, StoredChart } from '../core/chartStore';
 
 type Data = { [key: string]: unknown };
 
@@ -234,5 +235,31 @@ export function toAllocationTarget(id: string, d: Data): AllocationTarget | null
     units: numberMap(d.units),
     prices: numberMap(d.prices),
     noBuy: Array.isArray(d.noBuy) ? d.noBuy.filter((x): x is string => typeof x === 'string') : [],
+  };
+}
+
+/** chartDaily/{계좌id} 문서 → 저장된 그래프 일별 값 (형식이 틀리면 null → 다시 계산). */
+export function toStoredChart(d: Data): StoredChart | null {
+  const from = date(d.from);
+  const to = date(d.to);
+  if (from === null || to === null) return null;
+  const days = new Map<string, DayValue>();
+  if (d.days && typeof d.days === 'object') {
+    for (const [k, v] of Object.entries(d.days as Data)) {
+      if (date(k) === null || !Array.isArray(v) || v.length < 3 || !v.slice(0, 3).every((x) => typeof x === 'number')) continue;
+      days.set(k, { valueKrw: v[0], investedKrw: v[1], dividendsKrw: v[2], missingPrice: v[3] === 1 });
+    }
+  }
+  const strings = (v: unknown) =>
+    new Map(v && typeof v === 'object' ? Object.entries(v as Data).filter((e): e is [string, string] => typeof e[1] === 'string') : []);
+  return {
+    version: num(d.v) ?? 0,
+    from,
+    to,
+    days,
+    recSig: strings(d.recSig),
+    accSig: str(d.accSig) ?? '',
+    priceSig: strings(d.priceSig),
+    anchor: date(d.anchor),
   };
 }

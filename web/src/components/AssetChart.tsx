@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { CHART_INTERVALS, CHART_INTERVAL_LABEL, hasEarlier, pointDates, series, type ChartInterval, type ChartPoint } from '../core/chart';
+import { CHART_INTERVALS, CHART_INTERVAL_LABEL, pointDates, series, type ChartInterval, type ChartPoint } from '../core/chart';
+import { assembleChart, firstDates } from '../core/chartStore';
 import { formatDate, formatShortDate, today as todayOf } from '../core/dates';
 import { signedWon, won } from '../core/format';
-import type { AppData } from '../data/DataContext';
+import { useData, type AppData } from '../data/DataContext';
 import { profitClass, Warning } from './ui';
 
 /** 축 눈금용 짧은 금액: 1.2억, 1,278만, 5,000 */
@@ -35,9 +36,9 @@ const HEIGHT = 260;
 const PAD = { top: 12, right: 12, bottom: 28, left: 56 };
 
 export function AssetChart({ data }: { data: AppData }) {
+  const { chartComputing } = useData();
   const [interval, setChartInterval] = useState<ChartInterval>('MONTH');
   const [accountId, setAccountId] = useState<string | null>(null);
-  const [rangeFactor, setRangeFactor] = useState(1);
   const [selected, setSelected] = useState<number | null>(null);
   const [showTable, setShowTable] = useState(false);
   // 그래프 칸이 다시 그려질 때(표 ↔ 그래프 전환 등)마다 폭을 다시 잰다.
@@ -52,18 +53,22 @@ export function AssetChart({ data }: { data: AppData }) {
   }, [box]);
 
   const today = todayOf();
-  const { points, earlier } = useMemo(() => {
-    const target = data.records.filter((r) => accountId === null || r.accountId === accountId || r.toAccountId === accountId);
-    if (target.length === 0) return { points: [] as ChartPoint[], earlier: false };
-    const first = target.reduce((m, r) => (r.date < m ? r.date : m), target[0].date);
-    const dates = pointDates(interval, today, first, rangeFactor);
-    return {
-      points: series(dates, today, data.accounts, data.holdings, data.records, data.market, data.settings.manualUsdKrw, accountId),
-      earlier: hasEarlier(interval, today, first, rangeFactor),
-    };
-  }, [data, interval, accountId, rangeFactor, today]);
+  // 저장된 일별 값 + 현재가로 바로 계산한 오늘 값 (모든 보기 단위가 전체 기간)
+  const { points, pending } = useMemo(() => {
+    const firsts = firstDates(data.accounts.filter((a) => accountId === null || a.id === accountId), data.records);
+    if (firsts.size === 0) return { points: [] as ChartPoint[], pending: false };
+    const { manualUsdKrw } = data.settings;
+    if (data.charts === null) {
+      // 저장값을 읽을 수 없으면 (보안 규칙 게시 전) 바로 계산
+      const dates = pointDates(interval, today, [...firsts.values()].sort()[0]);
+      return { points: series(dates, today, data.accounts, data.holdings, data.records, data.market, manualUsdKrw, accountId), pending: false };
+    }
+    const todayPoint = series([today], today, data.accounts, data.holdings, data.records, data.market, manualUsdKrw, accountId)[0];
+    return assembleChart(interval, today, firsts, data.charts, todayPoint);
+  }, [data, interval, accountId, today]);
+  const computing = chartComputing || pending;
 
-  useEffect(() => setSelected(null), [interval, accountId, rangeFactor]);
+  useEffect(() => setSelected(null), [interval, accountId]);
 
   const index = selected ?? points.length - 1;
   const point = points[index];
@@ -101,7 +106,7 @@ export function AssetChart({ data }: { data: AppData }) {
       <div className="chart-filters">
         <div className="segmented" role="radiogroup" aria-label="보기 단위">
           {CHART_INTERVALS.map((iv) => (
-            <button key={iv} role="radio" aria-checked={interval === iv} className={interval === iv ? 'on' : ''} onClick={() => { setChartInterval(iv); setRangeFactor(1); }}>
+            <button key={iv} role="radio" aria-checked={interval === iv} className={interval === iv ? 'on' : ''} onClick={() => setChartInterval(iv)}>
               {CHART_INTERVAL_LABEL[iv]}
             </button>
           ))}
@@ -192,7 +197,7 @@ export function AssetChart({ data }: { data: AppData }) {
           )}
           <div className="chart-foot">
             <span className="muted small">과거 종가·환율은 폰 앱이 받아 둔 값을 씁니다 (휴일은 그 전 거래일 값).</span>
-            {earlier && <button className="text-button" onClick={() => setRangeFactor(rangeFactor + 1)}>이전 기간 더 보기</button>}
+            {computing && <span className="muted small" role="status">그래프 계산 중…</span>}
           </div>
         </>
       )}

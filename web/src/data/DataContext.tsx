@@ -6,6 +6,7 @@ import { compareRecords, krwHoldingView, summarize, type DisplayCurrency, type H
 import { linkedAccountIds, type Holding, type InvestmentAccount, type Record } from '../model';
 import type { RecordLookup } from '../records/recordText';
 import { latestQuoteDate } from './mappers';
+import { useChartCompute } from './useChartCompute';
 import { useUserData, type UserData } from './useUserData';
 
 /** 화면들이 함께 쓰는 데이터와 계산 결과 (폰 앱의 PortfolioData 에 해당). */
@@ -34,6 +35,10 @@ interface DataState {
   setDisplayCurrency: (mode: DisplayCurrency) => void;
   holdingSort: HoldingSort;
   setHoldingSort: (sort: HoldingSort) => void;
+  /** 그래프 일별 값을 계산하는 중 */
+  chartComputing: boolean;
+  /** 설정의 [그래프 전체 다시 계산] */
+  recomputeCharts: () => void;
 }
 
 const DataContext = createContext<DataState | null>(null);
@@ -59,6 +64,7 @@ function readDisplayCurrency(): DisplayCurrency {
 
 export function DataProvider({ uid, children }: { uid: string; children: ReactNode }) {
   const { data: raw, errors } = useUserData(uid);
+  const { computing: chartComputing, recompute: recomputeCharts } = useChartCompute(uid, raw);
   const [displayCurrency, setMode] = useState<DisplayCurrency>(readDisplayCurrency);
   const [holdingSort, setSort] = useState<HoldingSort>(readHoldingSort);
 
@@ -113,7 +119,7 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
   };
 
   return (
-    <DataContext.Provider value={{ uid, data, errors, displayCurrency, setDisplayCurrency, holdingSort, setHoldingSort }}>
+    <DataContext.Provider value={{ uid, data, errors, displayCurrency, setDisplayCurrency, holdingSort, setHoldingSort, chartComputing, recomputeCharts }}>
       {children}
     </DataContext.Provider>
   );

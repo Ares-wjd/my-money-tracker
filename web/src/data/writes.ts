@@ -3,7 +3,8 @@ import { collection, deleteDoc, doc, setDoc, writeBatch, type DocumentReference 
 import { firebase } from '../firebase';
 import type { Holding, InvestmentAccount, Record, SavingsAccount, SavingsGoal, SavingsGoalGroup } from '../model';
 import type { AllocationTarget } from '../core/allocation';
-import { allocationTargetDoc, accountDoc, holdingDoc, recordDoc, savingsAccountDoc, savingsGoalDoc, savingsGoalGroupDoc } from './serialize';
+import type { StoredChart } from '../core/chartStore';
+import { allocationTargetDoc, accountDoc, holdingDoc, recordDoc, savingsAccountDoc, savingsGoalDoc, savingsGoalGroupDoc, storedChartDoc } from './serialize';
 
 function db() {
   if (!firebase) throw new Error('Firebase 설정이 없습니다.');
@@ -29,6 +30,10 @@ export const saveSavingsGoal = (uid: string, g: SavingsGoal) => save(uid, 'savin
 
 export const saveAllocationTarget = (uid: string, t: AllocationTarget) => save(uid, 'allocationTargets', t.id, allocationTargetDoc(t));
 export const deleteAllocationTarget = (uid: string, id: string) => deleteDoc(doc(col(uid, 'allocationTargets'), id));
+
+/** 그래프 일별 값 (계좌마다 문서 하나). */
+export const saveChart = (uid: string, accountId: string, c: StoredChart) => setDoc(doc(col(uid, 'chartDaily'), accountId), storedChartDoc(c));
+export const deleteChart = (uid: string, accountId: string) => deleteDoc(doc(col(uid, 'chartDaily'), accountId));
 
 /**
  * 표로 일괄 입력: 새 종목과 매매 기록을 한꺼번에 저장한다. records 의 holdingId 가 newHoldings 의 키면 새 종목 id 로 바꾼다.

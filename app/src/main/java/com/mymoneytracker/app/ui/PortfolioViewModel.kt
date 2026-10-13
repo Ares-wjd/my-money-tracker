@@ -1,6 +1,7 @@
 package com.mymoneytracker.app.ui
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -9,6 +10,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.google.firebase.firestore.FirebaseFirestore
 import com.mymoneytracker.app.data.ApiException
+import com.mymoneytracker.app.data.ChartRepository
 import com.mymoneytracker.app.data.AppSettings
 import com.mymoneytracker.app.data.EximClient
 import com.mymoneytracker.app.data.KisClient
@@ -20,6 +22,8 @@ import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.chart.ChartCalculator
 import com.mymoneytracker.core.chart.ChartInterval
 import com.mymoneytracker.core.chart.ChartPoint
+import com.mymoneytracker.core.chart.ChartStore
+import com.mymoneytracker.core.chart.StoredChart
 import com.mymoneytracker.core.market.HistoryRanges
 import com.mymoneytracker.core.market.MarketSnapshot
 import com.mymoneytracker.core.market.PriceLookup
@@ -40,19 +44,24 @@ import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.PortfolioSummary
 import com.mymoneytracker.core.portfolio.TradeImport
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 /** 화면들이 공유하는 투자 데이터 전체. */
@@ -118,18 +127,19 @@ data class RefreshState(
 data class ChartSelection(
     val interval: ChartInterval = ChartInterval.MONTH,
     val accountId: String? = null,
-    val rangeFactor: Int = 1,
 )
 
+/** [loading] 과거 시세를 받는 중, [computing] 일별 값을 계산하는 중 (또는 아직 계산하지 않은 날이 있음). */
 data class ChartState(
     val selection: ChartSelection = ChartSelection(),
     val points: List<ChartPoint> = emptyList(),
-    val hasEarlier: Boolean = false,
     val loading: Boolean = false,
+    val computing: Boolean = false,
     val errors: List<String> = emptyList(),
 )
 
 /** 로그인한 사용자 한 명의 투자 데이터·시세·그래프·한투 연결을 화면들에 공급한다. */
+@OptIn(FlowPreview::class)
 class PortfolioViewModel(application: Application, uid: String) : AndroidViewModel(application) {
 
     private val _message = MutableStateFlow<String?>(null)
@@ -141,6 +151,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     private val firestore = FirebaseFirestore.getInstance()
     private val repository = PortfolioRepository(firestore, uid) { _message.value = it }
     private val marketRepository = MarketDataRepository(firestore, uid, kis, exim)
+    private val chartRepository = ChartRepository(firestore, uid)
     private val syncService = KisSyncService(kis, repository)
 
     private val _apiStatus = MutableStateFlow(readApiStatus())
@@ -242,22 +253,45 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     private var historyJob: Job? = null
     private var historyCheckedAt = 0L
 
-    val chart: StateFlow<ChartState> = combine(data, chartSelection, chartLoading, chartErrors) { current, selection, loading, errors ->
+    /** 미리 계산해 저장한 그래프 일별 값 (계좌 id → 값). null 이면 아직 읽기 전. */
+    private val storedCharts: StateFlow<Map<String, StoredChart>?> = chartRepository.stored()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    private val _chartComputing = MutableStateFlow(false)
+    /** 그래프 일별 값을 계산하는 중 (설정의 [그래프 전체 다시 계산] 표시용). */
+    val chartComputing: StateFlow<Boolean> = _chartComputing.asStateFlow()
+    private val chartTrigger = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private var forceChart = false
+
+    /** 그래프: 저장된 일별 값 + 현재가로 바로 계산한 오늘 값 (모든 보기 단위가 전체 기간). */
+    val chart: StateFlow<ChartState> = combine(
+        combine(data, storedCharts, _chartComputing, ::Triple),
+        chartSelection,
+        chartLoading,
+        chartErrors,
+    ) { (current, stored, computing), selection, loading, errors ->
         if (current == null) return@combine ChartState(selection, loading = true)
         val today = LocalDate.now()
-        val targetRecords = current.records.filter {
-            selection.accountId == null || it.accountId == selection.accountId || it.toAccountId == selection.accountId
+        val accounts = current.accounts.filter { selection.accountId == null || it.id == selection.accountId }
+        val firsts = ChartStore.firstDates(accounts, current.records)
+        if (firsts.isEmpty()) return@combine ChartState(selection, loading = loading, errors = errors)
+        if (!chartRepository.available) {
+            // 저장값을 읽을 수 없으면 (보안 규칙 게시 전) 예전처럼 바로 계산
+            val dates = ChartCalculator.pointDates(selection.interval, today, firsts.values.min())
+            val points = ChartCalculator.series(
+                dates, today, current.accounts, current.holdings, current.records, current.market, current.settings.manualUsdKrw, selection.accountId,
+            )
+            return@combine ChartState(selection, points, loading = loading, errors = errors)
         }
-        val first = targetRecords.minOfOrNull { it.date } ?: return@combine ChartState(selection, loading = loading, errors = errors)
-        val dates = ChartCalculator.pointDates(selection.interval, today, first, selection.rangeFactor)
+        val todayPoint = ChartCalculator.series(
+            listOf(today), today, current.accounts, current.holdings, current.records, current.market,
+            current.settings.manualUsdKrw, selection.accountId,
+        ).single()
+        val view = ChartStore.assemble(selection.interval, today, firsts, stored.orEmpty(), todayPoint)
         ChartState(
             selection = selection,
-            points = ChartCalculator.series(
-                dates, today, current.accounts, current.holdings, current.records, current.market,
-                current.settings.manualUsdKrw, selection.accountId,
-            ),
-            hasEarlier = ChartCalculator.hasEarlier(selection.interval, today, first, selection.rangeFactor),
+            points = view.points,
             loading = loading,
+            computing = computing || view.pending,
             errors = errors,
         )
     }
@@ -270,6 +304,12 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             data.filterNotNull().first()
             refreshQuotes(silent = true)
             ensureTradeFx()
+        }
+        // 기록·종목·시세·저장값이 바뀌면 (잠깐 기다렸다가) 다시 계산할 범위를 찾아 계산한다. 한 번에 하나씩.
+        viewModelScope.launch {
+            merge(data.filterNotNull().map { }, storedCharts.filterNotNull().map { }, chartTrigger)
+                .debounce(CHART_DEBOUNCE_MS)
+                .collect { runCatching { computeCharts() }.onFailure { Log.w(TAG, "그래프 계산 실패", it) } }
         }
     }
 
@@ -418,15 +458,57 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     // ---------------------------------------------------------------- 그래프
 
     fun selectChartInterval(interval: ChartInterval) {
-        chartSelection.value = chartSelection.value.copy(interval = interval, rangeFactor = 1)
+        chartSelection.value = chartSelection.value.copy(interval = interval)
     }
 
     fun selectChartAccount(accountId: String?) {
         chartSelection.value = chartSelection.value.copy(accountId = accountId)
     }
 
-    fun showEarlierChart() {
-        chartSelection.value = chartSelection.value.copy(rangeFactor = chartSelection.value.rangeFactor + 1)
+    /** 설정의 [그래프 전체 다시 계산]: 모든 계좌의 일별 값을 처음부터 다시 계산한다. */
+    fun recomputeCharts() {
+        forceChart = true
+        chartTrigger.tryEmit(Unit)
+    }
+
+    /**
+     * 그래프 일별 값 계산: 계좌마다 지금 기록·종목·시세 요약을 저장된 것과 비교해 다시 계산할 범위만 계산하고 저장한다.
+     * 과거 시세를 받는 중이면 끝난 뒤에 한다 (받는 동안 여러 번 다시 계산하지 않게).
+     */
+    private suspend fun computeCharts() {
+        if (historyJob?.isActive == true || !chartRepository.available) return
+        val current = data.value ?: return
+        val stored = storedCharts.value ?: return
+        marketRepository.awaitLoaded()
+        val force = forceChart
+        forceChart = false
+        val end = LocalDate.now().minusDays(1)
+        // 지운 계좌의 저장값은 지운다
+        val ids = current.accounts.map { it.id }.toSet()
+        stored.keys.filter { it !in ids }.forEach { chartRepository.delete(it) }
+        val plans = withContext(Dispatchers.Default) {
+            current.accounts.mapNotNull { account ->
+                val plan = ChartStore.plan(
+                    account, current.holdings, current.records, current.market, current.settings.manualUsdKrw, stored[account.id], end, force,
+                )
+                if (plan == null && stored[account.id] != null && ChartStore.related(account.id, current.records).isEmpty()) {
+                    chartRepository.delete(account.id)
+                }
+                plan?.let { account to it }
+            }
+        }
+        if (plans.isEmpty()) return
+        _chartComputing.value = true
+        try {
+            for ((account, plan) in plans) {
+                val computed = withContext(Dispatchers.Default) {
+                    ChartStore.compute(plan, account, current.holdings, current.records, current.market, current.settings.manualUsdKrw)
+                }
+                chartRepository.save(account.id, ChartStore.build(plan, computed))
+            }
+        } finally {
+            _chartComputing.value = false
+        }
     }
 
     /**
@@ -458,6 +540,8 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             }.onFailure { errors += "과거 시세를 받지 못했습니다." }
             chartErrors.value = errors.distinct()
             chartLoading.value = false
+            // 받은 시세로 그래프 일별 값을 다시 계산
+            chartTrigger.tryEmit(Unit)
         }
     }
 
@@ -660,6 +744,9 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         private const val FX_DAILY_BUDGET = 600
         private const val HISTORY_INTERVAL_MS = 30 * 60 * 1000L
         private const val HISTORY_AFTER_SAVE_MS = 3_000L
+        /** 기록·시세가 잇달아 바뀔 때 그래프 계산을 한 번만 하도록 기다리는 시간. */
+        private const val CHART_DEBOUNCE_MS = 2_000L
+        private const val TAG = "PortfolioViewModel"
 
         fun factory(uid: String): ViewModelProvider.Factory = viewModelFactory {
             initializer { PortfolioViewModel(this[APPLICATION_KEY]!!, uid) }

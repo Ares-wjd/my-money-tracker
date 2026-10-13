@@ -3,6 +3,7 @@
 import type { Holding, InvestmentAccount, Record, SavingsAccount, SavingsGoal, SavingsGoalGroup } from '../model';
 import type { AllocationTarget } from '../core/allocation';
 import { savingsBalance } from '../model';
+import type { StoredChart } from '../core/chartStore';
 
 const createdAt = (value: number) => (value > 0 ? value : Date.now());
 
@@ -109,5 +110,19 @@ export function allocationTargetDoc(t: AllocationTarget) {
     units: t.units,
     prices: t.prices,
     noBuy: t.noBuy,
+  };
+}
+
+/** 그래프 일별 값 (폰 ChartRepository 와 같은 형식). */
+export function storedChartDoc(c: StoredChart) {
+  return {
+    v: c.version,
+    from: c.from,
+    to: c.to,
+    days: Object.fromEntries([...c.days].map(([d, x]) => [d, [x.valueKrw, x.investedKrw, x.dividendsKrw, x.missingPrice ? 1 : 0]])),
+    recSig: Object.fromEntries(c.recSig),
+    accSig: c.accSig,
+    priceSig: Object.fromEntries(c.priceSig),
+    anchor: c.anchor,
   };
 }

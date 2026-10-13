@@ -66,6 +66,7 @@ fun SettingsScreen(
     val data by portfolioViewModel.data.collectAsStateWithLifecycle()
     val apiStatus by portfolioViewModel.apiStatus.collectAsStateWithLifecycle()
     val syncing by portfolioViewModel.syncing.collectAsStateWithLifecycle()
+    val chartComputing by portfolioViewModel.chartComputing.collectAsStateWithLifecycle()
     val updateState by updateViewModel.state.collectAsStateWithLifecycle()
     var confirmSignOut by rememberSaveable { mutableStateOf(false) }
 
@@ -94,6 +95,18 @@ fun SettingsScreen(
                     savedRate = current.settings.manualUsdKrw,
                     onSave = { portfolioViewModel.saveManualUsdKrw(it) },
                 )
+            }
+
+            SectionCard(title = "자산 추이 그래프") {
+                Text(
+                    "그래프는 날짜별 값을 미리 계산해 저장해 두고 보여줍니다. 기록을 바꾸면 바뀐 날짜부터 자동으로 다시 계산합니다. " +
+                        "값이 이상해 보이면 처음부터 다시 계산하세요 (계좌·기간이 많으면 시간이 걸릴 수 있습니다).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = { portfolioViewModel.recomputeCharts() }, enabled = !chartComputing) {
+                    Text(if (chartComputing) "계산하는 중..." else "그래프 전체 다시 계산")
+                }
             }
 
             SectionCard(title = "앱 정보") {

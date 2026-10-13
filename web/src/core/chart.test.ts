@@ -1,7 +1,7 @@
 // core ChartCalculatorTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
-import { hasEarlier, pointDates, series } from './chart';
-import { plusDays, plusMonths } from './dates';
+import { pointDates, series } from './chart';
+import { plusDays } from './dates';
 import { account, holding, record } from './testData';
 
 const today = '2026-10-09';
@@ -14,10 +14,10 @@ describe('자산 추이 (ChartCalculatorTest)', () => {
 
   it('일 단위 보기는 오늘부터 거꾸로', () => {
     expect(pointDates('DAY_5', today, plusDays(today, -12))).toEqual([plusDays(today, -10), plusDays(today, -5), today]);
-    const limited = pointDates('DAY_1', today, '2020-01-01');
-    expect(limited[0]).toBe(plusMonths(today, -3));
-    expect(hasEarlier('DAY_1', today, '2020-01-01', 1)).toBe(true);
-    expect(hasEarlier('MONTH', today, '2020-01-01', 1)).toBe(false);
+    // 전체 기간: 첫 기록일부터
+    const all = pointDates('DAY_1', today, '2020-01-01');
+    expect(all[0]).toBe('2020-01-01');
+    expect(all[all.length - 1]).toBe(today);
   });
 
   it('첫 기록이 미래면 오늘 하나', () => {
