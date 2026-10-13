@@ -63,6 +63,13 @@ class KisClient(private val store: SecureStore) {
     private val tokenMutex = Mutex()
     private val callMutex = Mutex()
 
+    // 초당 호출 한도 대응: 모든 호출을 한 줄로 세우고(callMutex, 순서대로), 호출 사이 간격을 둔다.
+    // 한도에 걸리면 모든 호출을 잠시 멈추고 간격을 늘리며, 성공이 이어지면 다시 줄인다 (키마다 다른 허용 속도에 맞춤).
+    private var callInterval = CALL_INTERVAL_MS
+    private var lastCallAt = 0L
+    private var pauseUntil = 0L
+    private var successStreak = 0
+
     val hasCredentials: Boolean
         get() = !store.get(SecureStore.KIS_APP_KEY).isNullOrBlank() && !store.get(SecureStore.KIS_APP_SECRET).isNullOrBlank()
 
@@ -112,7 +119,7 @@ class KisClient(private val store: SecureStore) {
 
     /**
      * 조회 API 호출. rt_cd 가 0 이 아니면 한투가 보낸 메시지로 예외를 던진다.
-     * 초당 호출 한도(EGW00201)에 걸리면 잠시 기다렸다가 최대 [MAX_RETRIES] 번 다시 시도한다.
+     * 초당 호출 한도에 걸리면 모든 호출을 잠시 멈추고 간격을 늘린 뒤 최대 [MAX_RETRIES] 번 다시 시도한다.
      */
     private suspend fun call(path: String, trId: String, params: Map<String, String>, continued: Boolean = false): KisResponse {
         val (appKey, appSecret) = credentials()
@@ -120,7 +127,8 @@ class KisClient(private val store: SecureStore) {
         while (true) {
             val accessToken = token()
             val result = callMutex.withLock {
-                delay(CALL_INTERVAL_MS) // 초당 호출 한도 대응: 모든 호출을 한 줄로 세워 간격을 둔다
+                val wait = maxOf(lastCallAt + callInterval, pauseUntil) - System.currentTimeMillis()
+                if (wait > 0) delay(wait)
                 val response = withContext(Dispatchers.IO) {
                     HttpJson.get(
                         BASE + path,
@@ -136,27 +144,33 @@ class KisClient(private val store: SecureStore) {
                         ),
                     )
                 }
+                lastCallAt = System.currentTimeMillis()
                 val json = runCatching { JSONObject(response.body) }.getOrNull()
                     ?: throw ApiException("한투 응답을 읽지 못했습니다 (HTTP ${response.code}).")
+                if (isRateLimited(json)) {
+                    // 모든 호출을 잠시 멈추고 간격을 늘린다
+                    pauseUntil = lastCallAt + RATE_LIMIT_PAUSE_MS
+                    callInterval = minOf(callInterval * 2, MAX_CALL_INTERVAL_MS)
+                    successStreak = 0
+                } else if (++successStreak >= SPEED_UP_AFTER && callInterval > CALL_INTERVAL_MS) {
+                    callInterval = maxOf(CALL_INTERVAL_MS, callInterval - SPEED_UP_STEP_MS)
+                    successStreak = 0
+                }
                 json to response.headers["tr_cont"]
             }
             val (json, trCont) = result
             if (json.optString("rt_cd") == "0") return KisResponse(json, trCont in setOf("F", "M"))
 
             val msgCode = json.optString("msg_cd")
-            if (msgCode == RATE_LIMIT_CODE && attempt < MAX_RETRIES) {
+            val limited = isRateLimited(json)
+            if (limited && attempt < MAX_RETRIES) {
                 attempt++
-                delay(RETRY_BASE_DELAY_MS * attempt)
-                continue
+                continue // 다음 호출은 멈춤 시간과 늘어난 간격만큼 기다린다
             }
             if (msgCode == "EGW00123") clearToken() // 토큰 만료
             val message = json.optString("msg1").ifBlank { "알 수 없는 오류" }
             throw ApiException(
-                if (msgCode == RATE_LIMIT_CODE) {
-                    "한투 API 초당 호출 한도를 넘었습니다. 잠시 후 다시 시도하세요. ($message)"
-                } else {
-                    "한투 API 오류: $message"
-                },
+                if (limited) RATE_LIMIT_MESSAGE else "한투 API 오류: $message",
             )
         }
     }
@@ -444,8 +458,18 @@ class KisClient(private val store: SecureStore) {
         /** 호출 간격. 실전 한도(초당 20건)보다 넉넉하게 초당 약 4건. */
         private const val CALL_INTERVAL_MS = 250L
         private const val RATE_LIMIT_CODE = "EGW00201"
+
+        /** 초당 호출 한도 오류인지 (코드가 여러 가지라 문구도 본다: "초당 거래건수를 초과"). */
+        private fun isRateLimited(json: JSONObject): Boolean =
+            json.optString("msg_cd") == RATE_LIMIT_CODE || json.optString("msg1").contains("초당")
+
+        /** 한도 오류 문구 (일시적인 문제라 설정을 고칠 필요가 없다는 뜻이 드러나게). */
+        const val RATE_LIMIT_MESSAGE = "한투 API 호출이 몰려 잠시 후 다시 받습니다 (초당 호출 한도)."
+        private const val RATE_LIMIT_PAUSE_MS = 1_000L
+        private const val MAX_CALL_INTERVAL_MS = 1_000L
+        private const val SPEED_UP_AFTER = 20
+        private const val SPEED_UP_STEP_MS = 50L
         private const val MAX_RETRIES = 4
-        private const val RETRY_BASE_DELAY_MS = 1_200L
         private const val MAX_PAGES = 20
         private val YMD: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
 

@@ -14,6 +14,7 @@ import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.PricePoint
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
@@ -150,7 +151,7 @@ class MarketDataRepository(
                     }
                     MarketKeys.of(holding)?.let { saveLatest(it, quote.price, quote.prevClose) }
                 } catch (e: ApiException) {
-                    errors += "${holding.name}: ${e.message}"
+                    errors += if (e.message == KisClient.RATE_LIMIT_MESSAGE) KisClient.RATE_LIMIT_MESSAGE else "${holding.name}: ${e.message}"
                     if (e.message?.contains("App Key") == true || e.message?.contains("토큰") == true) return errors
                 } catch (e: Exception) {
                     errors += "${holding.name}: 네트워크 오류"
@@ -205,6 +206,8 @@ class MarketDataRepository(
                 if (end.isAfter(coveredTo)) missing += coveredTo to end
             }
             if (missing.isEmpty()) return@forEach
+            // 뒤에서 받는 작업이라 종목 사이마다 잠깐 쉬어, 잔고·현재가 새로고침이 먼저 나가게 한다
+            delay(HISTORY_GAP_MS)
             try {
                 val closes = mutableMapOf<String, Double>()
                 // 금현물: 기간별 일봉이 안 되면 최근 30 영업일 종가만 쓴다 (한 번만 받음)
@@ -248,7 +251,7 @@ class MarketDataRepository(
                 )
                 docMeta[key] = newFrom to newTo
             } catch (e: ApiException) {
-                errors += "${holding.name}: ${e.message}"
+                errors += if (e.message == KisClient.RATE_LIMIT_MESSAGE) KisClient.RATE_LIMIT_MESSAGE else "${holding.name}: ${e.message}"
             } catch (e: Exception) {
                 errors += "${holding.name}: 네트워크 오류"
             }
@@ -359,5 +362,6 @@ class MarketDataRepository(
         const val FX_INTERVAL_MS = 30 * 60 * 1000L
         const val LOAD_TIMEOUT_MS = 10_000L
         const val FX_SAVE_CHUNK = 50
+        const val HISTORY_GAP_MS = 500L
     }
 }

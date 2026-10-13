@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mymoneytracker.app.data.KisClient
 import com.mymoneytracker.app.ui.ApiStatus
 import com.mymoneytracker.app.ui.ChartState
 import com.mymoneytracker.app.ui.PortfolioData
@@ -192,7 +193,8 @@ private fun HomeContent(
                         WarningText("현재가가 없는 종목이 있어 평가금에서 빠져 있습니다. 종목 화면에서 가격을 입력하세요.")
                     }
                     refresh.errors.take(4).forEach { WarningText(it) }
-                    if (summary.missingFx || refresh.errors.isNotEmpty()) {
+                    // 일시적인 호출 한도 오류만 있으면 설정을 열 필요가 없다
+                    if (summary.missingFx || refresh.errors.any { it != KisClient.RATE_LIMIT_MESSAGE && !it.endsWith(KisClient.RATE_LIMIT_MESSAGE) }) {
                         TextButton(onClick = onOpenSettings) { Text("설정 열기") }
                     }
                 }
