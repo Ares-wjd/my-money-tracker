@@ -68,25 +68,37 @@ describe('그래프 일별 값 저장 (ChartStoreTest)', () => {
   it('바뀐 날짜부터만 다시 계산', () => {
     const sa = full(a);
     const added = [...records, record({ id: '6', accountId: 'a', type: 'DEPOSIT', date: '2026-09-20', amount: 1, krwAmount: 1 })];
+    // 그 앞의 알고 있는 가격(삼성전자 9/1 종가) 다음 날부터
     const plan = planChart(a, holdings, added, snapshot, null, sa, end)!;
-    expect(plan.start).toBe('2026-09-20');
-    expect([...plan.keep.keys()].sort().pop()).toBe('2026-09-19');
+    expect(plan.start).toBe('2026-09-02');
+    expect([...plan.keep.keys()].sort().pop()).toBe('2026-09-01');
     expect(planChart(b, holdings, added, snapshot, null, full(b), end)).toBeNull();
     const early = [...records, record({ id: '7', accountId: 'a', type: 'WITHDRAW', date: '2026-08-20', amount: 1, krwAmount: 1 })];
     expect(planChart(a, holdings, early, snapshot, null, sa, end)!.start).toBe('2026-08-01');
+    // 매수 기록을 지우면 그달 매매 단가 요약이 바뀌고, 그 앞에 알고 있는 가격이 없으므로 처음(9/10)부터
     const removed = records.filter((r) => r.id !== '5');
-    expect(planChart(b, holdings, removed, snapshot, null, full(b), end)!.start).toBe('2026-09-11');
+    expect(planChart(b, holdings, removed, snapshot, null, full(b), end)!.start).toBe('2026-09-10');
+    // 같은 종목(VOO)을 다른 계좌에서 산 기록도 가격 추정에 쓰므로 b 도 다시 계산
+    const vooA = holding({ id: 'h3', accountId: 'a', name: 'VOO', code: 'VOO', market: 'NYSE' });
+    const withVooA = [sam, voo, vooA];
+    const sb = full(b, records, snapshot, withVooA);
+    const tradeA = [...records, record({ id: '8', accountId: 'a', type: 'BUY', date: '2026-09-25', holdingId: 'h3', quantity: 1, price: 510, currency: 'USD' })];
+    expect(planChart(b, withVooA, tradeA, snapshot, null, sb, end)!.start).toBe('2026-09-10');
   });
 
   it('시세·새 날·종목 정보·전체 다시 계산', () => {
     const sb = full(b);
     const newClose: MarketSnapshot = { ...snapshot, prices: new Map([...snapshot.prices, [keyOf(voo)!, history({ '2026-09-11': 500, '2026-10-01': 520, '2026-10-08': 530 })]]) };
-    expect(planChart(b, holdings, records, newClose, null, sb, end)!.start).toBe('2026-10-01');
+    expect(planChart(b, holdings, records, newClose, null, sb, end)!.start).toBe('2026-09-12');
     const newFx: MarketSnapshot = { ...snapshot, usdKrw: closes({ '2026-09-10': 1_380, '2026-09-15': 1_390, '2026-10-01': 1_400 }) };
     expect(planChart(b, holdings, records, newFx, null, sb, end)!.start).toBe(sb.from);
     const next = planChart(b, holdings, records, snapshot, null, sb, today)!;
     expect(next.start).toBe(today);
     expect(planDates(next)).toEqual([today]);
+    const withToday: MarketSnapshot = { ...snapshot, prices: new Map([...snapshot.prices, [keyOf(voo)!, history({ '2026-09-11': 500, '2026-10-01': 520, '2026-10-13': 540 })]]) };
+    expect(planChart(b, holdings, records, withToday, null, sb, today)!.start).toBe(today);
+    const farClose: MarketSnapshot = { ...snapshot, prices: new Map([...snapshot.prices, [keyOf(voo)!, history({ '2026-09-11': 500, '2026-10-01': 520, '2026-10-20': 540 })]]) };
+    expect(planChart(b, holdings, records, farClose, null, sb, '2026-10-20')!.start).toBe('2026-10-02');
     const edited = [sam, { ...voo, manualPrice: 510, manualPriceDate: '2026-10-05' }];
     expect(planChart(b, edited, records, snapshot, null, sb, end)!.start).toBe(sb.from);
     expect(planChart(b, holdings, records, snapshot, null, sb, end, true)!.start).toBe(sb.from);

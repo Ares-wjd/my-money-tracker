@@ -91,27 +91,33 @@ class ChartStoreTest {
     @Test
     fun recomputesOnlyFromChangedDate() {
         val sa = full(a)
-        // 첫 예수금 입력일(9/1) 이후 기록 → 그날부터
+        // 첫 예수금 입력일(9/1) 이후 기록 → 그 앞의 알고 있는 가격(삼성전자 9/1 종가) 다음 날부터
         val added = records + Record(id = "6", accountId = "a", type = RecordType.DEPOSIT, date = LocalDate.of(2026, 9, 20), amount = 1.0, krwAmount = 1.0)
         val plan = ChartStore.plan(a, holdings, added, snapshot, null, sa, end)!!
-        assertEquals(LocalDate.of(2026, 9, 20), plan.start)
-        assertEquals(LocalDate.of(2026, 9, 19), plan.keep.keys.max())
+        assertEquals(LocalDate.of(2026, 9, 2), plan.start)
+        assertEquals(LocalDate.of(2026, 9, 1), plan.keep.keys.max())
         // 다른 계좌 기록은 상관없음
         assertNull(ChartStore.plan(b, holdings, added, snapshot, null, full(b), end))
         // 첫 예수금 입력일 이전 기록 → 거꾸로 추정이 바뀌므로 처음부터
         val early = records + Record(id = "7", accountId = "a", type = RecordType.WITHDRAW, date = LocalDate.of(2026, 8, 20), amount = 1.0, krwAmount = 1.0)
         assertEquals(LocalDate.of(2026, 8, 1), ChartStore.plan(a, holdings, early, snapshot, null, sa, end)!!.start)
-        // 기록을 지워도 그날부터
+        // 매수 기록을 지우면 그달 매매 단가 요약이 바뀌고, 그 앞에 알고 있는 가격이 없으므로 처음(9/10)부터
         val removed = records.filterNot { it.id == "5" }
-        assertEquals(LocalDate.of(2026, 9, 11), ChartStore.plan(b, holdings, removed, snapshot, null, full(b), end)!!.start)
+        assertEquals(LocalDate.of(2026, 9, 10), ChartStore.plan(b, holdings, removed, snapshot, null, full(b), end)!!.start)
+        // 같은 종목(VOO)을 다른 계좌에서 산 기록도 가격 추정에 쓰므로 b 도 다시 계산 (9월 단가 요약이 바뀜 → 그 앞에 가격이 없어 처음부터)
+        val vooA = Holding(id = "h3", accountId = "a", name = "VOO", code = "VOO", market = Market.NYSE)
+        val withVooA = listOf(sam, voo, vooA)
+        val sb = full(b, hs = withVooA)
+        val tradeA = records + Record(id = "8", accountId = "a", type = RecordType.BUY, date = LocalDate.of(2026, 9, 25), holdingId = "h3", quantity = 1.0, price = 510.0, currency = Currency.USD)
+        assertEquals(LocalDate.of(2026, 9, 10), ChartStore.plan(b, withVooA, tradeA, snapshot, null, sb, end)!!.start)
     }
 
     @Test
     fun recomputesOnPriceNewDayHoldingAndForce() {
         val sb = full(b)
-        // 10월 종가가 새로 생기면 10/1 부터
+        // 10월 종가가 새로 생기면 그달(10/1) 앞의 알고 있는 가격(9/11 종가) 다음 날부터
         val newClose = snapshot.copy(prices = snapshot.prices + (MarketKeys.of(voo)!! to PriceHistory(closes("2026-09-11" to 500.0, "2026-10-01" to 520.0, "2026-10-08" to 530.0))))
-        assertEquals(LocalDate.of(2026, 10, 1), ChartStore.plan(b, holdings, records, newClose, null, sb, end)!!.start)
+        assertEquals(LocalDate.of(2026, 9, 12), ChartStore.plan(b, holdings, records, newClose, null, sb, end)!!.start)
         // 환율도
         val newFx = snapshot.copy(usdKrw = closes("2026-09-10" to 1_380.0, "2026-09-15" to 1_390.0, "2026-10-01" to 1_400.0))
         assertEquals(LocalDate.of(2026, 9, 1).let { maxOf(it, sb.from) }, ChartStore.plan(b, holdings, records, newFx, null, sb, end)!!.start)
@@ -119,6 +125,12 @@ class ChartStoreTest {
         val next = ChartStore.plan(b, holdings, records, snapshot, null, sb, today)!!
         assertEquals(today, next.start)
         assertEquals(listOf(today), next.dates)
+        // 새 날짜에 종가가 생겨 시세를 모르던 기간(10/1 ~ 10/13, 14일 이하라도 앞이 종가가 아니면)을 잇게 되면 그 기간도: 여기선 휴일 간격이라 그 하루만
+        val withToday = snapshot.copy(prices = snapshot.prices + (MarketKeys.of(voo)!! to PriceHistory(closes("2026-09-11" to 500.0, "2026-10-01" to 520.0, "2026-10-13" to 540.0))))
+        assertEquals(today, ChartStore.plan(b, holdings, records, withToday, null, sb, today)!!.start)
+        // 간격이 14일을 넘으면 (시세를 모르던 기간) 앞 종가 다음 날부터
+        val farClose = snapshot.copy(prices = snapshot.prices + (MarketKeys.of(voo)!! to PriceHistory(closes("2026-09-11" to 500.0, "2026-10-01" to 520.0, "2026-10-20" to 540.0))))
+        assertEquals(LocalDate.of(2026, 10, 2), ChartStore.plan(b, holdings, records, farClose, null, sb, LocalDate.of(2026, 10, 20))!!.start)
         // 종목 정보가 바뀌면 처음부터
         val edited = listOf(sam, voo.copy(manualPrice = 510.0, manualPriceDate = LocalDate.of(2026, 10, 5)))
         assertEquals(sb.from, ChartStore.plan(b, edited, records, snapshot, null, sb, end)!!.start)

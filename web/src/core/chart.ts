@@ -1,7 +1,7 @@
 // core 의 ChartCalculator 와 같은 규칙.
 import type { Holding, InvestmentAccount, MarketSnapshot, Record } from '../model';
 import { plusDays } from './dates';
-import { currentPrice, latestUsdKrw, priceAt, usdKrwAt } from './market';
+import { currentPrice, latestUsdKrw, PriceEstimator, usdKrwAt } from './market';
 import { summarize } from './portfolio';
 
 export type ChartInterval = 'DAY_1' | 'DAY_5' | 'DAY_10' | 'MONTH' | 'YEAR';
@@ -49,7 +49,8 @@ export function pointDates(interval: ChartInterval, today: string, firstDate: st
 
 /**
  * 날짜별 평가금·투자금·누적 배당. [accountId] 가 있으면 그 계좌만.
- * 과거 날짜는 그날(또는 직전 거래일) 종가와 환율, 오늘은 현재가와 최신 환율을 쓴다.
+ * 과거 날짜는 그날 가격(PriceEstimator: 종가, 휴일은 직전 거래일, 시세를 모르는 기간은 앞뒤 가격으로 추정)과 환율,
+ * 오늘은 현재가와 최신 환율을 쓴다. estimator 는 같은 종목의 다른 계좌 매매 단가도 쓰도록 전체 종목·기록으로 만든 것을 넘길 수 있다.
  */
 export function series(
   dates: readonly string[],
@@ -60,6 +61,7 @@ export function series(
   snapshot: MarketSnapshot,
   manualUsdKrw: number | null,
   accountId: string | null = null,
+  estimator: PriceEstimator = new PriceEstimator(holdings, records, snapshot),
 ): ChartPoint[] {
   const targets = accountId === null ? accounts : accounts.filter((a) => a.id === accountId);
   return dates.map((date) => {
@@ -70,7 +72,7 @@ export function series(
       holdings,
       records,
       fx,
-      (h) => (isToday ? currentPrice(h, snapshot) : priceAt(h, snapshot, date)),
+      (h) => (isToday ? currentPrice(h, snapshot) : estimator.at(h, date)),
       date,
     );
     return { date, valueKrw: summary.valueKrw, investedKrw: summary.investedKrw, dividendsKrw: summary.dividendsKrw, missingPrice: summary.missingPrice };

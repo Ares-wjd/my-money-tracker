@@ -2,6 +2,7 @@ package com.mymoneytracker.core.chart
 
 import com.mymoneytracker.core.market.MarketKeys
 import com.mymoneytracker.core.market.MarketSnapshot
+import com.mymoneytracker.core.market.PriceEstimator
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.InvestmentAccount
@@ -60,7 +61,8 @@ data class ChartView(val points: List<ChartPoint>, val pending: Boolean)
  * 칸을 정해진 순서로 이어 붙이고, 숫자는 64비트 실수 비트(16진수)로 쓴다.
  */
 object ChartStore {
-    const val VERSION = 1
+    /** 2: 시세가 없는 날 가격 추정 (계산 규칙이 바뀌어 처음부터 다시 계산). */
+    const val VERSION = 2
 
     /** FNV-1a 32비트 (UTF-16 글자 단위), 8자리 16진수. */
     fun hash(text: String): String {
@@ -117,6 +119,20 @@ object ChartStore {
         return out
     }
 
+    /**
+     * 매매 단가 요약: "trade:가격계열키|연-월" 마다 그달 매수·매도 (날짜·단가·수량). 같은 시세 키면 다른 계좌 기록도 (가격 추정에 쓰므로).
+     * [end] 이후는 넣지 않는다.
+     */
+    fun tradeSigs(keys: Collection<String>, estimator: PriceEstimator, holdings: List<Holding>, records: List<Record>, end: LocalDate): Map<String, String> {
+        val byId = holdings.associateBy { it.id }
+        val wanted = keys.toSet()
+        return records
+            .filter { (it.type == RecordType.BUY || it.type == RecordType.SELL) && !it.date.isAfter(end) }
+            .mapNotNull { r -> r.holdingId?.let(byId::get)?.let(estimator::keyOf)?.takeIf { it in wanted }?.let { it to r } }
+            .groupBy({ (key, r) -> "trade:$key|${YearMonth.from(r.date)}" }, { (_, r) -> r.date.toString() + "=" + num(r.price) + "=" + num(r.quantity) })
+            .mapValues { (_, lines) -> hash(lines.sorted().joinToString(";")) }
+    }
+
     /** 직접 입력 계좌의 거꾸로 추정 경계: 통화별 첫 예수금 입력일 중 가장 늦은 날 (입력이 없으면 null, 연결 계좌는 null). */
     fun anchorLimit(accountId: String, related: List<Record>, linked: Boolean): LocalDate? {
         if (linked) return null
@@ -149,10 +165,12 @@ object ChartStore {
         val own = holdings.filter { it.accountId == account.id }
         val linked = CashCalculator.isBrokerLinked(account.id, related)
         val keys = own.mapNotNull { MarketKeys.of(it) }.toSet()
+        val estimator = PriceEstimator(holdings, records, snapshot)
+        val seriesKeys = own.map(estimator::keyOf).toSet()
         val accSig = accountSig(own, linked, manualUsdKrw)
         val anchor = anchorLimit(account.id, related, linked)
         val recSig = recordSigs(related, end)
-        val priceSig = priceSigs(keys, snapshot, from, end)
+        val priceSig = priceSigs(keys, snapshot, from, end) + tradeSigs(seriesKeys, estimator, holdings, records, end)
         fun plan(start: LocalDate, keep: Map<LocalDate, DayValue>) =
             ChartPlan(account.id, from, start, end, keep, recSig, accSig, priceSig, anchor)
 
@@ -162,10 +180,26 @@ object ChartStore {
         stored!!
         // 저장할 때 계산한 날(to)까지만 비교하고, 그 뒤 날짜는 새로 계산할 범위
         val recDiff = earliestDiff(recordSigs(related, stored.to), stored.recSig) { it }
-        val priceDiff = earliestDiff(priceSigs(keys, snapshot, from, stored.to), stored.priceSig) { key ->
+        val oldSigs = priceSigs(keys, snapshot, from, stored.to) + tradeSigs(seriesKeys, estimator, holdings, records, stored.to)
+        val priceDiff = earliestDiff(oldSigs, stored.priceSig) { key ->
             key.substringAfterLast('|').let { if (it == "base") from else YearMonth.parse(it).atDay(1) }
         }
-        var start = listOfNotNull(recDiff, priceDiff, stored.to.plusDays(1)).min()
+        val changed = listOfNotNull(recDiff, priceDiff).minOrNull()
+        val candidates = mutableListOf(stored.to.plusDays(1))
+        for (key in seriesKeys) {
+            // 바뀐 가격 하나는 그 앞의 알고 있는 가격까지 추정값을 바꾼다 → 바로 앞 알고 있는 가격 다음 날부터
+            if (changed != null) candidates += estimator.knownBefore(key, changed)?.plusDays(1) ?: from
+            // 새 날짜에 생긴 가격이 그 앞의 (시세를 모르던) 기간을 잇게 되면 그 기간도
+            val next = estimator.knownFrom(key, stored.to.plusDays(1))
+            val prev = estimator.knownUntil(key, stored.to)
+            if (next != null && !next.key.isAfter(end) && prev != null) {
+                val holiday = prev.value.close && next.value.close &&
+                    java.time.temporal.ChronoUnit.DAYS.between(prev.key, next.key) <= PriceEstimator.HOLIDAY_GAP_DAYS
+                if (!holiday) candidates += prev.key.plusDays(1)
+            }
+        }
+        changed?.let { candidates += it }
+        var start = candidates.min()
         if (start.isBefore(from)) start = from
         if (start.isAfter(end)) return null
         // 첫 예수금 입력일 이전이 바뀌면 거꾸로 추정한 앞 날짜들도 바뀐다
@@ -185,7 +219,8 @@ object ChartStore {
     ): Map<LocalDate, DayValue> {
         val related = related(account.id, records)
         val own = holdings.filter { it.accountId == account.id }
-        return ChartCalculator.series(dates, plan.end.plusDays(1), listOf(account), own, related, snapshot, manualUsdKrw)
+        val estimator = PriceEstimator(holdings, records, snapshot)
+        return ChartCalculator.series(dates, plan.end.plusDays(1), listOf(account), own, related, snapshot, manualUsdKrw, estimator = estimator)
             .associate { it.date to DayValue(it.valueKrw, it.investedKrw, it.dividendsKrw, it.missingPrice) }
     }
 

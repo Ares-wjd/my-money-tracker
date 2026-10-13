@@ -1,6 +1,7 @@
 package com.mymoneytracker.core.chart
 
 import com.mymoneytracker.core.market.MarketSnapshot
+import com.mymoneytracker.core.market.PriceEstimator
 import com.mymoneytracker.core.market.PriceLookup
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.InvestmentAccount
@@ -101,7 +102,8 @@ object ChartCalculator {
 
     /**
      * 날짜별 평가금·투자금·누적 배당. [accountId] 가 있으면 그 계좌만.
-     * 과거 날짜는 그날(또는 직전 거래일) 종가와 환율, 오늘은 현재가와 최신 환율을 쓴다.
+     * 과거 날짜는 그날 가격([PriceEstimator]: 종가, 휴일은 직전 거래일, 시세를 모르는 기간은 앞뒤 가격으로 추정)과 환율,
+     * 오늘은 현재가와 최신 환율을 쓴다. [estimator] 는 같은 종목의 다른 계좌 매매 단가도 쓰도록 전체 종목·기록으로 만든 것을 넘길 수 있다.
      */
     fun series(
         dates: List<LocalDate>,
@@ -112,6 +114,7 @@ object ChartCalculator {
         snapshot: MarketSnapshot,
         manualUsdKrw: Double?,
         accountId: String? = null,
+        estimator: PriceEstimator = PriceEstimator(holdings, records, snapshot),
     ): List<ChartPoint> {
         val targetAccounts = if (accountId == null) accounts else accounts.filter { it.id == accountId }
         return dates.map { date ->
@@ -122,7 +125,7 @@ object ChartCalculator {
                 holdings = holdings,
                 records = records,
                 usdKrw = fx,
-                priceOf = { h -> if (isToday) PriceLookup.current(h, snapshot) else PriceLookup.at(h, snapshot, date) },
+                priceOf = { h -> if (isToday) PriceLookup.current(h, snapshot) else estimator.at(h, date) },
                 asOf = date,
             )
             ChartPoint(date, summary.valueKrw, summary.investedKrw, summary.dividendsKrw, summary.missingPrice)

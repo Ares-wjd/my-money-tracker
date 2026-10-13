@@ -3,9 +3,10 @@ import type { Holding, InvestmentAccount, MarketSnapshot, Record } from '../mode
 import { isBrokerLinked } from './cash';
 import { pointDates, series, type ChartInterval, type ChartPoint } from './chart';
 import { plusDays } from './dates';
-import { keyOf } from './market';
+import { daysBetween, HOLIDAY_GAP_DAYS, keyOf, PriceEstimator } from './market';
 
-export const CHART_STORE_VERSION = 1;
+/** 2: 시세가 없는 날 가격 추정 (계산 규칙이 바뀌어 처음부터 다시 계산). */
+export const CHART_STORE_VERSION = 2;
 
 /** 저장된 하루 값 (그 계좌의 평가금·투자금·누적 배당, 그날 가격이 없는 종목이 있었는지). */
 export interface DayValue {
@@ -126,6 +127,25 @@ export function priceSigs(keys: Iterable<string>, snapshot: MarketSnapshot, from
   return out;
 }
 
+/** 매매 단가 요약: "trade:가격계열키|연-월" 마다 그달 매수·매도 (날짜·단가·수량). 같은 시세 키면 다른 계좌 기록도. end 이후는 넣지 않는다. */
+export function tradeSigs(keys: Iterable<string>, estimator: PriceEstimator, holdings: readonly Holding[], records: readonly Record[], end: string): Map<string, string> {
+  const byId = new Map(holdings.map((h) => [h.id, h]));
+  const wanted = new Set(keys);
+  const groups = new Map<string, string[]>();
+  for (const r of records) {
+    if ((r.type !== 'BUY' && r.type !== 'SELL') || r.date > end || r.holdingId === null) continue;
+    const h = byId.get(r.holdingId);
+    if (!h) continue;
+    const key = estimator.keyOf(h);
+    if (!wanted.has(key)) continue;
+    const name = `trade:${key}|${r.date.slice(0, 7)}`;
+    const list = groups.get(name) ?? [];
+    list.push(`${r.date}=${num(r.price)}=${num(r.quantity)}`);
+    groups.set(name, list);
+  }
+  return new Map([...groups].map(([name, lines]) => [name, hash(sortStrings(lines).join(';'))]));
+}
+
 /** 직접 입력 계좌의 거꾸로 추정 경계: 통화별 첫 예수금 입력일 중 가장 늦은 날 (없거나 연결 계좌면 null). */
 export function anchorLimit(accountId: string, rel: readonly Record[], linked: boolean): string | null {
   if (linked) return null;
@@ -168,10 +188,12 @@ export function planChart(
   const own = holdings.filter((h) => h.accountId === account.id);
   const linked = isBrokerLinked(account.id, rel);
   const keys = new Set(own.map(keyOf).filter((k): k is string => k !== null));
+  const estimator = new PriceEstimator(holdings, records, snapshot);
+  const seriesKeys = new Set(own.map((h) => estimator.keyOf(h)));
   const accSig = accountSig(own, linked, manualUsdKrw);
   const anchor = anchorLimit(account.id, rel, linked);
   const recSig = recordSigs(rel, end);
-  const priceSig = priceSigs(keys, snapshot, from, end);
+  const priceSig = new Map([...priceSigs(keys, snapshot, from, end), ...tradeSigs(seriesKeys, estimator, holdings, records, end)]);
   const plan = (start: string, keep: Map<string, DayValue>): ChartPlan => ({ accountId: account.id, from, start, end, keep, recSig, accSig, priceSig, anchor });
 
   const full = force || stored === null || stored.version !== CHART_STORE_VERSION || stored.accSig !== accSig || stored.from !== from ||
@@ -179,11 +201,29 @@ export function planChart(
   if (full) return plan(from, new Map());
   // 저장할 때 계산한 날(to)까지만 비교하고, 그 뒤 날짜는 새로 계산할 범위
   const recDiff = earliestDiff(recordSigs(rel, stored.to), stored.recSig, (k) => k);
-  const priceDiff = earliestDiff(priceSigs(keys, snapshot, from, stored.to), stored.priceSig, (k) => {
+  const oldSigs = new Map([...priceSigs(keys, snapshot, from, stored.to), ...tradeSigs(seriesKeys, estimator, holdings, records, stored.to)]);
+  const priceDiff = earliestDiff(oldSigs, stored.priceSig, (k) => {
     const tail = k.slice(k.lastIndexOf('|') + 1);
     return tail === 'base' ? from : `${tail}-01`;
   });
-  let start = [recDiff, priceDiff, plusDays(stored.to, 1)].filter((d): d is string => d !== null).sort()[0];
+  const changed = [recDiff, priceDiff].filter((d): d is string => d !== null).sort()[0] ?? null;
+  const candidates = [plusDays(stored.to, 1)];
+  for (const key of seriesKeys) {
+    // 바뀐 가격 하나는 그 앞의 알고 있는 가격까지 추정값을 바꾼다 → 바로 앞 알고 있는 가격 다음 날부터
+    if (changed !== null) {
+      const before = estimator.knownBefore(key, changed);
+      candidates.push(before === null ? from : plusDays(before, 1));
+    }
+    // 새 날짜에 생긴 가격이 그 앞의 (시세를 모르던) 기간을 잇게 되면 그 기간도
+    const next = estimator.knownFrom(key, plusDays(stored.to, 1));
+    const prev = estimator.knownUntil(key, stored.to);
+    if (next !== null && next.date <= end && prev !== null) {
+      const holiday = prev.close && next.close && daysBetween(prev.date, next.date) <= HOLIDAY_GAP_DAYS;
+      if (!holiday) candidates.push(plusDays(prev.date, 1));
+    }
+  }
+  if (changed !== null) candidates.push(changed);
+  let start = candidates.sort()[0];
   if (start < from) start = from;
   if (start > end) return null;
   // 첫 예수금 입력일 이전이 바뀌면 거꾸로 추정한 앞 날짜들도 바뀐다
@@ -209,7 +249,8 @@ export function computeChart(
   dates: readonly string[],
 ): Map<string, DayValue> {
   const own = holdings.filter((h) => h.accountId === account.id);
-  const points = series(dates, plusDays(plan.end, 1), [account], own, related(account.id, records), snapshot, manualUsdKrw);
+  const estimator = new PriceEstimator(holdings, records, snapshot);
+  const points = series(dates, plusDays(plan.end, 1), [account], own, related(account.id, records), snapshot, manualUsdKrw, null, estimator);
   return new Map(points.map((p) => [p.date, { valueKrw: p.valueKrw, investedKrw: p.investedKrw, dividendsKrw: p.dividendsKrw, missingPrice: p.missingPrice }]));
 }
 

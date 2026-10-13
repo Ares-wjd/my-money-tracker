@@ -113,3 +113,133 @@ export function priceAt(holding: Holding, snapshot: MarketSnapshot, date: string
   const manualBefore = manual !== null && (manual.date ?? MIN_DATE) <= date ? manual : null;
   return newer(manualBefore, close) ?? manual;
 }
+
+/** 알고 있는 가격 하나. close 는 실제 종가인지 (매매 단가·직접 입력 가격이면 false). */
+export interface KnownPrice {
+  date: string;
+  price: number;
+  close: boolean;
+}
+
+/** 앞뒤 종가 간격이 이 날 수 이하면 휴일로 보고 전 거래일 종가를 쓴다. */
+export const HOLIDAY_GAP_DAYS = 14;
+
+const dayNumber = (d: string) => Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10))) / 86_400_000;
+export const daysBetween = (a: string, b: string) => dayNumber(b) - dayNumber(a);
+
+/**
+ * 과거 날짜의 가격 추정 (core 의 PriceEstimator 와 같은 규칙).
+ * 알고 있는 가격 = 저장된 종가 + 매수·매도 단가(같은 날이면 종가, 같은 날 여러 번이면 수량 가중평균, 같은 시세 키면 다른 계좌 기록도)
+ * + 날짜가 있는 직접 입력 가격. ① 그날 값 ② 앞뒤가 모두 종가이고 14일 이하면(휴일) 전 거래일 종가
+ * ③ 그 밖은 앞뒤 가격을 날짜 비율로 잇는다 ④ 첫 가격 앞은 첫 가격, 마지막 가격 뒤는 마지막 가격.
+ */
+export class PriceEstimator {
+  private readonly series = new Map<string, KnownPrice[]>();
+
+  constructor(holdings: readonly Holding[], records: readonly { type: string; holdingId: string | null; date: string; price: number; quantity: number }[], snapshot: MarketSnapshot) {
+    const maps = new Map<string, Map<string, KnownPrice>>();
+    const mapOf = (key: string) => {
+      let m = maps.get(key);
+      if (!m) maps.set(key, (m = new Map()));
+      return m;
+    };
+    for (const h of holdings) {
+      const key = keyOf(h);
+      if (key === null || maps.has(key)) continue;
+      const m = mapOf(key);
+      snapshot.prices.get(key)?.closes.forEach((v, d) => {
+        if (v > 0) m.set(d, { date: d, price: v, close: true });
+      });
+    }
+    const byId = new Map(holdings.map((h) => [h.id, h]));
+    const trades = new Map<string, { key: string; date: string; amount: number; quantity: number }>();
+    for (const r of records) {
+      if ((r.type !== 'BUY' && r.type !== 'SELL') || !(r.price > 0) || !(r.quantity > 0) || r.holdingId === null) continue;
+      const h = byId.get(r.holdingId);
+      if (!h) continue;
+      const key = this.keyOf(h);
+      const id = `${key}\u0000${r.date}`;
+      const t = trades.get(id) ?? { key, date: r.date, amount: 0, quantity: 0 };
+      t.amount += r.price * r.quantity;
+      t.quantity += r.quantity;
+      trades.set(id, t);
+    }
+    for (const t of trades.values()) {
+      const m = mapOf(t.key);
+      if (m.get(t.date)?.close) continue;
+      m.set(t.date, { date: t.date, price: t.amount / t.quantity, close: false });
+    }
+    for (const h of holdings) {
+      if (h.manualPrice === null || !(h.manualPrice > 0) || h.manualPriceDate === null) continue;
+      const m = mapOf(this.keyOf(h));
+      if (m.get(h.manualPriceDate)?.close) continue;
+      m.set(h.manualPriceDate, { date: h.manualPriceDate, price: h.manualPrice, close: false });
+    }
+    for (const [key, m] of maps) this.series.set(key, [...m.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)));
+  }
+
+  /** 가격 계열 키: 자동 시세 종목은 시세 키(계좌가 달라도 같음), 아니면 종목마다. */
+  keyOf(holding: Holding): string {
+    return keyOf(holding) ?? `id:${holding.id}`;
+  }
+
+  /** date 이하 마지막 알고 있는 가격의 위치 (없으면 -1). */
+  private floorIndex(list: KnownPrice[], date: string): number {
+    let lo = 0;
+    let hi = list.length - 1;
+    let found = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (list[mid].date <= date) {
+        found = mid;
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    return found;
+  }
+
+  /** 추정 가격. 날짜는 쓴 앞쪽 알고 있는 가격의 날짜 (첫 가격 앞이면 첫 가격 날짜). 알고 있는 가격이 없으면 null. */
+  estimate(holding: Holding, date: string): PricePoint | null {
+    const list = this.series.get(this.keyOf(holding));
+    if (!list || list.length === 0) return null;
+    const i = this.floorIndex(list, date);
+    const prev = i >= 0 ? list[i] : null;
+    if (prev && prev.date === date) return { price: prev.price, date };
+    const next = i + 1 < list.length ? list[i + 1] : null;
+    if (prev === null) return next === null ? null : { price: next.price, date: next.date };
+    if (next === null) return { price: prev.price, date: prev.date };
+    if (prev.close && next.close && daysBetween(prev.date, next.date) <= HOLIDAY_GAP_DAYS) return { price: prev.price, date: prev.date };
+    const t = daysBetween(prev.date, date) / daysBetween(prev.date, next.date);
+    return { price: prev.price + (next.price - prev.price) * t, date: prev.date };
+  }
+
+  /** date 보다 앞의 마지막 알고 있는 가격의 날짜. */
+  knownBefore(key: string, date: string): string | null {
+    const list = this.series.get(key) ?? [];
+    const i = this.floorIndex(list, date);
+    const j = i >= 0 && list[i].date === date ? i - 1 : i;
+    return j >= 0 ? list[j].date : null;
+  }
+
+  /** date 이후(같은 날 포함) 첫 알고 있는 가격. */
+  knownFrom(key: string, date: string): KnownPrice | null {
+    const list = this.series.get(key) ?? [];
+    const i = this.floorIndex(list, date);
+    if (i >= 0 && list[i].date === date) return list[i];
+    return i + 1 < list.length ? list[i + 1] : null;
+  }
+
+  /** date 이전(같은 날 포함) 마지막 알고 있는 가격. */
+  knownUntil(key: string, date: string): KnownPrice | null {
+    const list = this.series.get(key) ?? [];
+    const i = this.floorIndex(list, date);
+    return i >= 0 ? list[i] : null;
+  }
+
+  /** 과거 date 기준 가격: 그날 이전의 직접 입력 가격이 더 최근이면 그것, 아니면 추정 가격, 둘 다 없으면 직접 입력 가격. */
+  at(holding: Holding, date: string): PricePoint | null {
+    const manual = manualPoint(holding);
+    const manualBefore = manual !== null && (manual.date ?? MIN_DATE) <= date ? manual : null;
+    return newer(manualBefore, this.estimate(holding, date)) ?? manual;
+  }
+}
