@@ -246,9 +246,10 @@ object AllocationCalculator {
     }
 
     /**
-     * 팔지 않고 [amountKrw] 만 더 사서 목표에 가장 가깝게: 넣은 뒤 합계 × 목표 − 지금 평가금 = 부족분.
-     * 부족분 합이 넣을 돈보다 크면 부족분 비율로 나누고, 남으면 목표 비율로 더 나눈다. 목표가 없는 종목은 사지 않는다.
-     * 그다음 종목별 매수 단위로 내림하고, 남은 돈으로 목표보다 가장 많이 부족한 종목부터 한 단위씩 더 산다
+     * 팔지 않고 [amountKrw] 만 더 사서 목표에 가장 가깝게 (상대 비중 기준): 채운 정도 = 지금 평가금 ÷ 목표 금액(넣은 뒤 합계 × 목표).
+     * 채운 정도가 가장 낮은 종목부터 다음으로 낮은 종목과 같아질 때까지 사고, 같아지면 함께 올린다 ([fillLevel]).
+     * 모두 100% 를 넘으면 목표 비율대로 나뉜다. 목표가 없는 종목은 사지 않는다.
+     * 그다음 종목별 매수 단위로 내림하고, 남은 돈으로 채운 정도가 가장 낮은 종목부터 한 단위씩 더 산다
      * (목표와의 차이 합이 줄어들 때만 — 예수금 목표가 있으면 예수금 차이도 함께).
      */
     fun buyOnly(view: AllocationView, inputKrw: Double, useCash: Boolean = false): BuyPlan {
@@ -265,15 +266,10 @@ object AllocationCalculator {
         if (rows.isEmpty() || targetSum <= 0 || buySum <= 0) return BuyPlan(emptyList(), amountKrw, amountKrw, cashUsed)
         // 예수금이 이미 합계에 들어 있으면(비중에 포함) 옮겨도 합계는 그대로, 아니면 쓰는 예수금만큼 늘어난다
         val newTotal = view.totalKrw + max(0.0, inputKrw) + if (cashInTotal) 0.0 else cashUsed
-        val deficits = rows.associateWith { max(0.0, it.targetWeight / targetSum * newTotal - valueOf(it)) }
-        val deficitSum = deficits.values.sum()
-        val ideal = if (deficitSum >= amountKrw && deficitSum > 0) {
-            rows.associateWith { deficits.getValue(it) / deficitSum * amountKrw }
-        } else {
-            // 부족분을 다 채우고 남는 돈은 살 수 있는 종목의 목표 비율로 (빠진 종목 몫을 현금으로 남기지 않는다)
-            val left = amountKrw - deficitSum
-            rows.associateWith { deficits.getValue(it) + left * it.targetWeight / buySum }
-        }
+        fun goal(r: AllocationRow) = max(1e-9, r.targetWeight / targetSum * newTotal)
+        // 모두 같은 채운 정도(level)까지: 종목별 살 금액 = max(0, level × 목표 금액 − 지금 평가금)
+        val level = fillLevel(rows.map { goal(it) to valueOf(it) }, amountKrw)
+        val ideal = rows.associateWith { max(0.0, level * goal(it) - valueOf(it)) }
         // 매수 단위로 내림 (단위를 모르면 그대로). 예수금은 "사고 남은 돈"이라 마지막에 남은 돈으로 정한다.
         val stocks = rows.filter { !it.isCash }
         val units = stocks.associateWith { unitOf(view.target, it) }
@@ -283,10 +279,9 @@ object AllocationCalculator {
             if (u == null) raw else floor(raw / u + 1e-9) * u
         }.toMutableMap()
         var leftover = amountKrw - buys.values.sum()
-        // 남은 돈으로 한 단위 더 사기: 목표와의 차이 합이 줄어들 때만, 가장 부족한 종목부터.
+        // 남은 돈으로 한 단위 더 사기: 목표와의 차이 합이 줄어들 때만, 채운 정도가 가장 낮은(목표 대비 가장 부족한) 종목부터.
         // 예수금 목표가 있으면 남은 돈은 예수금이 되므로 예수금의 목표 차이도 함께 따진다.
         val cashRow = rows.firstOrNull { it.isCash }
-        fun goal(r: AllocationRow) = max(1e-9, r.targetWeight / targetSum * newTotal)
         fun need(r: AllocationRow, bought: Double) = goal(r) - (valueOf(r) + bought)
         var guard = 0
         while (guard++ < 100_000) {
@@ -307,7 +302,7 @@ object AllocationCalculator {
                             d / goal(r) > cashNeed / goal(cashRow)
                         )
                 }
-                .maxByOrNull { it.second }
+                .maxByOrNull { (r, d) -> d / goal(r) }
                 ?: break
             val u = units.getValue(pick.first)!!
             buys[pick.first] = buys.getValue(pick.first) + u
@@ -321,6 +316,25 @@ object AllocationCalculator {
             leftover = 0.0
         }
         return BuyPlan(trades.filter { it.amountKrw >= 0.5 }, leftover, amountKrw, cashUsed)
+    }
+
+    /**
+     * 채운 정도: [items] (목표 금액, 지금 금액) 에 [amount] 를 나눠 넣어 채운 정도가 낮은 것부터 올릴 때 다다르는 공통 수준 L.
+     * 합(max(0, L × 목표 − 지금)) = amount 인 L. 채운 정도가 낮은 순으로 하나씩 더해 가며, 다음 것의 채운 정도에 못 미치면 멈춘다.
+     */
+    fun fillLevel(items: List<Pair<Double, Double>>, amount: Double): Double {
+        val sorted = items.sortedBy { (g, v) -> v / g }
+        var goalSum = 0.0
+        var valueSum = 0.0
+        var level = 0.0
+        for ((i, item) in sorted.withIndex()) {
+            goalSum += item.first
+            valueSum += item.second
+            level = (amount + valueSum) / goalSum
+            val next = sorted.getOrNull(i + 1) ?: break
+            if (level <= next.second / next.first) break
+        }
+        return level
     }
 
     /**

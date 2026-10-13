@@ -334,7 +334,7 @@ export function AllocationPage() {
           </Card>
 
           <Card title="매수 계산기">
-            <p className="muted small">넣을 돈을 입력하면, 팔지 않고 사기만 해서 목표에 가장 가까워지도록 종목별로 얼마를 살지 알려 드립니다. 매수 단위(1주 또는 금액 단위)에 맞춰 내림하고, 남은 돈은 가장 부족한 종목부터 더 삽니다. 계좌에 없는 종목은 현재가를 넣어야 주 수가 나옵니다.</p>
+            <p className="muted small">넣을 돈을 입력하면, 팔지 않고 사기만 해서 목표에 가장 가까워지도록 종목별로 얼마를 살지 알려 드립니다. 목표 대비 덜 채운(상대적으로 더 부족한) 종목부터 삽니다. 매수 단위(1주 또는 금액 단위)에 맞춰 내림하고, 남은 돈도 덜 채운 종목부터 더 삽니다. 계좌에 없는 종목은 현재가를 넣어야 주 수가 나옵니다.</p>
             <WonField label="이번에 넣을 돈" value={amountText} onChange={setAmountText} preview={manwon} quick />
             {view.cashKrw > 0 && (
               <label className="check small">

@@ -1,6 +1,6 @@
 // core AllocationTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
-import { CASH_KEY, allocationView, buyOnly, codelessKey, isCodeless, isHighlighted, keyOf, manualKey, rebalance, toleranceBand, toleranceLabel, toleranceRange, type AllocationTarget } from './allocation';
+import { CASH_KEY, allocationView, buyOnly, codelessKey, fillLevel, isCodeless, isHighlighted, keyOf, manualKey, rebalance, toleranceBand, toleranceLabel, toleranceRange, type AllocationTarget } from './allocation';
 import { summarize } from './portfolio';
 import { account, holding, record } from './testData';
 
@@ -96,10 +96,26 @@ describe('비중 (AllocationTest)', () => {
     // 금액 단위를 0.01원으로 두면 내림 영향 없이 비율 그대로
     const fine = { ...target, units: { 'KR:360750': 0.01, 'KR:AAA': 0.01 } };
     const small = byKey(buyOnly(allocationView(fine, accounts2, null), 500).trades.map((s) => ({ ...s, key: s.row.key })));
-    expect(Math.abs(small.get('KR:360750')!.amountKrw - (500 * 25) / 550)).toBeLessThan(0.02);
-    expect(Math.abs(small.get('KR:AAA')!.amountKrw - (500 * 415) / 550)).toBeLessThan(0.02);
-    expect(Math.abs(small.get('CASH')!.amountKrw - (500 * 110) / 550)).toBeLessThan(0.02);
+    // 넣은 뒤 3050 → 목표 1525/915/610, 채운 정도 S&P 98.4% · 채권 54.6% · 예수금 82.0%
+    // 채권을 예수금 수준까지(250), 남은 250 을 둘이 함께 → 둘 다 98.4%(= S&P) 에서 멈춤: 채권 400, 예수금 100, S&P 0
+    expect(small.has('KR:360750')).toBe(false);
+    expect(Math.abs(small.get('KR:AAA')!.amountKrw - 400)).toBeLessThan(0.02);
+    expect(Math.abs(small.get('CASH')!.amountKrw - 100)).toBeLessThan(0.02);
     expect(small.has('KR:GLD1')).toBe(false);
+  });
+
+  it('상대 비중: 목표 대비 가장 덜 채운 종목부터 산다', () => {
+    expect(fillLevel([[100, 0], [100, 50]], 30)).toBeCloseTo(0.3, 9);
+    expect(fillLevel([[100, 0], [100, 50]], 100)).toBeCloseTo(0.75, 9);
+    // 모두 채우고 남으면 목표 비율대로 (채운 정도 100% 초과)
+    expect(fillLevel([[100, 100], [300, 300]], 400)).toBeCloseTo(2, 9);
+    // 예수금 빼고 S&P 50 · 채권 30 · 금 ETF 20 (안 가짐). 300 원 → 넣은 뒤 2300, 목표 1150/690/460
+    // 채운 정도: 금 0% · 채권 72.5% → 금이 채권 수준(72.5%)에 닿으려면 333.5 원이 필요하므로 300 원 모두 금 ETF
+    // (금액 차이 기준이었다면 채권 부족분 190 · 금 460 비율로 나눠 채권도 87.7 원 샀다)
+    const t = { ...target, includeCash: false, targets: { 'KR:360750': 50, 'KR:AAA': 30, 'KR:GLD1': 20 }, units: { 'KR:360750': 0.01, 'KR:AAA': 0.01, 'KR:GLD1': 0.01 } };
+    const buys = byKey(buyOnly(allocationView(t, accounts, null), 300).trades.map((s) => ({ ...s, key: s.row.key })));
+    expect([...buys.keys()]).toEqual(['KR:GLD1']);
+    expect(buys.get('KR:GLD1')!.amountKrw).toBeCloseTo(300, 6);
   });
 
   it('사고팔아 정확히 맞추기', () => {
@@ -226,7 +242,8 @@ describe('비중 (AllocationTest)', () => {
 
     const withCash = allocationView({ ...target, units: { 'KR:AAA': 0.01 } }, accounts, null);
     const p2 = byKey(buyOnly(withCash, 0, true).trades.map((s) => ({ ...s, key: s.row.key })));
-    expect(Math.abs(p2.get('KR:AAA')!.amountKrw - (500 * 250) / 750)).toBeLessThan(0.02);
+    // 채운 정도: 예수금 0% · 채권 66.7% → 예수금을 66.7% 까지(333.3), 남은 166.7 을 함께 → 둘 다 80%: 채권 100, 예수금 400
+    expect(Math.abs(p2.get('KR:AAA')!.amountKrw - 100)).toBeLessThan(0.02);
     expect(p2.get('CASH')!.amountKrw).toBeCloseTo(500 - p2.get('KR:AAA')!.amountKrw, 6);
   });
 });

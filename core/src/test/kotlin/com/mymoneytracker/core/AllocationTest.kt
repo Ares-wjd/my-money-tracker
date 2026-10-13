@@ -111,17 +111,36 @@ class AllocationTest {
         assertEquals(4.0, buys.getValue("KR:AAA").shares!!, 1e-9)
         assertEquals(100.0, buys.getValue("CASH").amountKrw, 1e-9)
         assertEquals(null, buys.getValue("CASH").shares)
-        // 목표 없는 종목이 있으면 부족분 합이 넣을 돈보다 커서 부족분 비율로 나눈다
-        // (금 ETF 1주 50원 추가 → 넣은 뒤 합계 3050, 목표 1525/915/610, 부족분 25/415/110, 합 550 > 500)
+        // 목표 없는 종목(금 ETF 1주 50원)이 있으면: 넣은 뒤 3050 → 목표 1525/915/610, 채운 정도 S&P 98.4% · 채권 54.6% · 예수금 82.0%
+        // 채권을 예수금 수준까지(250), 남은 250 을 둘이 함께 → 둘 다 98.4%(= S&P) 에서 멈춤: 채권 400, 예수금 100, S&P 0
         val withGold = records + Record(id = "5", accountId = "a", type = RecordType.BUY, date = day, holdingId = "h4", quantity = 1.0, price = 50.0)
         val accounts2 = PortfolioCalculator.summarize(listOf(isa, other), listOf(sp1, bond, sp2, gold), withGold, null).accounts
         // 금액 단위를 0.01원으로 두면 내림 영향 없이 비율 그대로
         val fine = target.copy(units = mapOf("KR:360750" to 0.01, "KR:AAA" to 0.01))
         val small = AllocationCalculator.buyOnly(AllocationCalculator.view(fine, accounts2, null), 500.0).trades.associateBy { it.row.key }
-        assertEquals(500.0 * 25 / 550, small.getValue("KR:360750").amountKrw, 0.02)
-        assertEquals(500.0 * 415 / 550, small.getValue("KR:AAA").amountKrw, 0.02)
-        assertEquals(500.0 * 110 / 550, small.getValue("CASH").amountKrw, 0.02)
+        assertFalse("KR:360750" in small)
+        assertEquals(400.0, small.getValue("KR:AAA").amountKrw, 0.02)
+        assertEquals(100.0, small.getValue("CASH").amountKrw, 0.02)
         assertFalse("KR:GLD1" in small)
+    }
+
+    @Test
+    fun buyOnlyFillsLeastFilledFirst() {
+        assertEquals(0.3, AllocationCalculator.fillLevel(listOf(100.0 to 0.0, 100.0 to 50.0), 30.0), 1e-9)
+        assertEquals(0.75, AllocationCalculator.fillLevel(listOf(100.0 to 0.0, 100.0 to 50.0), 100.0), 1e-9)
+        // 모두 채우고 남으면 목표 비율대로 (채운 정도 100% 초과)
+        assertEquals(2.0, AllocationCalculator.fillLevel(listOf(100.0 to 100.0, 300.0 to 300.0), 400.0), 1e-9)
+        // 예수금 빼고 S&P 50 · 채권 30 · 금 ETF 20 (안 가짐). 300 원 → 넣은 뒤 2300, 목표 1150/690/460
+        // 채운 정도: 금 0% · 채권 72.5% → 금이 채권 수준(72.5%)에 닿으려면 333.5 원이 필요하므로 300 원 모두 금 ETF
+        // (금액 차이 기준이었다면 채권 부족분 190 · 금 460 비율로 나눠 채권도 87.7 원 샀다)
+        val t = target.copy(
+            includeCash = false,
+            targets = mapOf("KR:360750" to 50.0, "KR:AAA" to 30.0, "KR:GLD1" to 20.0),
+            units = mapOf("KR:360750" to 0.01, "KR:AAA" to 0.01, "KR:GLD1" to 0.01),
+        )
+        val buys = AllocationCalculator.buyOnly(AllocationCalculator.view(t, summary.accounts, null), 300.0).trades.associateBy { it.row.key }
+        assertEquals(setOf("KR:GLD1"), buys.keys)
+        assertEquals(300.0, buys.getValue("KR:GLD1").amountKrw, 1e-6)
     }
 
     @Test
@@ -292,8 +311,8 @@ class AllocationTest {
         val withCash = AllocationCalculator.view(target.copy(units = mapOf("KR:AAA" to 0.01)), summary.accounts, null)
         val p2 = AllocationCalculator.buyOnly(withCash, 0.0, useCash = true)
         val byKey = p2.trades.associateBy { it.row.key }
-        // 부족분: AAA 750-500=250, 예수금 500-0=500 → 500 원을 250:500 으로 → AAA 166.67, 예수금 333.33 남김
-        assertEquals(500.0 * 250 / 750, byKey.getValue("KR:AAA").amountKrw, 0.02)
+        // 채운 정도: 예수금 0% · 채권 66.7% → 예수금을 66.7% 까지(333.3), 남은 166.7 을 함께 → 둘 다 80%: 채권 100, 예수금 400
+        assertEquals(100.0, byKey.getValue("KR:AAA").amountKrw, 0.02)
         assertEquals(500.0 - byKey.getValue("KR:AAA").amountKrw, byKey.getValue("CASH").amountKrw, 1e-6)
     }
 }
