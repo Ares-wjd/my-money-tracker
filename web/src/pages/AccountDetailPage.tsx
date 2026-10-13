@@ -5,7 +5,8 @@ import { amount, decimal, rate as formatRate, signedWon, usd, won } from '../cor
 import { HOLDING_SORTS, HOLDING_SORT_LABEL, convert, displayConversion, sortHoldings, type HoldingValuation } from '../core/portfolio';
 import { useAppData, useData } from '../data/DataContext';
 import { Card, CurrencyToggle, ListLink, NotFound, Row, Stat, TickerBadge, TickerLegend, Warning, profitClass, tickerGroup } from '../components/ui';
-import { ASSET_TYPE_LABEL, RECORD_TYPE_LABEL, marketCurrency, type Record, type RecordType } from '../model';
+import { ASSET_TYPE_LABEL, RECORD_TYPE_LABEL, marketCurrency, type Currency, type Record, type RecordType } from '../model';
+import type { CashDetail } from '../core/cash';
 import { AccountForm } from '../forms/AccountForm';
 import { CashForm } from '../forms/CashForm';
 import { HoldingForm } from '../forms/HoldingForm';
@@ -23,7 +24,7 @@ type Dialog =
   | null;
 
 /** 기록 추가 메뉴에 보여줄 유형 (예수금은 예수금 카드의 "예수금 입력" 으로 따로 넣는다). */
-const ADDABLE: readonly RecordType[] = ['DEPOSIT', 'WITHDRAW', 'TRANSFER', 'BUY', 'SELL', 'DIVIDEND'];
+const ADDABLE: readonly RecordType[] = ['DEPOSIT', 'WITHDRAW', 'TRANSFER', 'BUY', 'SELL', 'DIVIDEND', 'EXCHANGE'];
 
 export function AccountDetailPage() {
   const { accountId = '' } = useParams();
@@ -118,13 +119,18 @@ export function AccountDetailPage() {
         <Card title="예수금">
           <Row label={linked ? '원화 (D+2)' : '원화'} value={won(summary.cash.krw)} />
           {showUsdCash && <Row label="달러" value={usd(summary.cash.usd)} />}
-          <p className="muted small">
-            {linked
-              ? '한투에서 불러온 값 (폰 앱이 새로고침할 때 갱신)' + (summary.cashDate ? ` · ${formatDate(summary.cashDate)} 변경` : '')
-              : summary.cashDate
-                ? `${formatDate(summary.cashDate)} 입력한 값`
-                : '아직 입력하지 않았습니다. 증권사 앱의 예수금을 입력하세요.'}
-          </p>
+          {linked ? (
+            <p className="muted small">
+              {'한투에서 불러온 값 (폰 앱이 새로고침할 때 갱신, 하루 한 번은 기록)' + (summary.cashDate ? ` · ${formatDate(summary.cashDate)} 기록` : '')}
+            </p>
+          ) : (
+            <>
+              {/* 혼합 방식: 입력값(기준점) + 이후 기록. 통화마다 근거를 보여준다 */}
+              <p className="muted small">{cashBasis(summary.cashDetails.KRW, 'KRW', showUsdCash)}</p>
+              {showUsdCash && <p className="muted small">{cashBasis(summary.cashDetails.USD, 'USD', true)}</p>}
+              {(summary.cash.krw < 0 || summary.cash.usd < 0) && <Warning>계산상 예수금이 음수입니다. 입금 기록이나 예수금 입력을 확인하세요.</Warning>}
+            </>
+          )}
           {!linked && (
             <button className="text-button" onClick={() => setDialog({ kind: 'cash' })}>예수금 입력</button>
           )}
@@ -198,7 +204,8 @@ export function AccountDetailPage() {
             {/* 한투 연결 계좌는 매수·매도를 불러오므로 직접 추가하지 않는다 (중복 방지). */}
             {!linked && <Link className="button-link small-button" to={`/accounts/${accountId}/import`}>표로 일괄 입력</Link>}
             <AddRecordMenu
-              types={ADDABLE.filter((t) => !linked || (t !== 'BUY' && t !== 'SELL'))}
+              // 환전은 직접 입력 계좌의 예수금 계산용 (연결 계좌는 예수금을 불러온다)
+              types={ADDABLE.filter((t) => !linked || (t !== 'BUY' && t !== 'SELL' && t !== 'EXCHANGE'))}
               label={(t) => RECORD_TYPE_LABEL[t]}
               onSelect={(type) => setDialog({ kind: 'record', type, existing: null })}
             />
@@ -226,4 +233,15 @@ export function AccountDetailPage() {
       )}
     </div>
   );
+}
+
+/** 직접 입력 계좌의 예수금 근거: "10/1 입력 1,000,000원 + 이후 기록 −687,600원" 등 (폰과 같은 문구). */
+function cashBasis(detail: CashDetail, currency: Currency, withLabel: boolean): string {
+  const label = withLabel ? (currency === 'KRW' ? '원화: ' : '달러: ') : '';
+  const amount = (v: number) => (currency === 'KRW' ? won(v) : usd(v));
+  const signed = (v: number) => (currency === 'KRW' ? signedWon(v) : v > 0 ? `+${usd(v)}` : usd(v));
+  if (detail.anchor === null && !detail.estimated) return `${label}아직 입력하지 않았습니다. 증권사 앱의 예수금을 입력하세요.`;
+  if (detail.anchor === null || detail.anchorDate === null) return `${label}입력한 예수금이 없어 기록(입금·매매 등)으로 계산한 값`;
+  if (!detail.estimated) return `${label}${formatDate(detail.anchorDate)} 입력한 값`;
+  return `${label}${formatDate(detail.anchorDate)} 입력 ${amount(detail.anchor)} + 이후 기록 ${signed(detail.change)} (계산)`;
 }

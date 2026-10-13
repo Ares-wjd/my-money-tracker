@@ -1,6 +1,7 @@
 // core 의 PortfolioCalculator 와 같은 규칙. 수수료·세금은 평균단가에 넣지 않고, 평균단가는 이동평균법.
 import type { Currency, Holding, InvestmentAccount, PricePoint, Record } from '../model';
 import { marketCurrency, totalCost } from '../model';
+import { cashDetail, isBrokerLinked, type CashDetail } from './cash';
 
 export interface CashBalance {
   krw: number;
@@ -40,9 +41,14 @@ export interface AccountSummary {
   account: InvestmentAccount;
   /** 투자금 = 입금 − 출금 ± 이체 (원화) */
   investedKrw: number;
-  /** 예수금: 통화별로 가장 최근의 예수금 기록. 기록이 없으면 0. */
+  /** 예수금 (혼합 방식, cash.ts): 한투 연결 계좌는 불러온 값, 직접 입력 계좌는 입력값 + 기록으로 계산 */
   cash: CashBalance;
+  /** 가장 최근 예수금 기준점(입력하거나 불러온 기록)의 날짜 */
   cashDate: string | null;
+  /** 통화별 예수금 근거 */
+  cashDetails: { KRW: CashDetail; USD: CashDetail };
+  /** 증권사에서 불러오는 계좌인지 (예수금을 계산하지 않음) */
+  brokerLinked: boolean;
   holdings: HoldingValuation[];
   dividendsKrw: number;
   missingPrice: boolean;
@@ -124,24 +130,27 @@ function summarizeAccount(
   account: InvestmentAccount,
   holdings: Holding[],
   records: Record[],
+  allRecords: Record[],
+  asOf: string | null,
   usdKrw: number | null,
   priceOf: (h: Holding) => PricePoint | null,
 ): AccountSummary {
   let invested = 0;
-  const cash: CashBalance = { krw: 0, usd: 0 };
-  let cashDate: string | null = null;
+  // 예수금 (혼합 방식): 첫 기준점 이전 추정에 그 뒤 기록도 필요해 날짜 제한 없는 기록으로 계산한다.
+  const linked = isBrokerLinked(account.id, allRecords);
+  const cashDetails = {
+    KRW: cashDetail(account.id, 'KRW', allRecords, holdings, asOf, linked),
+    USD: cashDetail(account.id, 'USD', allRecords, holdings, asOf, linked),
+  };
+  const cash: CashBalance = { krw: cashDetails.KRW.amount, usd: cashDetails.USD.amount };
+  const anchorDates = [cashDetails.KRW.anchorDate, cashDetails.USD.anchorDate].filter((d): d is string => d !== null).sort();
+  const cashDate = anchorDates.length > 0 ? anchorDates[anchorDates.length - 1] : null;
 
-  // 예수금은 계산하지 않는다. 통화별로 가장 최근의 예수금 기록(records 는 날짜순)을 쓴다.
   for (const r of records) {
     const incoming = r.type === 'TRANSFER' && r.toAccountId === account.id && r.accountId !== account.id;
     if (r.type === 'DEPOSIT') invested += r.krwAmount;
     else if (r.type === 'WITHDRAW') invested -= r.krwAmount;
     else if (r.type === 'TRANSFER') invested += (incoming ? 1 : -1) * r.krwAmount;
-    else if (r.type === 'CASH_BALANCE' && r.accountId === account.id) {
-      if (r.currency === 'KRW') cash.krw = r.amount;
-      else cash.usd = r.amount;
-      cashDate = r.date;
-    }
   }
 
   const valuations: HoldingValuation[] = holdings.map((holding) => {
@@ -177,6 +186,8 @@ function summarizeAccount(
     investedKrw: invested,
     cash,
     cashDate,
+    cashDetails,
+    brokerLinked: linked,
     holdings: valuations,
     dividendsKrw,
     missingPrice: valuations.some((v) => v.position.quantity > 0 && v.price === null),
@@ -203,16 +214,20 @@ export function summarize(
   priceOf: (h: Holding) => PricePoint | null = defaultPrice,
   asOf: string | null = null,
 ): PortfolioSummary {
-  const effective = records.filter((r) => asOf === null || r.date <= asOf).sort(compareRecords);
-  const summaries = accounts.map((account) =>
-    summarizeAccount(
+  const sorted = [...records].sort(compareRecords);
+  const effective = sorted.filter((r) => asOf === null || r.date <= asOf);
+  const summaries = accounts.map((account) => {
+    const related = (r: Record) => r.accountId === account.id || r.toAccountId === account.id;
+    return summarizeAccount(
       account,
       holdings.filter((h) => h.accountId === account.id),
-      effective.filter((r) => r.accountId === account.id || r.toAccountId === account.id),
+      effective.filter(related),
+      sorted.filter(related),
+      asOf,
       usdKrw,
       priceOf,
-    ),
-  );
+    );
+  });
   const investedKrw = sum(summaries.map((a) => a.investedKrw));
   const valueKrw = sum(summaries.map((a) => a.valueKrw));
   const dividendsKrw = sum(summaries.map((a) => a.dividendsKrw));

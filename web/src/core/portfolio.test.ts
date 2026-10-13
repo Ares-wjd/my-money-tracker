@@ -82,7 +82,9 @@ describe('투자 계산 (PortfolioCalculatorTest)', () => {
     expect(summary.investedKrw).toBeCloseTo(2_000_000, 9);
     expect(usSummary.cash.krw).toBeCloseTo(20_000, 9);
     expect(usSummary.cash.usd).toBeCloseTo(161, 9);
-    expect(krSummary.cash.krw).toBe(0);
+    // 보낸 계좌는 입력값이 없어 기록으로 계산: 입금 200만 − 이체 100만
+    expect(krSummary.cash.krw).toBeCloseTo(1_000_000, 9);
+    expect(krSummary.cashDetails.KRW.estimated).toBe(true);
     expect(usSummary.valueKrw).toBeCloseTo(840_000 + 20_000 + 225_400, 9);
     expect(usSummary.dividendsKrw).toBeCloseTo(2 * 1_400, 9);
   });
@@ -111,7 +113,39 @@ describe('투자 계산 (PortfolioCalculatorTest)', () => {
     expect(quantityAt(samsung, [buy, sell], '2026-01-01')).toBe(0);
   });
 
-  it('예수금은 계산하지 않고 가장 최근 기록을 쓴다', () => {
+  it('예수금 = 기준점 + 그 뒤 기록 (환전·배당, 초기 보유분은 빼지 않음)', () => {
+    const records = [
+      rec('kr', 'CASH_BALANCE', day1, { amount: 1_000_000 }),
+      rec('kr', 'BUY', day2, { holdingId: 's', quantity: 3, price: 100_000, fee: 1_000 }),
+      rec('kr', 'DIVIDEND', day3, { holdingId: 's', amount: 5_000 }),
+      rec('kr', 'EXCHANGE', day3, { currency: 'KRW', amount: 100, krwAmount: 140_000 }),
+      rec('kr', 'BUY', day3, { holdingId: 's', quantity: 1, price: 50_000, initial: true }),
+    ];
+    const at = (d: string | null) => summarize([kr], [samsung], records, 1_000, undefined, d).accounts[0];
+    expect(at(day1).cash.krw).toBeCloseTo(1_000_000, 9);
+    expect(at(day1).cashDetails.KRW.estimated).toBe(false);
+    const d2 = at(day2).cashDetails.KRW;
+    expect([d2.amount, d2.anchor, d2.change, d2.estimated]).toEqual([699_000, 1_000_000, -301_000, true]);
+    const now = at(null);
+    expect(now.cash.krw).toBeCloseTo(564_000, 9);
+    expect(now.cash.usd).toBeCloseTo(100, 9);
+    expect(now.brokerLinked).toBe(false);
+  });
+
+  it('증권사 연결 계좌는 불러온 예수금만', () => {
+    const records = [
+      rec('kr', 'BUY', day1, { holdingId: 's', quantity: 1, price: 70_000, externalId: 'KIS:1' }),
+      rec('kr', 'CASH_BALANCE', day1, { amount: 10_000, externalId: 'KIS:balance' }),
+      rec('kr', 'BUY', day2, { holdingId: 's', quantity: 1, price: 70_000, externalId: 'KIS:2' }),
+    ];
+    const now = summarize([kr], [samsung], records, null).accounts[0];
+    expect(now.brokerLinked).toBe(true);
+    expect(now.cash.krw).toBeCloseTo(10_000, 9);
+    expect(now.cashDetails.KRW.estimated).toBe(false);
+    expect(summarize([kr], [samsung], records, null, undefined, '2026-01-01').accounts[0].cash.krw).toBe(0);
+  });
+
+  it('첫 입력 이전은 거꾸로 추정', () => {
     const records = [
       rec('kr', 'BUY', day1, { holdingId: 's', quantity: 10, price: 70_000 }),
       rec('kr', 'CASH_BALANCE', day1, { amount: 10_000 }),
@@ -126,9 +160,10 @@ describe('투자 계산 (PortfolioCalculatorTest)', () => {
     expect(now.cashDate).toBe(day3);
     expect(now.valueKrw).toBeCloseTo(800_000 + 70_000 + 12_500, 9);
     expect(summarize([kr], [samsung], records, 1_000, undefined, day2).accounts[0].cash.krw).toBeCloseTo(50_000, 9);
-    const none = summarize([kr], [samsung], records, null, undefined, '2026-01-01').accounts[0];
-    expect(none.cash.krw).toBe(0);
-    expect(none.cashDate).toBeNull();
+    // 첫 입력값 10,000 − 그 사이 매수(−700,000) = 710,000
+    const before = summarize([kr], [samsung], records, null, undefined, '2026-01-01').accounts[0];
+    expect(before.cash.krw).toBeCloseTo(710_000, 9);
+    expect(before.cashDetails.KRW.estimated).toBe(true);
   });
 
   it('가격 함수를 쓴다', () => {

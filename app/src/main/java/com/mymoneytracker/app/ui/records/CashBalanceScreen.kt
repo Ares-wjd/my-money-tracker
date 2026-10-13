@@ -29,17 +29,23 @@ import com.mymoneytracker.app.ui.PortfolioViewModel
 import com.mymoneytracker.app.ui.common.MoneyField
 import com.mymoneytracker.app.ui.common.DateField
 import com.mymoneytracker.app.ui.common.LoadingBox
+import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.NumberField
+import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.TextInput
 import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.app.ui.common.formatDate
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.portfolio.AccountSummary
+import com.mymoneytracker.core.portfolio.CashCalculator
 import java.time.LocalDate
 import kotlin.math.roundToLong
 
-/** 증권사 앱에 보이는 예수금을 직접 입력한다. 계산하지 않고 입력한 값이 그대로 계좌의 예수금이 된다. */
+/**
+ * 증권사 앱에 보이는 예수금을 직접 입력한다. 입력한 값은 그날의 기준점이 되고, 그 사이 날짜는 매매·입출금 기록으로 계산한다 (혼합 방식).
+ * 입력 전에 그날의 계산값을 보여주고, 입력값과의 차이(이자·수수료 등 기록되지 않은 금액)를 알려준다.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CashBalanceScreen(
@@ -64,8 +70,18 @@ fun CashBalanceScreen(
         if (summary == null) {
             LoadingBox(Modifier.padding(padding))
         } else {
+            val current = data!!
             CashBalanceForm(
                 summary = summary,
+                // 그날의 계산값 (그날 입력한 값은 빼고 계산)
+                computedAt = { date, currency ->
+                    CashCalculator.detail(
+                        accountId, currency,
+                        current.records.filter { it.accountId == accountId || it.toAccountId == accountId },
+                        current.holdings.filter { it.accountId == accountId },
+                        date, linked = false, excludeAnchorOn = date,
+                    ).amount
+                },
                 modifier = Modifier.padding(padding),
                 onSave = { date, krw, usd, memo ->
                     viewModel.saveCashBalance(accountId, date, krw, usd, memo)
@@ -79,6 +95,7 @@ fun CashBalanceScreen(
 @Composable
 private fun CashBalanceForm(
     summary: AccountSummary,
+    computedAt: (LocalDate, Currency) -> Double,
     modifier: Modifier,
     onSave: (LocalDate, Double?, Double?, String) -> Unit,
 ) {
@@ -98,8 +115,8 @@ private fun CashBalanceForm(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            "증권사 앱에 보이는 예수금을 그대로 입력하세요. 매매·입출금으로 계산하지 않고, 입력한 값이 이 계좌의 예수금이 됩니다. " +
-                "예수금이 바뀌었을 때(매매·입출금·이자 등) 다시 입력하면 됩니다.",
+            "증권사 앱에 보이는 예수금을 그대로 입력하세요. 입력한 값이 그날의 기준이 되고, 그 사이 날짜는 매매·입출금·배당·환전 기록으로 계산합니다. " +
+                "가끔 입력하면 기록되지 않은 이자·수수료만큼의 차이가 맞춰집니다.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -108,9 +125,25 @@ private fun CashBalanceForm(
             NumberField("달러 예수금", usdText, { usdText = it }, allowNegative = true, preview = { MoneyFormat.usd(it) })
         }
         DateField("기준일", date, { day = it.toEpochDay() })
+        // 그날의 계산값과 입력값의 차이
+        SectionCard {
+            val krwComputed = computedAt(date, Currency.KRW)
+            LabeledValue("${formatDate(date)} 계산값 (원화)", MoneyFormat.won(krwComputed))
+            krw?.let { LabeledValue("차이", MoneyFormat.signedWon(it - krwComputed)) }
+            if (showUsd) {
+                val usdComputed = computedAt(date, Currency.USD)
+                LabeledValue("${formatDate(date)} 계산값 (달러)", MoneyFormat.usd(usdComputed))
+                usd?.let { LabeledValue("차이", MoneyFormat.signedUsd(it - usdComputed)) }
+            }
+            Text(
+                "차이는 이자·수수료 등 기록되지 않은 금액입니다. 입력하면 그날부터 입력값 기준으로 다시 계산합니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         TextInput("메모 (선택)", memo, { memo = it }, maxLength = 100)
         summary.cashDate?.let { last ->
-            if (date.isBefore(last)) WarningText("기준일이 마지막 입력일(${formatDate(last)})보다 이전이라 지금 예수금은 바뀌지 않습니다.")
+            if (date.isBefore(last)) WarningText("기준일이 마지막 입력일(${formatDate(last)})보다 이전이라 그 사이 날짜의 예수금만 바뀝니다 (지금 예수금은 마지막 입력 기준).")
         }
         Button(
             onClick = { onSave(date, krw, usd, memo.trim()) },

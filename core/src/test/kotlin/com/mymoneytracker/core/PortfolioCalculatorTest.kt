@@ -157,8 +157,9 @@ class PortfolioCalculatorTest {
 
         assertEquals(20_000.0, usSummary.cash.krw, 1e-9)
         assertEquals(161.0, usSummary.cash.usd, 1e-9)
-        // 받은 계좌의 예수금 기록은 보낸 계좌에 섞이지 않는다.
-        assertEquals(0.0, krSummary.cash.krw, 1e-9)
+        // 받은 계좌의 예수금 기록은 보낸 계좌에 섞이지 않는다. 보낸 계좌는 입력값이 없어 기록으로 계산: 입금 200만 − 이체 100만
+        assertEquals(1_000_000.0, krSummary.cash.krw, 1e-9)
+        assertTrue(krSummary.cashDetails.getValue(Currency.KRW).estimated)
         // 종목 600$ × 1400 + 20,000 + 161$ × 1400
         assertEquals(840_000.0 + 20_000.0 + 225_400.0, usSummary.valueKrw, 1e-9)
         assertEquals(2.0 * 1_400.0, usSummary.dividendsKrw, 1e-9)
@@ -195,7 +196,47 @@ class PortfolioCalculatorTest {
     }
 
     @Test
-    fun cashIsLatestBalanceRecordNotCalculated() {
+    fun cashIsAnchorPlusLaterRecords() {
+        val records = listOf(
+            rec("kr", RecordType.CASH_BALANCE, day1, amount = 1_000_000.0), // 입력한 예수금 (기준점)
+            rec("kr", RecordType.BUY, day2, holding = "s", qty = 3.0, price = 100_000.0, fee = 1_000.0),
+            rec("kr", RecordType.DIVIDEND, day3, holding = "s", amount = 5_000.0),
+            rec("kr", RecordType.EXCHANGE, day3, currency = Currency.KRW, amount = 100.0, krw = 140_000.0), // 원화 → 달러
+            rec("kr", RecordType.BUY, day3, holding = "s", qty = 1.0, price = 50_000.0).copy(initial = true), // 초기 보유분은 빼지 않음
+        )
+        val at = { d: LocalDate? -> PortfolioCalculator.summarize(listOf(kr), listOf(samsung), records, 1_000.0, asOf = d).accounts.single() }
+        assertEquals(1_000_000.0, at(day1).cash.krw, 1e-9)
+        assertFalse(at(day1).cashDetails.getValue(Currency.KRW).estimated)
+        // 기준점 + 매수 −301,000
+        val d2 = at(day2).cashDetails.getValue(Currency.KRW)
+        assertEquals(699_000.0, d2.amount, 1e-9)
+        assertEquals(1_000_000.0, d2.anchor!!, 1e-9)
+        assertEquals(-301_000.0, d2.change, 1e-9)
+        assertTrue(d2.estimated)
+        // + 배당 5,000 − 환전 140,000, 달러는 기준점 없이 기록만으로 +100
+        val now = at(null)
+        assertEquals(564_000.0, now.cash.krw, 1e-9)
+        assertEquals(100.0, now.cash.usd, 1e-9)
+        assertFalse(now.brokerLinked)
+    }
+
+    @Test
+    fun brokerLinkedAccountUsesFetchedCashOnly() {
+        val records = listOf(
+            rec("kr", RecordType.BUY, day1, holding = "s", qty = 1.0, price = 70_000.0).copy(externalId = "KIS:1"),
+            rec("kr", RecordType.CASH_BALANCE, day1, amount = 10_000.0).copy(externalId = "KIS:balance"),
+            rec("kr", RecordType.BUY, day2, holding = "s", qty = 1.0, price = 70_000.0).copy(externalId = "KIS:2"),
+        )
+        val now = PortfolioCalculator.summarize(listOf(kr), listOf(samsung), records, null).accounts.single()
+        assertTrue(now.brokerLinked)
+        assertEquals(10_000.0, now.cash.krw, 1e-9) // 매수로 계산하지 않고 불러온 값 그대로
+        assertFalse(now.cashDetails.getValue(Currency.KRW).estimated)
+        val before = PortfolioCalculator.summarize(listOf(kr), listOf(samsung), records, null, asOf = day1.minusDays(1)).accounts.single()
+        assertEquals(0.0, before.cash.krw, 1e-9) // 첫 기록 이전은 0
+    }
+
+    @Test
+    fun cashBeforeFirstAnchorIsEstimatedBackward() {
         val records = listOf(
             rec("kr", RecordType.BUY, day1, holding = "s", qty = 10.0, price = 70_000.0),
             rec("kr", RecordType.CASH_BALANCE, day1, amount = 10_000.0),
@@ -208,15 +249,16 @@ class PortfolioCalculatorTest {
         assertEquals(70_000.0, now.cash.krw, 1e-9)
         assertEquals(12.5, now.cash.usd, 1e-9)
         assertEquals(day3, now.cashDate)
-        // 매수는 예수금을 줄이지 않는다 (예수금은 입력한 값 그대로).
+        // 기준점 이후 기록이 없으면 입력한 값 그대로
         assertEquals(800_000.0 + 70_000.0 + 12_500.0, now.valueKrw, 1e-9)
 
         val past = PortfolioCalculator.summarize(listOf(kr), listOf(samsung), records, 1_000.0, asOf = day2).accounts.single()
         assertEquals(50_000.0, past.cash.krw, 1e-9)
 
-        val none = PortfolioCalculator.summarize(listOf(kr), listOf(samsung), records, null, asOf = day1.minusDays(1)).accounts.single()
-        assertEquals(0.0, none.cash.krw, 1e-9)
-        assertNull(none.cashDate)
+        // 첫 입력 이전: 첫 입력값 10,000 − 그 사이 기록(매수 −700,000) = 710,000 (추정)
+        val before = PortfolioCalculator.summarize(listOf(kr), listOf(samsung), records, null, asOf = day1.minusDays(1)).accounts.single()
+        assertEquals(710_000.0, before.cash.krw, 1e-9)
+        assertTrue(before.cashDetails.getValue(Currency.KRW).estimated)
     }
 
     @Test

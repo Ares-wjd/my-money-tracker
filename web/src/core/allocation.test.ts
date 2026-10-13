@@ -16,6 +16,7 @@ const records = [
   record({ id: '2', accountId: 'a', type: 'BUY', date: day, holdingId: 'h2', quantity: 5, price: 100 }),
   record({ id: '3', accountId: 'b', type: 'BUY', date: day, holdingId: 'h3', quantity: 5, price: 100 }),
   record({ id: '4', accountId: 'a', type: 'CASH_BALANCE', date: day, amount: 500 }),
+  record({ id: '5', accountId: 'b', type: 'CASH_BALANCE', date: day, amount: 0 }),
 ];
 const accounts = summarize([isa, other], [sp1, bond, sp2, gold], records, null).accounts;
 const target: AllocationTarget = {

@@ -55,9 +55,9 @@ data class AccountSummary(
     val account: InvestmentAccount,
     /** 투자금 = 입금 − 출금 ± 이체 (원화). */
     val investedKrw: Double,
-    /** 예수금: 통화별로 가장 최근의 예수금 기록 (직접 입력 또는 한투에서 불러온 값). 기록이 없으면 0. */
+    /** 예수금 (혼합 방식, [CashCalculator]): 한투 연결 계좌는 불러온 값, 직접 입력 계좌는 입력값 + 기록으로 계산. */
     val cash: CashBalance,
-    /** 가장 최근 예수금 기록의 날짜 (없으면 null). */
+    /** 가장 최근 예수금 기준점(입력하거나 불러온 기록)의 날짜 (없으면 null). */
     val cashDate: LocalDate? = null,
     val holdings: List<HoldingValuation>,
     val dividendsKrw: Double,
@@ -66,6 +66,10 @@ data class AccountSummary(
     /** 달러 금액이 있는데 환율이 없는지. */
     val missingFx: Boolean,
     val usdKrw: Double?,
+    /** 통화별 예수금 근거 (기준점, 기록으로 더한 금액, 계산값인지). */
+    val cashDetails: Map<Currency, CashDetail> = emptyMap(),
+    /** 증권사에서 불러오는 계좌인지 (예수금을 계산하지 않음). */
+    val brokerLinked: Boolean = false,
 ) {
     /** 계좌 평가금 (원화) = 종목 평가금 + 예수금. */
     val valueKrw: Double get() = holdings.sumOf { it.marketValueKrw ?: 0.0 } + cash.toKrw(usdKrw)
@@ -113,14 +117,16 @@ object PortfolioCalculator {
         priceOf: (Holding) -> PricePoint? = { h -> h.manualPrice?.let { PricePoint(it, h.manualPriceDate) } },
         asOf: LocalDate? = null,
     ): PortfolioSummary {
-        val effective = records
-            .filter { asOf == null || !it.date.isAfter(asOf) }
-            .sortedWith(recordOrder)
+        val sorted = records.sortedWith(recordOrder)
+        val effective = sorted.filter { asOf == null || !it.date.isAfter(asOf) }
         val summaries = accounts.map { account ->
+            val related = { r: Record -> r.accountId == account.id || r.toAccountId == account.id }
             summarizeAccount(
                 account = account,
                 holdings = holdings.filter { it.accountId == account.id },
-                records = effective.filter { it.accountId == account.id || it.toAccountId == account.id },
+                records = effective.filter(related),
+                allRecords = sorted.filter(related),
+                asOf = asOf,
                 usdKrw = usdKrw,
                 priceOf = priceOf,
             )
@@ -132,27 +138,24 @@ object PortfolioCalculator {
         account: InvestmentAccount,
         holdings: List<Holding>,
         records: List<Record>,
+        allRecords: List<Record>,
+        asOf: LocalDate?,
         usdKrw: Double?,
         priceOf: (Holding) -> PricePoint?,
     ): AccountSummary {
         var invested = 0.0
-        var cash = CashBalance()
-        var cashDate: LocalDate? = null
+        // 예수금 (혼합 방식): 첫 기준점 이전 추정에 그 뒤 기록도 필요해 날짜 제한 없는 기록으로 계산한다.
+        val linked = CashCalculator.isBrokerLinked(account.id, allRecords)
+        val details = Currency.entries.associateWith { CashCalculator.detail(account.id, it, allRecords, holdings, asOf, linked) }
+        val cash = CashBalance(details.getValue(Currency.KRW).amount, details.getValue(Currency.USD).amount)
+        val cashDate = details.values.mapNotNull { it.anchorDate }.maxOrNull()
 
-        // 예수금은 계산하지 않는다. 통화별로 가장 최근의 예수금 기록(records 는 날짜순)을 쓴다.
         for (r in records) {
             val incoming = r.type == RecordType.TRANSFER && r.toAccountId == account.id && r.accountId != account.id
             when (r.type) {
                 RecordType.DEPOSIT -> invested += r.krwAmount
                 RecordType.WITHDRAW -> invested -= r.krwAmount
                 RecordType.TRANSFER -> invested += (if (incoming) 1.0 else -1.0) * r.krwAmount
-                RecordType.CASH_BALANCE -> if (r.accountId == account.id) {
-                    cash = when (r.currency) {
-                        Currency.KRW -> cash.copy(krw = r.amount)
-                        Currency.USD -> cash.copy(usd = r.amount)
-                    }
-                    cashDate = r.date
-                }
                 else -> Unit
             }
         }
@@ -188,6 +191,8 @@ object PortfolioCalculator {
             missingPrice = valuations.any { it.position.quantity > 0 && it.price == null },
             missingFx = hasUsd && usdKrw == null,
             usdKrw = usdKrw,
+            cashDetails = details,
+            brokerLinked = linked,
         )
     }
 

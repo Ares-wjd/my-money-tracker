@@ -28,6 +28,7 @@ class AllocationTest {
         Record(id = "2", accountId = "a", type = RecordType.BUY, date = day, holdingId = "h2", quantity = 5.0, price = 100.0),
         Record(id = "3", accountId = "b", type = RecordType.BUY, date = day, holdingId = "h3", quantity = 5.0, price = 100.0),
         Record(id = "4", accountId = "a", type = RecordType.CASH_BALANCE, date = day, amount = 500.0),
+        Record(id = "5", accountId = "b", type = RecordType.CASH_BALANCE, date = day, amount = 0.0),
     )
     private val summary = PortfolioCalculator.summarize(listOf(isa, other), listOf(sp1, bond, sp2, gold), records, null)
     private val target = AllocationTarget(

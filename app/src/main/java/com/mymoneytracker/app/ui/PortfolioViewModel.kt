@@ -331,13 +331,18 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         }
     }
 
-    /** 한투 예수금을 연결 계좌의 예수금 기록으로 남긴다. 지금 예수금과 다를 때만 저장한다 (1분 새로고침마다 쓰지 않도록). */
+    /**
+     * 한투 예수금을 연결 계좌의 예수금 기록으로 남긴다. 하루에 한 번은 꼭 기록하고(그날 첫 새로고침), 그 뒤에는 바뀌었을 때만
+     * 그날 값을 덮어쓴다 (1분 새로고침마다 쓰지 않도록). 과거 예수금은 API 로 받을 수 없어서 매일 쌓아 둔다.
+     */
     private fun saveBrokerCash(accountId: String, krw: Double?, usd: Double?) {
-        val cash = data.value?.accountSummary(accountId)?.cash ?: return
+        val current = data.value ?: return
+        val cash = current.accountSummary(accountId)?.cash ?: return
         val today = LocalDate.now()
         listOfNotNull(krw?.let { Currency.KRW to it }, usd?.let { Currency.USD to it }).forEach { (currency, value) ->
             val record = cashBalanceRecord("kis_cash", accountId, today, currency, value, "한투에서 불러옴", externalId = "KIS:balance")
-            if (kotlin.math.abs(cash[currency] - record.amount) >= 0.005) repository.saveRecord(record)
+            val recordedToday = current.record(record.id) != null
+            if (!recordedToday || kotlin.math.abs(cash[currency] - record.amount) >= 0.005) repository.saveRecord(record)
         }
     }
 

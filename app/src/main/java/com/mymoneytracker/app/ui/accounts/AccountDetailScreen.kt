@@ -73,6 +73,7 @@ import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.AccountSummary
+import com.mymoneytracker.core.portfolio.CashDetail
 import com.mymoneytracker.core.portfolio.DisplayConversion
 import com.mymoneytracker.core.portfolio.DisplayCurrency
 import com.mymoneytracker.core.portfolio.HoldingSort
@@ -86,6 +87,7 @@ private val addableTypes = listOf(
     RecordType.BUY,
     RecordType.SELL,
     RecordType.DIVIDEND,
+    RecordType.EXCHANGE,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -148,7 +150,8 @@ fun AccountDetailScreen(
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     // 한투 연결 계좌는 매수·매도를 불러오므로 직접 추가하지 않는다 (중복 방지).
                     val linkedHere = apiStatus.linkedAccountId == accountId
-                    addableTypes.filter { !linkedHere || (it != RecordType.BUY && it != RecordType.SELL) }.forEach { type ->
+                    // 환전은 직접 입력 계좌의 예수금 계산용 (연결 계좌는 예수금을 불러온다)
+                    addableTypes.filter { !linkedHere || (it != RecordType.BUY && it != RecordType.SELL && it != RecordType.EXCHANGE) }.forEach { type ->
                         DropdownMenuItem(
                             text = { Text(type.label) },
                             onClick = {
@@ -307,15 +310,27 @@ private fun AccountDetailContent(
                 if (summary.cash.usd != 0.0 || summary.holdings.any { it.holding.currency == Currency.USD }) {
                     LabeledValue("달러", MoneyFormat.usd(summary.cash.usd))
                 }
-                Text(
-                    when {
-                        linked -> "한투에서 불러온 값 (새로고침할 때마다 갱신)" + (cashDate?.let { " · ${formatDate(it)} 변경" } ?: "")
-                        cashDate != null -> "${formatDate(cashDate)} 입력한 값"
-                        else -> "아직 입력하지 않았습니다. 증권사 앱의 예수금을 입력하세요."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                val broker = linked || summary.brokerLinked
+                if (broker) {
+                    Text(
+                        "한투에서 불러온 값 (새로고침할 때마다 갱신, 하루 한 번은 기록)" + (cashDate?.let { " · ${formatDate(it)} 기록" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    // 혼합 방식: 입력값(기준점) + 이후 기록. 통화마다 근거를 보여준다.
+                    val showUsd = summary.cash.usd != 0.0 || summary.holdings.any { it.holding.currency == Currency.USD }
+                    listOfNotNull(Currency.KRW, Currency.USD.takeIf { showUsd }).forEach { currency ->
+                        Text(
+                            cashBasis(summary.cashDetails[currency], currency, showUsd),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (summary.cash.krw < 0 || summary.cash.usd < 0) {
+                        WarningText("계산상 예수금이 음수입니다. 입금 기록이나 예수금 입력을 확인하세요.")
+                    }
+                }
                 if (!linked) TextButton(onClick = onEnterCash) { Text("예수금 입력") }
             }
         }
@@ -547,5 +562,20 @@ fun HoldingCurrencyToggle(selected: DisplayCurrency, usdKrw: Double?, onSelect: 
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/** 직접 입력 계좌의 예수금 근거: "10/1 입력 1,000,000원 + 이후 기록 −687,600원" 등. */
+private fun cashBasis(detail: CashDetail?, currency: Currency, withLabel: Boolean): String {
+    val label = if (withLabel) (if (currency == Currency.KRW) "원화: " else "달러: ") else ""
+    val amount = { v: Double -> if (currency == Currency.KRW) MoneyFormat.won(v) else MoneyFormat.usd(v) }
+    val signed = { v: Double -> if (currency == Currency.KRW) MoneyFormat.signedWon(v) else MoneyFormat.signedUsd(v) }
+    val anchor = detail?.anchor
+    val date = detail?.anchorDate
+    return label + when {
+        detail == null || (anchor == null && !detail.estimated) -> "아직 입력하지 않았습니다. 증권사 앱의 예수금을 입력하세요."
+        anchor == null || date == null -> "입력한 예수금이 없어 기록(입금·매매 등)으로 계산한 값"
+        !detail.estimated -> "${formatDate(date)} 입력한 값"
+        else -> "${formatDate(date)} 입력 ${amount(anchor)} + 이후 기록 ${signed(detail.change)} (계산)"
     }
 }
