@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -31,6 +32,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.mymoneytracker.app.ui.ChartState
 import com.mymoneytracker.app.ui.common.ChipSelector
@@ -41,6 +45,7 @@ import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.app.ui.common.formatDate
 import com.mymoneytracker.app.ui.common.profitColor
 import com.mymoneytracker.core.MoneyFormat
+import com.mymoneytracker.core.chart.ChartCalculator
 import com.mymoneytracker.core.chart.ChartInterval
 import com.mymoneytracker.core.chart.ChartPoint
 import com.mymoneytracker.core.model.InvestmentAccount
@@ -122,9 +127,17 @@ private fun LineChart(points: List<ChartPoint>) {
 
     val maxValue = points.maxOf { maxOf(it.valueKrw, it.investedKrw) }
     val minValue = points.minOf { minOf(it.valueKrw, it.investedKrw) }
-    val padding = ((maxValue - minValue) * 0.1).coerceAtLeast(1.0)
-    val top = maxValue + padding
-    val bottom = (minValue - padding).coerceAtLeast(0.0)
+    // 금액 보조선 (웹과 같은 규칙): 위아래 끝 = 첫·마지막 보조선
+    val ticks = remember(minValue, maxValue) { ChartCalculator.niceTicks(minValue, maxValue) }
+    val top = ticks.last()
+    val bottom = ticks.first()
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val labels = ticks.map { textMeasurer.measure(ChartCalculator.axisLabel(it), labelStyle) }
+    val density = LocalDensity.current
+    // 왼쪽 금액 칸 폭, 위아래로 글자 절반만큼 여유 (맨 위·아래 보조선 글자가 잘리지 않게)
+    val labelWidth = labels.maxOf { it.size.width } + with(density) { 6.dp.toPx() }
+    val labelHalf = labels.maxOf { it.size.height } / 2f
 
     Column {
         val point = points[selected.coerceIn(0, points.lastIndex)]
@@ -142,23 +155,27 @@ private fun LineChart(points: List<ChartPoint>) {
             Modifier
                 .fillMaxWidth()
                 .height(180.dp)
-                .pointerInput(points) {
-                    detectTapGestures { offset -> selected = indexAt(offset.x, size.width.toFloat(), points.size) }
+                .pointerInput(points, labelWidth) {
+                    detectTapGestures { offset -> selected = indexAt(offset.x - labelWidth, size.width - labelWidth, points.size) }
                 }
-                .pointerInput(points) {
+                .pointerInput(points, labelWidth) {
                     detectDragGestures { change, _ ->
-                        selected = indexAt(change.position.x, size.width.toFloat(), points.size)
+                        selected = indexAt(change.position.x - labelWidth, size.width - labelWidth, points.size)
                     }
                 },
         ) {
-            val w = size.width
-            val h = size.height
-            fun x(i: Int) = if (points.size == 1) w / 2 else w * i / (points.size - 1)
-            fun y(v: Double) = (h - (v - bottom) / (top - bottom) * h).toFloat()
+            val left = labelWidth
+            val w = size.width - left
+            val chartTop = labelHalf
+            val h = size.height - labelHalf * 2
+            fun x(i: Int) = left + if (points.size == 1) w / 2 else w * i / (points.size - 1)
+            fun y(v: Double) = (chartTop + h - (v - bottom) / (top - bottom) * h).toFloat()
 
-            for (k in 0..3) {
-                val gy = h * k / 3
-                drawLine(gridColor, Offset(0f, gy), Offset(w, gy), strokeWidth = 1f)
+            ticks.forEachIndexed { k, t ->
+                val gy = y(t)
+                drawLine(gridColor, Offset(left, gy), Offset(size.width, gy), strokeWidth = 1f)
+                val label = labels[k]
+                drawText(label, topLeft = Offset(left - label.size.width - 6.dp.toPx(), gy - label.size.height / 2f))
             }
             val investedPath = Path().apply {
                 points.forEachIndexed { i, p -> if (i == 0) moveTo(x(i), y(p.investedKrw)) else lineTo(x(i), y(p.investedKrw)) }
@@ -174,10 +191,10 @@ private fun LineChart(points: List<ChartPoint>) {
             drawPath(valuePath, valueColor, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
 
             val si = selected.coerceIn(0, points.lastIndex)
-            drawLine(markerColor.copy(alpha = 0.4f), Offset(x(si), 0f), Offset(x(si), h), strokeWidth = 2f)
+            drawLine(markerColor.copy(alpha = 0.4f), Offset(x(si), chartTop), Offset(x(si), chartTop + h), strokeWidth = 2f)
             drawCircle(valueColor, radius = 9f, center = Offset(x(si), y(points[si].valueKrw)))
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth().padding(start = with(density) { labelWidth.toDp() }), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(formatDate(points.first().date), style = MaterialTheme.typography.labelSmall)
             Text(formatDate(points.last().date), style = MaterialTheme.typography.labelSmall)
         }
@@ -185,6 +202,7 @@ private fun LineChart(points: List<ChartPoint>) {
 }
 
 private fun indexAt(x: Float, width: Float, count: Int): Int {
+    // x 가 음수(왼쪽 금액 칸)면 첫 점
     if (count <= 1 || width <= 0f) return 0
     return ((x / width) * (count - 1)).let { kotlin.math.round(it).toInt() }.coerceIn(0, count - 1)
 }

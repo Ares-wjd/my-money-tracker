@@ -42,6 +42,22 @@ class ChartCalculatorTest {
     }
 
     @Test
+    fun niceTicksAndAxisLabels() {
+        // 1,230만 ~ 2,870만 → 간격 (1640만 ÷ 4 = 410만) 이상 중 가장 작은 500만: 1,000만 ~ 3,000만
+        assertEquals(listOf(10e6, 15e6, 20e6, 25e6, 30e6), ChartCalculator.niceTicks(12.3e6, 28.7e6))
+        // 1.9억 ~ 2.3억 → 간격 1,000만
+        assertEquals(listOf(1.9e8, 2.0e8, 2.1e8, 2.2e8, 2.3e8), ChartCalculator.niceTicks(1.9e8, 2.3e8).map { Math.round(it / 1e6) * 1e6 })
+        // 값이 하나뿐이면 위아래로 10% 여유
+        assertTrue(ChartCalculator.niceTicks(5e6, 5e6).let { it.first() <= 4.5e6 && it.last() >= 5.5e6 })
+        assertEquals("1,000만", ChartCalculator.axisLabel(10e6))
+        assertEquals("1.5억", ChartCalculator.axisLabel(1.5e8))
+        assertEquals("2억", ChartCalculator.axisLabel(2e8))
+        assertEquals("12억", ChartCalculator.axisLabel(1.2e9))
+        assertEquals("5,000", ChartCalculator.axisLabel(5000.0))
+        assertEquals("0", ChartCalculator.axisLabel(0.0))
+    }
+
+    @Test
     fun seriesUsesClosesOfEachDate() {
         val account = InvestmentAccount(id = "a", name = "국내")
         val holding = Holding(id = "h", accountId = "a", name = "삼성전자", code = "005930", market = Market.KR)

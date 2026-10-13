@@ -7,6 +7,11 @@ import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import java.time.LocalDate
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.floor
+import kotlin.math.log10
+import kotlin.math.pow
 import java.time.YearMonth
 
 /** 자산 추이 그래프의 보기 단위와 기본 표시 기간(개월). */
@@ -56,6 +61,42 @@ object ChartCalculator {
                     .toList()
                     .reversed()
             }
+        }
+    }
+
+    /**
+     * 금액 보조선 (위아래 여유를 둔 보기 좋은 눈금 3~5개, 웹과 같은 규칙). 간격 = (최대 − 최소) ÷ 4 이상인 1·2·2.5·5·10 × 10ⁿ 중
+     * 가장 작은 값. 첫 눈금은 최소 이하, 마지막 눈금은 최대 이상.
+     */
+    fun niceTicks(minValue: Double, maxValue: Double): List<Double> {
+        var min = minValue
+        var max = maxValue
+        if (min == max) {
+            val pad = maxOf(1.0, abs(max) * 0.1)
+            min -= pad
+            max += pad
+        }
+        val rough = (max - min) / 4
+        val mag = 10.0.pow(floor(log10(rough)))
+        val step = listOf(1.0, 2.0, 2.5, 5.0, 10.0).map { it * mag }.firstOrNull { it >= rough } ?: rough
+        val ticks = mutableListOf<Double>()
+        var v = floor(min / step) * step
+        while (v <= max + step * 0.001) {
+            ticks += v
+            v += step
+        }
+        if (ticks.last() < max) ticks += ticks.last() + step
+        return ticks
+    }
+
+    /** 보조선 금액 표시 (웹과 같음): 1억 이상 "1.5억", 1만 이상 "1,000만", 그 밖은 원 단위 숫자. */
+    fun axisLabel(value: Double): String {
+        val a = abs(value)
+        val sign = if (value < 0) "-" else ""
+        return when {
+            a >= 1e8 -> sign + (if (a >= 1e9) "%.0f" else "%.1f").format(Locale.US, a / 1e8).removeSuffix(".0") + "억"
+            a >= 1e4 -> sign + "%,d".format(Locale.US, Math.round(a / 1e4)) + "만"
+            else -> sign + "%,d".format(Locale.US, Math.round(a))
         }
     }
 
