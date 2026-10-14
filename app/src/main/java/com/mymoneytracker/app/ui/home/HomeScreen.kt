@@ -45,6 +45,7 @@ import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.app.ui.common.formatDate
 import com.mymoneytracker.app.ui.common.profitColor
 import com.mymoneytracker.core.MoneyFormat
+import com.mymoneytracker.core.portfolio.TodayChange
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -99,6 +100,8 @@ fun HomeScreen(
                 onOpenAccount = onOpenAccount,
                 onAddAccount = onAddAccount,
                 onOpenSettings = onOpenSettings,
+                todayChange = todayChange,
+                onOpenToday = onOpenToday,
             )
         }
     }
@@ -115,6 +118,8 @@ private fun HomeContent(
     onOpenAccount: (String) -> Unit,
     onAddAccount: () -> Unit,
     onOpenSettings: () -> Unit,
+    todayChange: TodayChange?,
+    onOpenToday: () -> Unit,
 ) {
     val summary = current.summary
     LazyColumn(
