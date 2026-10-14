@@ -401,3 +401,4 @@ tr.over td { background: var(--over-row); }
 .import-dividend .import-cell.col-1 input { width: 92px; }
 .import-dividend .import-cell.col-2 input { width: 150px; }
 .import-dividend .import-cell.col-3 input, .import-dividend .import-cell.col-4 input { width: 96px; }
+.record-filter { margin-bottom: 8px; }

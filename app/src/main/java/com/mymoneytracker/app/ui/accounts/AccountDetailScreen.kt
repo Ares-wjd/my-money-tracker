@@ -1,6 +1,8 @@
 package com.mymoneytracker.app.ui.accounts
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.LazyListState
@@ -53,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.ApiStatus
 import com.mymoneytracker.app.ui.PortfolioData
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.common.AppFilterChip
 import com.mymoneytracker.app.ui.common.LabeledValue
 import com.mymoneytracker.app.ui.common.ListRow
 import com.mymoneytracker.app.ui.common.LoadingBox
@@ -79,6 +82,7 @@ import com.mymoneytracker.core.portfolio.DisplayCurrency
 import com.mymoneytracker.core.portfolio.HoldingSort
 import com.mymoneytracker.core.portfolio.HoldingSorter
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
+import com.mymoneytracker.core.portfolio.RecordFilter
 
 /** 기록 추가 메뉴에 보여줄 유형 (예수금은 예수금 카드의 "예수금 입력" 으로 따로 넣는다). */
 private val addableTypes = listOf(
@@ -112,6 +116,7 @@ fun AccountDetailScreen(
     val refresh by viewModel.refresh.collectAsStateWithLifecycle()
     val displayCurrency by viewModel.displayCurrency.collectAsStateWithLifecycle()
     val holdingSort by viewModel.holdingSort.collectAsStateWithLifecycle()
+    val recordHidden by viewModel.recordHidden.collectAsStateWithLifecycle()
     val current = data
     val summary = current?.accountSummary(accountId)
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -195,12 +200,15 @@ fun AccountDetailScreen(
                 onOpenRecord = onOpenRecord,
                 onEnterCash = onEnterCash,
                 onAddRecord = onAddRecord,
+                hiddenTypes = recordHidden[accountId].orEmpty(),
+                onHiddenTypesChange = { viewModel.setRecordHidden(accountId, it) },
                 listState = listState,
             )
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AccountDetailContent(
     data: PortfolioData,
@@ -221,12 +229,18 @@ private fun AccountDetailContent(
     onOpenRecord: (String) -> Unit,
     onEnterCash: () -> Unit,
     onAddRecord: (RecordType) -> Unit,
+    hiddenTypes: Set<RecordType>,
+    onHiddenTypesChange: (Set<RecordType>) -> Unit,
     listState: LazyListState,
 ) {
     val accountId = summary.account.id
-    val records = data.recordsOf(accountId)
-    // 입금·출금·이체 기록마다 그 기록까지의 누적 투자금
-    val cumulativeInvested = remember(records, accountId) { PortfolioCalculator.cumulativeInvested(accountId, records) }
+    val allRecords = data.recordsOf(accountId)
+    // 입금·출금·이체 기록마다 그 기록까지의 누적 투자금 (걸러 봐도 전체 기록 기준)
+    val cumulativeInvested = remember(allRecords, accountId) { PortfolioCalculator.cumulativeInvested(accountId, allRecords) }
+    // 기록 유형 필터 (기본은 전부 보임)
+    val presentTypes = remember(allRecords) { RecordFilter.present(allRecords) }
+    val records = RecordFilter.apply(allRecords, hiddenTypes)
+    val filtered = records.size != allRecords.size
     var visibleRecords by rememberSaveable(accountId) { mutableStateOf(30) }
     // 총 수익률은 보기를 따른다 (원화 보기: 매매일 환율이 모두 있으면 환차익 반영 원화 수익률)
     fun totalRate(v: com.mymoneytracker.core.portfolio.HoldingValuation): Double? =
@@ -416,9 +430,41 @@ private fun AccountDetailContent(
         }
 
         item {
-            Text("기록", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+            Text(
+                if (filtered) "기록 ${records.size}건 / 전체 ${allRecords.size}건" else "기록",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 16.dp),
+            )
         }
-        if (records.isEmpty()) {
+        if (presentTypes.size > 1) {
+            item {
+                // 유형 칩: 여러 개 선택, [전체]는 모두 켜져 있으면 전체 해제·아니면 전체 선택
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppFilterChip(
+                        selected = RecordFilter.allShown(presentTypes, hiddenTypes),
+                        label = "전체",
+                        onClick = { onHiddenTypesChange(RecordFilter.toggleAll(presentTypes, hiddenTypes)) },
+                    )
+                    presentTypes.forEach { type ->
+                        AppFilterChip(
+                            selected = type !in hiddenTypes,
+                            label = RecordFilter.label(type),
+                            onClick = { onHiddenTypesChange(RecordFilter.toggle(type, hiddenTypes)) },
+                        )
+                    }
+                }
+            }
+        }
+        if (allRecords.isNotEmpty() && records.isEmpty()) {
+            item {
+                Text(
+                    if (presentTypes.none { it !in hiddenTypes }) "보여줄 유형을 고르세요." else "선택한 유형의 기록이 없습니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (allRecords.isEmpty()) {
             item {
                 Text(
                     "기록이 없습니다. 기록 추가에서 입금부터 남겨 보세요.",

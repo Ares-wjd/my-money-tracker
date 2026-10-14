@@ -13,6 +13,7 @@ import { HoldingForm } from '../forms/HoldingForm';
 import { RecordForm } from '../forms/RecordForm';
 import { AddRecordMenu, RecordRow } from '../records/RecordList';
 import { accountDescription } from './text';
+import { allShown, applyRecordFilter, presentTypes, recordFilterLabel, toggleAll, toggleType } from '../core/recordFilter';
 
 const PAGE = 30;
 
@@ -33,14 +34,27 @@ export function AccountDetailPage() {
   const [visible, setVisible] = useState(PAGE);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [showSoldOut, setShowSoldOut] = useState(false);
+  // 기록 유형 필터 (기본은 전부 보임, 이 브라우저에 계좌마다 기억)
+  const [hiddenByAccount, setHiddenByAccount] = useState<{ [id: string]: Set<RecordType> }>({});
   const navigate = useNavigate();
   const summary = data.summary.accounts.find((a) => a.account.id === accountId);
   if (!summary) return <NotFound what="계좌" />;
 
   const linked = data.linked.has(accountId);
-  const records = data.recordsOf(accountId);
-  // 입금·출금·이체 기록마다 그 기록까지의 누적 투자금
-  const cumulative = cumulativeInvested(accountId, records);
+  const allRecords = data.recordsOf(accountId);
+  // 입금·출금·이체 기록마다 그 기록까지의 누적 투자금 (걸러 봐도 전체 기록 기준)
+  const cumulative = cumulativeInvested(accountId, allRecords);
+  const hidden = hiddenByAccount[accountId] ?? readHidden(accountId);
+  const setHidden = (next: Set<RecordType>) => {
+    setHiddenByAccount({ ...hiddenByAccount, [accountId]: next });
+    try {
+      localStorage.setItem(HIDDEN_KEY + accountId, [...next].join(','));
+    } catch {
+      // 저장할 수 없는 환경이면 이번 화면에서만 적용한다.
+    }
+  };
+  const types = presentTypes(allRecords);
+  const records = applyRecordFilter(allRecords, hidden);
   // 총 수익률은 보기를 따른다 (원화 보기: 매매일 환율이 모두 있으면 환차익 반영 원화 수익률)
   const totalRate = (v: HoldingValuation) => (displayCurrency === 'KRW' ? data.krwView(v)?.returnRate : null) ?? v.returnRate;
   const sorted = sortHoldings(summary.holdings, holdingSort, totalRate, data.todayRate);
@@ -200,7 +214,7 @@ export function AccountDetailPage() {
       </Card>
 
       <Card
-        title={`기록 ${records.length}건`}
+        title={records.length === allRecords.length ? `기록 ${records.length}건` : `기록 ${records.length}건 / 전체 ${allRecords.length}건`}
         action={
           <div className="head-actions">
             {/* 표로 일괄 입력 (입출금·매매·배당 — 연결 계좌는 매매 표를 빼고 보여준다) */}
@@ -214,7 +228,20 @@ export function AccountDetailPage() {
           </div>
         }
       >
-        {records.length === 0 && <p className="muted">기록이 없습니다. 기록 추가에서 입금부터 남겨 보세요.</p>}
+        {types.length > 1 && (
+          <div className="choices record-filter" role="group" aria-label="기록 유형">
+            <button aria-pressed={allShown(types, hidden)} className={allShown(types, hidden) ? 'choice on' : 'choice'} onClick={() => setHidden(toggleAll(types, hidden))}>전체</button>
+            {types.map((t) => (
+              <button key={t} aria-pressed={!hidden.has(t)} className={hidden.has(t) ? 'choice' : 'choice on'} onClick={() => setHidden(toggleType(t, hidden))}>
+                {recordFilterLabel(t)}
+              </button>
+            ))}
+          </div>
+        )}
+        {allRecords.length === 0 && <p className="muted">기록이 없습니다. 기록 추가에서 입금부터 남겨 보세요.</p>}
+        {allRecords.length > 0 && records.length === 0 && (
+          <p className="muted">{types.every((t) => hidden.has(t)) ? '보여줄 유형을 고르세요.' : '선택한 유형의 기록이 없습니다.'}</p>
+        )}
         {records.slice(0, visible).map((r) => (
           <RecordRow key={r.id} record={r} accountId={accountId} cumulative={cumulative.get(r.id)} onClick={() => setDialog({ kind: 'record', type: r.type, existing: r })} />
         ))}
@@ -246,4 +273,16 @@ function cashBasis(detail: CashDetail, currency: Currency, withLabel: boolean): 
   if (detail.anchor === null || detail.anchorDate === null) return `${label}입력한 예수금이 없어 기록(입금·매매 등)으로 계산한 값`;
   if (!detail.estimated) return `${label}${formatDate(detail.anchorDate)} 입력한 값`;
   return `${label}${formatDate(detail.anchorDate)} 입력 ${amount(detail.anchor)} + 이후 기록 ${signed(detail.change)} (계산)`;
+}
+
+const HIDDEN_KEY = 'record_hidden_';
+
+/** 이 브라우저에 기억한 계좌의 뺀 기록 유형. */
+function readHidden(accountId: string): Set<RecordType> {
+  try {
+    const text = localStorage.getItem(HIDDEN_KEY + accountId) ?? '';
+    return new Set(text.split(',').filter((t): t is RecordType => t in RECORD_TYPE_LABEL));
+  } catch {
+    return new Set();
+  }
 }

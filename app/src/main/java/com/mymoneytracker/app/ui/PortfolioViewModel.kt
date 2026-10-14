@@ -244,6 +244,21 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         displayPrefs.edit().putBoolean(KEY_ALLOCATION_USE_CASH, use).apply()
     }
 
+    /** 계좌별 기록 유형 필터 (뺀 유형, 기본은 전부 보임). 이 기기에만 기억한다. */
+    private val _recordHidden = MutableStateFlow(
+        displayPrefs.all.mapNotNull { (key, value) ->
+            if (!key.startsWith(KEY_RECORD_HIDDEN)) return@mapNotNull null
+            val types = (value as? String).orEmpty().split(",").mapNotNull { name -> RecordType.entries.firstOrNull { it.name == name } }.toSet()
+            key.removePrefix(KEY_RECORD_HIDDEN) to types
+        }.toMap(),
+    )
+    val recordHidden: StateFlow<Map<String, Set<RecordType>>> = _recordHidden.asStateFlow()
+
+    fun setRecordHidden(accountId: String, hidden: Set<RecordType>) {
+        _recordHidden.value = _recordHidden.value + (accountId to hidden)
+        displayPrefs.edit().putString(KEY_RECORD_HIDDEN + accountId, hidden.joinToString(",") { it.name }).apply()
+    }
+
     private val _syncing = MutableStateFlow(false)
     val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
 
@@ -738,6 +753,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         private const val KEY_ALLOCATION = "allocation_selected"
         private const val KEY_ALLOCATION_RING = "allocation_ring"
         private const val KEY_ALLOCATION_USE_CASH = "allocation_use_cash"
+        private const val KEY_RECORD_HIDDEN = "record_hidden_"
         private const val KEY_FX_DAY = "fx_backfill_day"
         private const val KEY_FX_CALLS = "fx_backfill_calls"
         /** 과거 환율 채우기에 하루에 쓸 수 있는 수출입은행 호출 수 (한도 1,000회 중 나머지는 최신·매매일 환율용). */
