@@ -1,7 +1,8 @@
 // core MarketDataTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
 import { GOLD_CODE, quantityUnit, type MarketSnapshot, type PricePoint } from '../model';
-import { currentPrice, dailyChangeRate, keyOf, latestUsdKrw, marketKey, priceAt, tradeUsdKrw, usdKrwAt } from './market';
+import { agreedFx, currentPrice, dailyChangeRate, isRecentFxDate, keyOf, latestUsdKrw, marketKey, priceAt, tradeUsdKrw, usdKrwAt } from './market';
+import { toMarketSnapshot } from '../data/mappers';
 import { holding } from './testData';
 
 const d1 = '2026-10-01';
@@ -69,5 +70,27 @@ describe('시세 (MarketDataTest)', () => {
     expect(dailyChangeRate(stock, s)).toBeCloseTo(0.1, 9);
     expect(dailyChangeRate({ ...stock, manualPrice: 130, manualPriceDate: '2026-10-06' }, s)).toBeNull();
     expect(dailyChangeRate(stock, snapshot({ price: 110, date: d5 }))).toBeNull();
+  });
+
+  it('환율: 최근 1주일, 두 번 같은 값, 오늘 환율 (fxRulesRecentWeekAndTwoAgreeingFetches)', () => {
+    const today = '2026-10-14';
+    expect(isRecentFxDate('2026-10-13', today)).toBe(true);
+    expect(isRecentFxDate('2026-10-07', today)).toBe(true);
+    expect(isRecentFxDate('2026-10-06', today)).toBe(false);
+    expect(isRecentFxDate(today, today)).toBe(false);
+    expect(agreedFx([1394.5, 1394.5])).toBe(1394.5);
+    expect(agreedFx([1394.5, 1390, 1394.5])).toBe(1394.5);
+    expect(agreedFx([1394.5, 1390, 1391])).toBeNull();
+    expect(agreedFx([-1, -1])).toBe(-1);
+    // fx_USD 위에 고정된 값을 덮고, 오늘 환율은 따로
+    const s = toMarketSnapshot([
+      { id: 'fx_USD', data: { rates: { '2026-10-12': 1388, '2026-10-13': 1390 } } },
+      { id: 'fx_USD_checked', data: { rates: { '2026-10-12': 1389 }, latest: 1400, latestDate: today } },
+    ]);
+    expect(s.usdKrw.get('2026-10-12')).toBe(1389);
+    expect(s.usdKrw.get('2026-10-13')).toBe(1390);
+    expect(s.usdKrw.has(today)).toBe(false);
+    expect(latestUsdKrw(s)).toEqual([today, 1400]);
+    expect(usdKrwAt(s, '2026-10-13')).toBe(1390);
   });
 });

@@ -9,6 +9,8 @@ import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.PricePoint
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.LocalDate
@@ -93,5 +95,27 @@ class MarketDataTest {
         assertNull(PriceLookup.dailyChangeRate(stock.copy(manualPrice = 130.0, manualPriceDate = d5.plusDays(1)), s))
         // 전일 종가가 없으면 없음
         assertNull(PriceLookup.dailyChangeRate(stock, snapshot(latest = PricePoint(110.0, d5))))
+    }
+
+    @Test
+    fun fxRulesRecentWeekAndTwoAgreeingFetches() {
+        // 웹 market.test.ts 와 같은 케이스
+        val today = LocalDate.of(2026, 10, 14)
+        assertTrue(com.mymoneytracker.core.market.FxRules.isRecent(today.minusDays(1), today))
+        assertTrue(com.mymoneytracker.core.market.FxRules.isRecent(today.minusDays(7), today))
+        assertFalse(com.mymoneytracker.core.market.FxRules.isRecent(today.minusDays(8), today))
+        assertFalse(com.mymoneytracker.core.market.FxRules.isRecent(today, today))
+        val rules = com.mymoneytracker.core.market.FxRules
+        assertTrue(rules.needsMore(listOf(1394.5)))
+        assertEquals(1394.5, rules.agreed(listOf(1394.5, 1394.5))!!, 1e-9)
+        assertTrue(rules.needsMore(listOf(1394.5, 1390.0)))
+        assertEquals(1394.5, rules.agreed(listOf(1394.5, 1390.0, 1394.5))!!, 1e-9)
+        assertNull(rules.agreed(listOf(1394.5, 1390.0, 1391.0)))
+        assertFalse(rules.needsMore(listOf(1394.5, 1390.0, 1391.0)))
+        assertEquals(-1.0, rules.agreed(listOf(-1.0, -1.0))!!, 1e-9)
+        // 오늘 받은 환율이 과거 목록보다 최근이면 최신 환율
+        val s = MarketSnapshot(usdKrw = java.util.TreeMap(mapOf(today.minusDays(1) to 1390.0)), usdKrwLatest = today to 1400.0)
+        assertEquals(today to 1400.0, s.latestUsdKrw())
+        assertEquals(1390.0, s.usdKrwAt(today.minusDays(1))!!, 1e-9)
     }
 }

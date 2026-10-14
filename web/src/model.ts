@@ -149,8 +149,10 @@ export interface PriceHistory {
 /** 폰이 Firestore(marketData)에 저장해 둔 시세·환율. */
 export interface MarketSnapshot {
   prices: Map<string, PriceHistory>;
-  /** 날짜 → 원/달러 환율 */
+  /** 날짜 → 원/달러 환율 (지난 날짜만, 최근 1주일·확인 전 값 위에 고정된 값을 덮은 것) */
   usdKrw: Map<string, number>;
+  /** 오늘 받은 환율 [날짜, 환율] (오늘 평가금용, 과거 환율 목록에는 넣지 않는다) */
+  usdKrwLatest?: [string, number] | null;
 }
 
 export const savingsBalance = (account: SavingsAccount): number =>

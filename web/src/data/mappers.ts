@@ -24,6 +24,8 @@ type Data = { [key: string]: unknown };
 
 export const PRICE_PREFIX = 'price_';
 export const FX_DOC = 'fx_USD';
+/** 고정된 과거 환율(두 번 받아 같은 값)과 오늘 환율 (latest·latestDate). */
+export const FX_CHECKED_DOC = 'fx_USD_checked';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -159,13 +161,20 @@ function dateMap(v: unknown): Map<string, number> {
   return result;
 }
 
-/** marketData 컬렉션 문서들(price_<키>, fx_USD) → 시세 스냅샷. */
+/** marketData 컬렉션 문서들(price_<키>, fx_USD, fx_USD_checked) → 시세 스냅샷. 환율은 fx_USD 위에 고정된 값을 덮는다 (폰과 같음). */
 export function toMarketSnapshot(docs: readonly { id: string; data: Data }[]): MarketSnapshot {
   const prices = new Map<string, PriceHistory>();
-  let usdKrw = new Map<string, number>();
+  let recent = new Map<string, number>();
+  let checked = new Map<string, number>();
+  let usdKrwLatest: [string, number] | null = null;
   for (const { id, data } of docs) {
     if (id === FX_DOC) {
-      usdKrw = dateMap(data.rates);
+      recent = dateMap(data.rates);
+    } else if (id === FX_CHECKED_DOC) {
+      checked = dateMap(data.rates);
+      const rate = num(data.latest);
+      const day = date(data.latestDate);
+      usdKrwLatest = rate !== null && day !== null ? [day, rate] : null;
     } else if (id.startsWith(PRICE_PREFIX)) {
       const latest = num(data.latest);
       prices.set(id.slice(PRICE_PREFIX.length), {
@@ -175,7 +184,8 @@ export function toMarketSnapshot(docs: readonly { id: string; data: Data }[]): M
       });
     }
   }
-  return { prices, usdKrw };
+  const usdKrw = new Map([...recent, ...checked]);
+  return { prices, usdKrw, usdKrwLatest };
 }
 
 /** 가장 최근 "최신가" 저장일 (웹 화면의 시세 기준 표시용). */

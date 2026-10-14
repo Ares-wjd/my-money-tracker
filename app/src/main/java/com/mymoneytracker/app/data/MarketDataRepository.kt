@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.mymoneytracker.core.market.FxRules
 import com.mymoneytracker.core.market.HistoryRanges
 import com.mymoneytracker.core.market.MarketKeys
 import com.mymoneytracker.core.market.MarketSnapshot
@@ -27,7 +28,8 @@ import java.util.TreeMap
  * 받아 온 시세·환율을 Firestore 에 캐시한다. 과거 종가와 환율은 바뀌지 않으므로 한 번 받으면 다시 받지 않는다.
  *
  * users/{uid}/marketData/price_{KR|US}_{코드}  { closes: {날짜: 종가}, latest, latestDate, prevClose, historyFrom, historyTo }
- * users/{uid}/marketData/fx_USD                 { rates: {날짜: 매매기준율, 데이터 없는 날은 -1} }
+ * users/{uid}/marketData/fx_USD                 { rates: {날짜: 매매기준율, 데이터 없는 날은 -1} } 최근 1주일(계속 다시 받음)·확인 전 값
+ * users/{uid}/marketData/fx_USD_checked         { rates: {날짜: 고정된 환율 (두 번 받아 같은 값)}, latest, latestDate (오늘 환율) }
  */
 class MarketDataRepository(
     db: FirebaseFirestore,
@@ -37,6 +39,11 @@ class MarketDataRepository(
 ) {
     private val col = db.collection("users").document(uid).collection("marketData")
     private var cache = MarketSnapshot()
+    /** 환율: fx_USD (최근 1주일·확인 전), fx_USD_checked (고정된 과거), 오늘 환율. 계산에는 앞의 것 위에 고정 값을 덮어 쓴다. */
+    private var fxRecent = TreeMap<LocalDate, Double>()
+    private var fxChecked = TreeMap<LocalDate, Double>()
+    private var fxLatest: Pair<LocalDate, Double>? = null
+    private var lastRecentFxAt = 0L
     private val docMeta = mutableMapOf<String, Pair<LocalDate?, LocalDate?>>()
 
     /** 자주 받는 현재가는 메모리에 두고, Firestore 에는 [PERSIST_INTERVAL_MS] 마다 한 번만 저장한다 (쓰기 횟수 절약). */
@@ -97,10 +104,15 @@ class MarketDataRepository(
             }
             if (snapshot == null) return@addSnapshotListener
             val prices = mutableMapOf<String, PriceHistory>()
-            var fx = TreeMap<LocalDate, Double>()
             for (doc in snapshot.documents) {
                 when {
-                    doc.id == FX_DOC -> fx = readDateMap(doc, "rates")
+                    doc.id == FX_DOC -> fxRecent = readDateMap(doc, "rates")
+                    doc.id == FX_CHECKED_DOC -> {
+                        fxChecked = readDateMap(doc, "rates")
+                        val rate = doc.getDouble("latest")
+                        val date = doc.getString("latestDate")?.let(::parseDate)
+                        fxLatest = if (rate != null && date != null) date to rate else null
+                    }
                     doc.id.startsWith(PRICE_PREFIX) -> {
                         val key = doc.id.removePrefix(PRICE_PREFIX)
                         val latest = doc.getDouble("latest")?.let { price ->
@@ -111,7 +123,7 @@ class MarketDataRepository(
                     }
                 }
             }
-            cache = MarketSnapshot(prices, fx)
+            cache = MarketSnapshot(prices, fxUnion(), fxLatest)
             loaded.complete(Unit)
             trySend(cache)
         }
@@ -167,7 +179,7 @@ class MarketDataRepository(
             lastFxAttemptAt = System.currentTimeMillis()
             if (exim.hasKey) {
                 try {
-                    fetchFxOnOrBefore(today, maxBack = 7)
+                    refreshFxNow(today)
                 } catch (e: ApiException) {
                     errors += e.message.orEmpty()
                 } catch (e: Exception) {
@@ -261,8 +273,8 @@ class MarketDataRepository(
     }
 
     /**
-     * [from] ~ 어제의 일별 환율을 최근 날짜부터 채운다 (이미 받은 날·"없음"으로 저장한 휴일은 건너뜀).
-     * 수출입은행 호출은 최대 [budget] 회. 돌려주는 값: (쓴 호출 수, 오류).
+     * [from] ~ 8일 전의 일별 환율을 최근 날짜부터 두 번 받아 같으면 고정한다 (이미 고정한 날·"없음"으로 고정한 휴일은 건너뜀).
+     * 최근 1주일은 [refreshFxNow] 가 계속 다시 받는다. 수출입은행 호출은 최대 [budget] 회. 돌려주는 값: (쓴 호출 수, 오류).
      */
     suspend fun backfillFx(from: LocalDate, budget: Int): Pair<Int, List<String>> {
         if (!exim.hasKey || budget <= 0) return 0 to emptyList()
@@ -271,14 +283,16 @@ class MarketDataRepository(
         var calls = 0
         val found = mutableMapOf<String, Double>()
         return try {
-            var day = today.minusDays(1)
+            // 최근 1주일은 따로 계속 다시 받으므로, 그보다 오래된 날짜만 두 번 받아 고정한다
+            var day = today.minusDays(FxRules.RECENT_DAYS + 1)
             while (!day.isBefore(from) && calls < budget) {
-                if (cache.usdKrw[day] == null) {
-                    found[day.toString()] = exim.usdKrw(day) ?: -1.0
-                    calls++
+                if (fxChecked[day] == null) {
+                    val (rate, used) = verifiedRate(day)
+                    calls += used
+                    rate?.let { found[day.toString()] = it }
                     // 중간에 끊겨도 받은 만큼은 남도록 나눠 저장
                     if (found.size >= FX_SAVE_CHUNK) {
-                        saveFx(found.toMap())
+                        saveCheckedFx(found.toMap())
                         found.clear()
                     }
                 }
@@ -290,8 +304,41 @@ class MarketDataRepository(
         } catch (e: Exception) {
             calls to listOf("환율: 네트워크 오류")
         } finally {
-            if (found.isNotEmpty()) saveFx(found)
+            if (found.isNotEmpty()) saveCheckedFx(found)
         }
+    }
+
+    /**
+     * 지난 날짜의 환율을 두 번 이상 받아 같은 값 (세 번 중 두 번 같은 값). fx_USD 에 이미 있는 값은 첫 번째로 본다.
+     * 돌려주는 값: (고정할 값 — "없음"은 -1, 셋 다 다르면 null, 쓴 호출 수).
+     */
+    private suspend fun verifiedRate(day: LocalDate): Pair<Double?, Int> {
+        val values = mutableListOf<Double>()
+        fxRecent[day]?.let { values += it }
+        var calls = 0
+        while (FxRules.needsMore(values)) {
+            values += exim.usdKrw(day) ?: -1.0
+            calls++
+        }
+        return FxRules.agreed(values) to calls
+    }
+
+    /** 오늘 환율 (11시 이후 발표) 과, 최근 1주일 환율 (3시간마다 다시 받아 바꿈). */
+    private suspend fun refreshFxNow(today: LocalDate) {
+        exim.usdKrw(today)?.let { rate ->
+            fxLatest = today to rate
+            col.document(FX_CHECKED_DOC).set(mapOf("latest" to rate, "latestDate" to today.toString()), SetOptions.merge())
+            cache = cache.copy(usdKrwLatest = fxLatest)
+        }
+        val now = System.currentTimeMillis()
+        if (now - lastRecentFxAt < RECENT_FX_INTERVAL_MS) return
+        lastRecentFxAt = now
+        val recent = mutableMapOf<String, Double>()
+        for (back in 1..FxRules.RECENT_DAYS) {
+            val day = today.minusDays(back)
+            recent[day.toString()] = exim.usdKrw(day) ?: -1.0
+        }
+        saveRecentFx(recent)
     }
 
     /** 그래프 날짜들의 환율을 받아 둔다 (이미 받은 날짜·오늘은 건너뛴다). */
@@ -300,7 +347,7 @@ class MarketDataRepository(
         val today = LocalDate.now()
         return try {
             for (date in dates.distinct().filter { it.isBefore(today) }) {
-                if (cache.usdKrw.containsKey(date)) continue
+                if (cache.usdKrw.containsKey(date) && (FxRules.isRecent(date, today) || fxChecked.containsKey(date))) continue
                 fetchFxOnOrBefore(date, maxBack = 7)
             }
             emptyList()
@@ -312,35 +359,43 @@ class MarketDataRepository(
     }
 
     /**
-     * [date] 부터 거꾸로 데이터가 있는 영업일을 찾을 때까지 환율을 받아 저장한다.
-     * 데이터가 없는 지난 날짜(주말·공휴일)는 -1 로 저장해 다시 묻지 않는다.
+     * [date] 부터 거꾸로 데이터가 있는 영업일을 찾을 때까지 환율을 받아 저장한다 (매매일 환율용).
+     * 최근 1주일은 한 번 받아 fx_USD 에, 그보다 오래된 날짜는 두 번 받아 같으면 고정한다. "없음"(주말·공휴일)은 -1.
      */
     private suspend fun fetchFxOnOrBefore(date: LocalDate, maxBack: Int) {
         val today = LocalDate.now()
-        val found = mutableMapOf<String, Double>()
+        val recent = mutableMapOf<String, Double>()
+        val checked = mutableMapOf<String, Double>()
         var day = date
         for (step in 0..maxBack) {
-            val known = cache.usdKrw[day]
-            if (known != null && known > 0) break
-            if (known == null) {
-                val rate = exim.usdKrw(day)
-                if (rate != null) {
-                    found[day.toString()] = rate
-                    break
-                }
-                // 오늘 데이터가 아직 없으면(11시 이전) "없음" 으로 저장하지 않는다.
-                if (day.isBefore(today)) found[day.toString()] = -1.0
+            if (!day.isBefore(today)) break
+            if (FxRules.isRecent(day, today)) {
+                val rate = fxRecent[day] ?: (exim.usdKrw(day) ?: -1.0).also { recent[day.toString()] = it }
+                if (rate > 0) break
+            } else {
+                val rate = fxChecked[day] ?: verifiedRate(day).first?.also { checked[day.toString()] = it }
+                // 셋 다 달라 고정하지 못했으면 다음에 다시
+                if (rate == null || rate > 0) break
             }
             day = day.minusDays(1)
         }
-        if (found.isNotEmpty()) saveFx(found)
+        if (recent.isNotEmpty()) saveRecentFx(recent)
+        if (checked.isNotEmpty()) saveCheckedFx(checked)
     }
 
-    private fun saveFx(rates: Map<String, Double>) {
+    /** 계산에 쓰는 환율: fx_USD (최근 1주일·확인 전) 위에 고정된 값을 덮어 쓴다. */
+    private fun fxUnion(): TreeMap<LocalDate, Double> = TreeMap(fxRecent).apply { putAll(fxChecked) }
+
+    private fun saveRecentFx(rates: Map<String, Double>) {
         col.document(FX_DOC).set(mapOf("rates" to rates), SetOptions.merge())
-        val updated = TreeMap(cache.usdKrw)
-        rates.forEach { (k, v) -> parseDate(k)?.let { updated[it] = v } }
-        cache = cache.copy(usdKrw = updated)
+        rates.forEach { (k, v) -> parseDate(k)?.let { fxRecent[it] = v } }
+        cache = cache.copy(usdKrw = fxUnion())
+    }
+
+    private fun saveCheckedFx(rates: Map<String, Double>) {
+        col.document(FX_CHECKED_DOC).set(mapOf("rates" to rates), SetOptions.merge())
+        rates.forEach { (k, v) -> parseDate(k)?.let { fxChecked[it] = v } }
+        cache = cache.copy(usdKrw = fxUnion())
     }
 
     private fun readDateMap(doc: DocumentSnapshot, field: String): TreeMap<LocalDate, Double> {
@@ -359,6 +414,9 @@ class MarketDataRepository(
         const val TAG = "MarketData"
         const val PRICE_PREFIX = "price_"
         const val FX_DOC = "fx_USD"
+        const val FX_CHECKED_DOC = "fx_USD_checked"
+        /** 최근 1주일 환율을 다시 받는 간격. */
+        const val RECENT_FX_INTERVAL_MS = 3 * 60 * 60 * 1000L
         const val PERSIST_INTERVAL_MS = 15 * 60 * 1000L
         const val FX_INTERVAL_MS = 30 * 60 * 1000L
         const val LOAD_TIMEOUT_MS = 10_000L

@@ -19,14 +19,19 @@ data class PriceHistory(
 /** 앱이 받아 둔 시세·환율 전체. */
 data class MarketSnapshot(
     val prices: Map<String, PriceHistory> = emptyMap(),
-    /** 날짜별 USD 매매기준율. 0 이하 값은 "그날 데이터 없음" 표시. */
+    /** 날짜별 USD 매매기준율 (지난 날짜만). 0 이하 값은 "그날 데이터 없음" 표시. */
     val usdKrw: TreeMap<LocalDate, Double> = TreeMap(),
+    /** 오늘 받은 환율 (오늘 평가금용, 과거 환율 목록에는 넣지 않는다). */
+    val usdKrwLatest: Pair<LocalDate, Double>? = null,
 ) {
     fun history(holding: Holding): PriceHistory? = MarketKeys.of(holding)?.let { prices[it] }
 
-    /** 가장 최근 환율. */
-    fun latestUsdKrw(): Pair<LocalDate, Double>? =
-        usdKrw.descendingMap().entries.firstOrNull { it.value > 0 }?.let { it.key to it.value }
+    /** 가장 최근 환율 (오늘 받은 환율이 과거 목록보다 최근이면 그것). */
+    fun latestUsdKrw(): Pair<LocalDate, Double>? {
+        val past = usdKrw.descendingMap().entries.firstOrNull { it.value > 0 }?.let { it.key to it.value }
+        val today = usdKrwLatest?.takeIf { it.second > 0 }
+        return if (today != null && (past == null || !today.first.isBefore(past.first))) today else past
+    }
 
     /** [date] 당일 또는 그 이전의 가장 가까운 환율. */
     fun usdKrwAt(date: LocalDate): Double? =
@@ -46,6 +51,21 @@ data class MarketSnapshot(
         }
         return null
     }
+}
+
+/** 환율 받는 규칙: 최근 1주일은 계속 다시 받아 바꾸고, 그보다 오래된 과거는 두 번 받아 같은 값만 고정한다. */
+object FxRules {
+    /** 다시 받아 바꾸는 최근 기간 (어제 ~ 7일 전). */
+    const val RECENT_DAYS = 7L
+
+    /** 최근 1주일(어제 ~ 7일 전)인지. */
+    fun isRecent(date: LocalDate, today: LocalDate): Boolean = date.isBefore(today) && !date.isBefore(today.minusDays(RECENT_DAYS))
+
+    /** 받은 값들 중 두 번 이상 같은 값 (없으면 null). "없음"은 -1. */
+    fun agreed(values: List<Double>): Double? = values.firstOrNull { v -> values.count { it == v } >= 2 }
+
+    /** 더 받아야 하는지: 두 번 같은 값이 없고 아직 세 번을 받지 않았으면. */
+    fun needsMore(values: List<Double>): Boolean = agreed(values) == null && values.size < 3
 }
 
 object MarketKeys {

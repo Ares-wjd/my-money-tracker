@@ -27,15 +27,26 @@ function sortedDates(map: Map<string, number>): string[] {
   return [...map.keys()].sort();
 }
 
-/** 가장 최근 환율 [날짜, 환율] (0 이하는 "그날 데이터 없음" 표시라 건너뛴다). */
+/** 가장 최근 환율 [날짜, 환율] (0 이하는 "그날 데이터 없음" 표시라 건너뛴다). 오늘 받은 환율이 더 최근이면 그것. */
 export function latestUsdKrw(snapshot: MarketSnapshot): [string, number] | null {
+  let past: [string, number] | null = null;
   const dates = sortedDates(snapshot.usdKrw);
   for (let i = dates.length - 1; i >= 0; i--) {
     const rate = snapshot.usdKrw.get(dates[i])!;
-    if (rate > 0) return [dates[i], rate];
+    if (rate > 0) {
+      past = [dates[i], rate];
+      break;
+    }
   }
-  return null;
+  const latest = snapshot.usdKrwLatest && snapshot.usdKrwLatest[1] > 0 ? snapshot.usdKrwLatest : null;
+  return latest && (past === null || latest[0] >= past[0]) ? latest : past;
 }
+
+/** 환율 받는 규칙 (core FxRules 와 같음): 최근 1주일(어제 ~ 7일 전)은 계속 다시 받고, 그보다 오래된 과거는 두 번 받아 같은 값만 고정. */
+export const FX_RECENT_DAYS = 7;
+export const isRecentFxDate = (date: string, today: string): boolean => date < today && date >= plusDays(today, -FX_RECENT_DAYS);
+/** 받은 값들 중 두 번 이상 같은 값 (없으면 null). "없음"은 -1. */
+export const agreedFx = (values: readonly number[]): number | null => values.find((v) => values.filter((x) => x === v).length >= 2) ?? null;
 
 /** [date] 당일 또는 그 이전의 가장 가까운 환율. */
 export function usdKrwAt(snapshot: MarketSnapshot, date: string): number | null {
