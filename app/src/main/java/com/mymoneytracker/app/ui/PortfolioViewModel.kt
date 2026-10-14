@@ -44,6 +44,8 @@ import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.PortfolioSummary
 import com.mymoneytracker.core.portfolio.TodayChange
 import com.mymoneytracker.core.portfolio.TodayChangeCalculator
+import com.mymoneytracker.core.portfolio.TodayFilter
+import com.mymoneytracker.core.portfolio.TodayKind
 import com.mymoneytracker.core.portfolio.TradeImport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -186,7 +188,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     val summary: StateFlow<PortfolioSummary?> = data.map { it?.summary }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** 오늘 변동 (홈 카드·상세 화면). */
+    /** 오늘 변동 (홈 카드, 항상 전체). */
     val todayChange: StateFlow<TodayChange?> = data.map { current ->
         current?.let { TodayChangeCalculator.calculate(it.summary, it.market, LocalDate.now()) }
     }
@@ -266,6 +268,24 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     fun setRecordHidden(accountId: String, hidden: Set<RecordType>) {
         _recordHidden.value = _recordHidden.value + (accountId to hidden)
         displayPrefs.edit().putString(KEY_RECORD_HIDDEN + accountId, hidden.joinToString(",") { it.name }).apply()
+    }
+
+    /** 오늘 변동 상세 화면의 필터 (뺀 계좌·종류, 기본은 전부 보임). 이 기기에만 기억한다. */
+    private val _todayFilter = MutableStateFlow(
+        TodayFilter(
+            hiddenAccounts = displayPrefs.getString(KEY_TODAY_HIDDEN_ACCOUNTS, null).orEmpty().split(",").filter { it.isNotEmpty() }.toSet(),
+            hiddenKinds = displayPrefs.getString(KEY_TODAY_HIDDEN_KINDS, null).orEmpty().split(",")
+                .mapNotNull { name -> TodayKind.entries.firstOrNull { it.name == name } }.toSet(),
+        ),
+    )
+    val todayFilter: StateFlow<TodayFilter> = _todayFilter.asStateFlow()
+
+    fun setTodayFilter(filter: TodayFilter) {
+        _todayFilter.value = filter
+        displayPrefs.edit()
+            .putString(KEY_TODAY_HIDDEN_ACCOUNTS, filter.hiddenAccounts.joinToString(","))
+            .putString(KEY_TODAY_HIDDEN_KINDS, filter.hiddenKinds.joinToString(",") { it.name })
+            .apply()
     }
 
     private val _syncing = MutableStateFlow(false)
@@ -763,6 +783,8 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         private const val KEY_ALLOCATION_RING = "allocation_ring"
         private const val KEY_ALLOCATION_USE_CASH = "allocation_use_cash"
         private const val KEY_RECORD_HIDDEN = "record_hidden_"
+        private const val KEY_TODAY_HIDDEN_ACCOUNTS = "today_hidden_accounts"
+        private const val KEY_TODAY_HIDDEN_KINDS = "today_hidden_kinds"
         private const val KEY_FX_DAY = "fx_backfill_day"
         private const val KEY_FX_CALLS = "fx_backfill_calls"
         /** 과거 환율 채우기에 하루에 쓸 수 있는 수출입은행 호출 수 (한도 1,000회 중 나머지는 최신·매매일 환율용). */

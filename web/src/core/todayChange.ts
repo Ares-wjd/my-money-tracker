@@ -1,5 +1,5 @@
 // core 의 TodayChangeCalculator 와 같은 규칙: 오늘 변동 (국내 · 해외 · 환율), 종목별 타일.
-import { marketCurrency, type Holding, type MarketSnapshot } from '../model';
+import { marketCurrency, type Holding, type InvestmentAccount, type MarketSnapshot } from '../model';
 import { dailyChangeRate, keyOf, latestUsdKrw, usdKrwAt } from './market';
 import { plusDays } from './dates';
 import type { PortfolioSummary } from './portfolio';
@@ -11,6 +11,54 @@ export interface TodayItem {
   valueKrw: number;
   changeKrw: number | null;
   rate: number | null;
+}
+
+/** 오늘 변동을 거르는 종류 (칩). 종목은 티커 색 구분과 같고, 달러 예수금은 환율 효과에만 들어간다. */
+export type TodayKind = 'KR_STOCK' | 'US_STOCK' | 'ETF' | 'GOLD' | 'OTHER' | 'USD_CASH';
+export const TODAY_KINDS: readonly TodayKind[] = ['KR_STOCK', 'US_STOCK', 'ETF', 'GOLD', 'OTHER', 'USD_CASH'];
+export const TODAY_KIND_LABEL: { [K in TodayKind]: string } = {
+  KR_STOCK: '국내 주식', US_STOCK: '해외 주식', ETF: 'ETF', GOLD: '금현물', OTHER: '펀드·채권', USD_CASH: '달러 예수금',
+};
+
+export function todayKindOf(h: Holding): TodayKind {
+  if (h.assetType === 'ETF') return 'ETF';
+  if (h.assetType === 'STOCK') return h.market === 'KR' ? 'KR_STOCK' : 'US_STOCK';
+  if (h.assetType === 'GOLD') return 'GOLD';
+  return 'OTHER';
+}
+
+/** 오늘 변동 필터: 뺀 계좌·종류를 기억하므로 기본은 전부 (= 전체), 새로 생긴 계좌·종류도 보인다. */
+export interface TodayFilter {
+  hiddenAccounts: ReadonlySet<string>;
+  hiddenKinds: ReadonlySet<TodayKind>;
+}
+export const NO_FILTER: TodayFilter = { hiddenAccounts: new Set(), hiddenKinds: new Set() };
+export const isNoFilter = (f: TodayFilter) => f.hiddenAccounts.size === 0 && f.hiddenKinds.size === 0;
+
+/** 칩에 있는 것이 모두 보이는지 ([전체] 칩이 켜진 상태). */
+export const allChipsShown = <T,>(present: readonly T[], hidden: ReadonlySet<T>): boolean => present.every((x) => !hidden.has(x));
+/** [전체] 칩: 모두 보이면 전체 해제, 아니면 전체 선택. */
+export function toggleAllChips<T>(present: readonly T[], hidden: ReadonlySet<T>): Set<T> {
+  const next = new Set(hidden);
+  const showAll = !allChipsShown(present, hidden);
+  for (const x of present) {
+    if (showAll) next.delete(x);
+    else next.add(x);
+  }
+  return next;
+}
+/** 칩 하나 켜기·끄기. */
+export function toggleChip<T>(item: T, hidden: ReadonlySet<T>): Set<T> {
+  const next = new Set(hidden);
+  if (next.has(item)) next.delete(item);
+  else next.add(item);
+  return next;
+}
+
+/** 계좌 한 줄: 그 계좌 종목의 가격 변동 (환율 효과는 따로). changeKrw 가 null 이면 종목은 있지만 시세가 하나도 없음. */
+export interface TodayAccount {
+  account: InvestmentAccount;
+  changeKrw: number | null;
 }
 
 export interface TodayChange {
@@ -25,6 +73,8 @@ export interface TodayChange {
   fxTo: number | null;
   /** 종목별 (평가금 큰 순). */
   items: TodayItem[];
+  /** 계좌별 (계좌 순서). 종목이 있는 계좌만 (예수금만 있는 계좌는 없음). 계좌 합 + fxKrw = totalKrw. */
+  accounts: TodayAccount[];
 }
 
 export interface TileRect {
@@ -48,8 +98,21 @@ export const topGainers = (c: TodayChange, count = 3) => includedItems(c).filter
 /** 많이 내린 종목 (등락률 작은 순, 하락만). */
 export const topLosers = (c: TodayChange, count = 3) => includedItems(c).filter((i) => i.rate! < 0).sort((a, b) => a.rate! - b.rate!).slice(0, count);
 
-/** 오늘 변동. today 는 오늘 날짜 (오늘 환율이 오늘 것인지 판단). 보유 종목이 없으면 null. */
-export function todayChange(summary: PortfolioSummary, snapshot: MarketSnapshot, today: string): TodayChange | null {
+/** 칩으로 보여줄 종류: 보유 종목에 있는 종류 + 달러 예수금이 있으면 달러 예수금, 정해진 순서로. */
+export function presentKinds(summary: PortfolioSummary): TodayKind[] {
+  const kinds = new Set<TodayKind>();
+  for (const a of summary.accounts) {
+    for (const v of a.holdings) if (v.position.quantity > 1e-9) kinds.add(todayKindOf(v.holding));
+    if (Math.abs(a.cash.usd) > 1e-9) kinds.add('USD_CASH');
+  }
+  return TODAY_KINDS.filter((k) => kinds.has(k));
+}
+
+/**
+ * 오늘 변동. today 는 오늘 날짜 (오늘 환율이 오늘 것인지 판단). filter 로 뺀 계좌·종류는 계산하지 않는다.
+ * 고른 범위에 종목도 달러 예수금도 없으면 null.
+ */
+export function todayChange(summary: PortfolioSummary, snapshot: MarketSnapshot, today: string, filter: TodayFilter = NO_FILTER): TodayChange | null {
   const fxTo = summary.usdKrw;
   // 오늘 발표된 환율일 때만 환율 효과 (전 영업일 환율과 비교)
   const latest = latestUsdKrw(snapshot);
@@ -62,13 +125,21 @@ export function todayChange(summary: PortfolioSummary, snapshot: MarketSnapshot,
   let fx = 0;
   let previous = 0;
   const merged = new Map<string, TodayItem>();
+  const accounts: TodayAccount[] = [];
   for (const account of summary.accounts) {
-    fx += account.cash.usd * fxMove;
-    previous += account.cash.usd * fxBase;
+    if (filter.hiddenAccounts.has(account.account.id)) continue;
+    if (!filter.hiddenKinds.has('USD_CASH')) {
+      fx += account.cash.usd * fxMove;
+      previous += account.cash.usd * fxBase;
+    }
+    let accountChange: number | null = null;
+    let held = false;
     for (const v of account.holdings) {
       const quantity = v.position.quantity;
       if (quantity <= 1e-9) continue;
       const h = v.holding;
+      if (filter.hiddenKinds.has(todayKindOf(h))) continue;
+      held = true;
       const key = keyOf(h) ?? `id:${h.id}`;
       const value = v.marketValueKrw ?? 0;
       const rate = dailyChangeRate(h, snapshot);
@@ -86,14 +157,16 @@ export function todayChange(summary: PortfolioSummary, snapshot: MarketSnapshot,
           domestic += change;
           previous += quantity * prev;
         }
+        accountChange = (accountChange ?? 0) + change;
       }
       const old = merged.get(key);
       merged.set(key, old === undefined
         ? { key, holding: h, valueKrw: value, changeKrw: change, rate: change !== null ? rate : null }
         : { ...old, valueKrw: old.valueKrw + value, changeKrw: old.changeKrw === null || change === null ? old.changeKrw ?? change : old.changeKrw + change });
     }
+    if (held) accounts.push({ account: account.account, changeKrw: accountChange });
   }
-  if (merged.size === 0) return null;
+  if (merged.size === 0 && previous <= 0) return null;
   const total = domestic + foreign + fx;
   return {
     totalKrw: total,
@@ -104,6 +177,7 @@ export function todayChange(summary: PortfolioSummary, snapshot: MarketSnapshot,
     fxFrom,
     fxTo: fxFrom !== null ? fxTo : null,
     items: [...merged.values()].sort((a, b) => b.valueKrw - a.valueKrw),
+    accounts,
   };
 }
 

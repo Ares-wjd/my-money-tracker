@@ -1,26 +1,110 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { rate, signedWon } from '../core/format';
-import { excludedItems, includedItems } from '../core/todayChange';
+import {
+  TODAY_KINDS,
+  TODAY_KIND_LABEL,
+  allChipsShown,
+  excludedItems,
+  includedItems,
+  isNoFilter,
+  presentKinds,
+  toggleAllChips,
+  toggleChip,
+  type TodayFilter,
+  type TodayKind,
+} from '../core/todayChange';
 import { useAppData } from '../data/DataContext';
 import { ContributionRows, TodayTiles, TodayTotal } from '../components/TodayChange';
 import { Card, TickerBadge, profitClass } from '../components/ui';
-import { todayBasis, useTodayChange } from './todayData';
+import { accountOrderOf, todayBasis, useTodayChange } from './todayData';
 
 type TodaySort = 'AMOUNT' | 'RATE';
+
+// 필터는 뺀 것을 이 브라우저에 기억한다 (처음엔 전부 = 전체, 새 계좌·종류도 보임).
+const ACCOUNTS_KEY = 'today_hidden_accounts';
+const KINDS_KEY = 'today_hidden_kinds';
+
+function readList(key: string): string[] {
+  try {
+    return (localStorage.getItem(key) ?? '').split(',').filter((x) => x !== '');
+  } catch {
+    return [];
+  }
+}
+
+function writeList(key: string, values: Iterable<string>) {
+  try {
+    localStorage.setItem(key, [...values].join(','));
+  } catch {
+    // 저장할 수 없는 환경이면 이번 화면에서만 적용한다.
+  }
+}
+
+function readFilter(): TodayFilter {
+  return {
+    hiddenAccounts: new Set(readList(ACCOUNTS_KEY)),
+    hiddenKinds: new Set(readList(KINDS_KEY).filter((k): k is TodayKind => (TODAY_KINDS as readonly string[]).includes(k))),
+  };
+}
+
+/** 칩 한 줄: [전체] + 항목들. */
+function ChipRow<T extends string>(props: { label: string; items: readonly T[]; hidden: ReadonlySet<T>; name: (item: T) => string; onChange: (next: Set<T>) => void }) {
+  const { label, items, hidden, name, onChange } = props;
+  const all = allChipsShown(items, hidden);
+  return (
+    <div className="today-filter-row">
+      <span className="muted small">{label}</span>
+      <div className="choices" role="group" aria-label={label}>
+        <button aria-pressed={all} className={all ? 'choice on' : 'choice'} onClick={() => onChange(toggleAllChips(items, hidden))}>전체</button>
+        {items.map((item) => (
+          <button key={item} aria-pressed={!hidden.has(item)} className={hidden.has(item) ? 'choice' : 'choice on'} onClick={() => onChange(toggleChip(item, hidden))}>
+            {name(item)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** 오늘 변동 상세: 요약 · 종목별 타일 · 종목 목록. */
 export function TodayPage() {
   const data = useAppData();
-  const change = useTodayChange(data);
+  const [filter, setFilterState] = useState<TodayFilter>(readFilter);
+  const change = useTodayChange(data, filter);
   const [sort, setSort] = useState<TodaySort>('AMOUNT');
+  const accountOrder = accountOrderOf(data);
+  const kinds = useMemo(() => presentKinds(data.summary), [data]);
+  const accountName = (id: string) => data.summary.accounts.find((a) => a.account.id === id)?.account.name ?? '';
+
+  const setFilter = (next: TodayFilter) => {
+    setFilterState(next);
+    writeList(ACCOUNTS_KEY, next.hiddenAccounts);
+    writeList(KINDS_KEY, next.hiddenKinds);
+  };
+
+  // 지금 있는 계좌·종류 중에 뺀 것 ("연금저축 · ETF 제외")
+  const hiddenNames = [
+    ...accountOrder.filter((id) => filter.hiddenAccounts.has(id)).map(accountName),
+    ...kinds.filter((k) => filter.hiddenKinds.has(k)).map((k) => TODAY_KIND_LABEL[k]),
+  ];
+
+  const filterCard = (
+    <Card className="today-filter">
+      <ChipRow label="계좌" items={accountOrder} hidden={filter.hiddenAccounts} name={accountName} onChange={(next) => setFilter({ ...filter, hiddenAccounts: next })} />
+      <ChipRow label="종류" items={kinds} hidden={filter.hiddenKinds} name={(k) => TODAY_KIND_LABEL[k]} onChange={(next) => setFilter({ ...filter, hiddenKinds: next })} />
+    </Card>
+  );
 
   if (change === null) {
     return (
-      <Card title="오늘 변동">
-        <p className="muted">보유 종목이 없습니다.</p>
-        <Link to="/">홈으로</Link>
-      </Card>
+      <div className="stack">
+        {filterCard}
+        <Card title="오늘 변동">
+          <p className="muted">{isNoFilter(filter) ? '보유 종목이 없습니다.' : '고른 범위에 보유 종목이 없습니다. 위에서 계좌나 종류를 고르세요.'}</p>
+          <Link to="/">홈으로</Link>
+        </Card>
+      </div>
     );
   }
 
@@ -32,15 +116,18 @@ export function TodayPage() {
 
   return (
     <div className="stack">
+      {filterCard}
+
       <Card title="오늘 변동">
+        {hiddenNames.length > 0 && <span className="small today-filter-note">필터 적용 중 · {hiddenNames.join(' · ')} 제외</span>}
         <span className="muted small">{[todayBasis(data.quoteDate), '해외는 미국 시장 기준'].filter(Boolean).join(' · ')}</span>
         <TodayTotal change={change} />
-        <ContributionRows change={change} />
+        <ContributionRows change={change} accountOrder={accountOrder} />
       </Card>
 
       <Card title="종목별">
         <p className="muted small">칸 크기 = 평가금 비중 · 색 = 오늘 등락 (빨강 상승, 파랑 하락, 진할수록 큼) · 누르면 종목 화면</p>
-        <TodayTiles change={change} />
+        {change.items.length > 0 ? <TodayTiles change={change} /> : <p className="muted">고른 범위에 종목이 없습니다.</p>}
       </Card>
 
       <Card

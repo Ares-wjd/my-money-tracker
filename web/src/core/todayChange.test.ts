@@ -4,7 +4,7 @@ import type { MarketSnapshot } from '../model';
 import { currentPrice, keyOf, latestUsdKrw } from './market';
 import { summarize } from './portfolio';
 import { account, holding, record } from './testData';
-import { changeLevel, excludedItems, todayChange, todayLabel, todayTiles, topGainers, topLosers, treemap } from './todayChange';
+import { changeLevel, excludedItems, presentKinds, todayChange, todayLabel, todayTiles, toggleAllChips, toggleChip, topGainers, topLosers, treemap, type TodayFilter, type TodayKind } from './todayChange';
 
 const today = '2026-10-14';
 const day = '2026-10-01';
@@ -44,6 +44,46 @@ describe('오늘 변동 (TodayChangeTest)', () => {
     expect(topGainers(t).map((i) => i.holding.id)).toEqual(['s', 'v']);
     expect(topLosers(t)).toEqual([]);
     expect(todayLabel(t.items.find((i) => i.holding.id === 's')!)).toBe('삼성전자');
+  });
+
+  it('계좌별 줄과 필터', () => {
+    const filter = (accounts: string[], kinds: TodayKind[]): TodayFilter => ({ hiddenAccounts: new Set(accounts), hiddenKinds: new Set(kinds) });
+    const all = todayChange(summaryOf(snapshot), snapshot, today)!;
+    // 계좌별 가격 변동 + 환율 = 합계
+    expect(all.accounts.map((x) => [x.account.id, x.changeKrw])).toEqual([['a', 50_000], ['b', 56_000]]);
+    expect(all.accounts.reduce((s, x) => s + (x.changeKrw ?? 0), 0) + all.fxKrw).toBeCloseTo(all.totalKrw, 6);
+    expect(presentKinds(summaryOf(snapshot))).toEqual(['KR_STOCK', 'ETF', 'OTHER', 'USD_CASH']);
+
+    // 계좌 b 제외: 국내만, 환율 효과 없음
+    const noB = todayChange(summaryOf(snapshot), snapshot, today, filter(['b'], []))!;
+    expect(noB.totalKrw).toBeCloseTo(50_000, 6);
+    expect(noB.fxKrw).toBe(0);
+    expect(noB.rate!).toBeCloseTo(50_000 / 700_000, 12);
+    expect(noB.accounts.map((x) => x.account.id)).toEqual(['a']);
+
+    // 달러 예수금 제외: 환율 효과는 VOO 몫만 (2 × $500 × 10 = 10,000)
+    const noCash = todayChange(summaryOf(snapshot), snapshot, today, filter([], ['USD_CASH']))!;
+    expect(noCash.fxKrw).toBeCloseTo(10_000, 6);
+    expect(noCash.totalKrw).toBeCloseTo(116_000, 6);
+    expect(noCash.rate!).toBeCloseTo(116_000 / 2_090_000, 12);
+
+    // 개별주만: 삼성전자만, 종목이 남지 않은 계좌 b 는 줄이 없다
+    const onlyStocks = todayChange(summaryOf(snapshot), snapshot, today, filter([], ['ETF', 'GOLD', 'OTHER', 'USD_CASH']))!;
+    expect(onlyStocks.totalKrw).toBeCloseTo(50_000, 6);
+    expect(onlyStocks.accounts.map((x) => [x.account.id, x.changeKrw])).toEqual([['a', 50_000]]);
+
+    // 펀드만 남은 계좌는 시세 없음 (null)
+    const fundOnly = todayChange(summaryOf(snapshot), snapshot, today, filter(['b'], ['KR_STOCK']))!;
+    expect(fundOnly.accounts.map((x) => [x.account.id, x.changeKrw])).toEqual([['a', null]]);
+    expect(fundOnly.totalKrw).toBe(0);
+
+    // 전부 빼면 null
+    expect(todayChange(summaryOf(snapshot), snapshot, today, filter(['a', 'b'], []))).toBeNull();
+
+    // [전체] 칩
+    expect(toggleAllChips(['a', 'b'], new Set<string>())).toEqual(new Set(['a', 'b']));
+    expect(toggleAllChips(['a', 'b'], new Set(['a']))).toEqual(new Set());
+    expect(toggleChip('a', new Set(['a', 'b']))).toEqual(new Set(['b']));
   });
 
   it('오늘 환율 발표 전에는 환율 효과 0', () => {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +33,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,20 +47,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioViewModel
+import com.mymoneytracker.app.ui.common.AppFilterChip
 import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.SegmentedPills
 import com.mymoneytracker.app.ui.common.TickerBadge
 import com.mymoneytracker.app.ui.common.TickerGroup
 import com.mymoneytracker.app.ui.common.TopBarTitle
+import com.mymoneytracker.app.ui.common.paletteColor
 import com.mymoneytracker.app.ui.common.profitColor
 import com.mymoneytracker.app.ui.common.tickerColor
 import com.mymoneytracker.app.ui.common.tickerGroup
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.portfolio.TodayChange
 import com.mymoneytracker.core.portfolio.TodayChangeCalculator
+import com.mymoneytracker.core.portfolio.TodayFilter
 import com.mymoneytracker.core.portfolio.TodayItem
 import java.text.SimpleDateFormat
+import java.time.LocalDate
 import java.util.Date
 import java.util.Locale
 
@@ -69,7 +75,7 @@ private fun baseTime(refreshedAt: Long?): String =
 /** 홈의 "오늘 변동" 카드 (누르면 상세 화면). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TodayChangeCard(change: TodayChange, refreshedAt: Long?, onOpen: () -> Unit) {
+fun TodayChangeCard(change: TodayChange, refreshedAt: Long?, accountOrder: List<String>, onOpen: () -> Unit) {
     SectionCard(Modifier.clickable(onClick = onOpen)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("오늘 변동", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -79,8 +85,8 @@ fun TodayChangeCard(change: TodayChange, refreshedAt: Long?, onOpen: () -> Unit)
         TodayTotal(change)
         if (change.included.isNotEmpty()) {
             Spacer(Modifier.height(4.dp))
-            ContributionBar(change)
-            ContributionRows(change)
+            ContributionBar(change, accountOrder)
+            ContributionRows(change, accountOrder)
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Movers("많이 오른 종목", change.topGainers(), Modifier.weight(1f))
@@ -114,13 +120,16 @@ private fun TodayTotal(change: TodayChange) {
     }
 }
 
-private data class Part(val label: String, val detail: String?, val amount: Double, val color: Color)
+/** 한 줄: [amount] 가 null 이면 시세 없음. */
+private data class Part(val key: String, val label: String, val detail: String?, val amount: Double?, val color: Color)
 
+/** 계좌별 + 환율 몫. [accountOrder] 는 전체 계좌 순서 (필터와 상관없이 같은 계좌는 같은 색, 웹과 같은 팔레트). */
 @Composable
-private fun parts(change: TodayChange): List<Part> = listOf(
-    Part("국내 주식·ETF", null, change.domesticKrw, tickerColor(TickerGroup.KR_STOCK)),
-    Part("해외 주식", "미국 시장 기준", change.foreignKrw, tickerColor(TickerGroup.US_STOCK)),
-    Part(
+private fun parts(change: TodayChange, accountOrder: List<String>): List<Part> =
+    change.accounts.map { a ->
+        Part(a.account.id, a.account.name, null, a.changeKrw, paletteColor(accountOrder.indexOf(a.account.id)))
+    } + Part(
+        "__fx",
         "환율",
         if (change.fxFrom != null && change.fxTo != null) {
             "${MoneyFormat.decimal(change.fxFrom!!, 2)} → ${MoneyFormat.decimal(change.fxTo!!, 2)}"
@@ -129,14 +138,13 @@ private fun parts(change: TodayChange): List<Part> = listOf(
         },
         change.fxKrw,
         tickerColor(TickerGroup.GOLD),
-    ),
-)
+    )
 
-/** 국내·해외·환율이 기여한 몫 (크기 비율 막대). */
+/** 계좌별 + 환율이 기여한 몫 (크기 비율 막대). */
 @Composable
-private fun ContributionBar(change: TodayChange) {
-    val items = parts(change).filter { kotlin.math.abs(it.amount) >= 0.5 }
-    val total = items.sumOf { kotlin.math.abs(it.amount) }
+private fun ContributionBar(change: TodayChange, accountOrder: List<String>) {
+    val items = parts(change, accountOrder).mapNotNull { p -> p.amount?.takeIf { kotlin.math.abs(it) >= 0.5 }?.let { p to kotlin.math.abs(it) } }
+    val total = items.sumOf { it.second }
     Row(
         Modifier
             .fillMaxWidth()
@@ -145,24 +153,30 @@ private fun ContributionBar(change: TodayChange) {
             .background(MaterialTheme.colorScheme.surfaceContainer),
     ) {
         if (total > 0) {
-            items.forEach { p -> Box(Modifier.weight((kotlin.math.abs(p.amount) / total).toFloat().coerceAtLeast(0.01f)).height(10.dp).background(p.color)) }
+            items.forEach { (p, amount) -> Box(Modifier.weight((amount / total).toFloat().coerceAtLeast(0.01f)).height(10.dp).background(p.color)) }
         }
     }
 }
 
+/** 계좌마다 한 줄 + 환율 한 줄 (모두 더하면 합계). */
 @Composable
-private fun ContributionRows(change: TodayChange) {
+private fun ContributionRows(change: TodayChange, accountOrder: List<String>) {
     Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        parts(change).forEach { p ->
+        parts(change, accountOrder).forEach { p ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.size(10.dp).background(p.color, RoundedCornerShape(3.dp)))
-                Text(p.label, style = MaterialTheme.typography.bodyMedium)
                 if (p.detail != null) {
+                    Text(p.label, style = MaterialTheme.typography.bodyMedium)
                     Text(p.detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                 } else {
-                    Spacer(Modifier.weight(1f))
+                    Text(p.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 }
-                Text(MoneyFormat.signedWon(p.amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = profitColor(p.amount))
+                val amount = p.amount
+                if (amount == null) {
+                    Text("시세 없음", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text(MoneyFormat.signedWon(amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = profitColor(amount))
+                }
             }
         }
     }
@@ -266,13 +280,38 @@ private fun TodayTiles(change: TodayChange, onOpenHolding: (String) -> Unit) {
     }
 }
 
+/** 필터 칩 한 줄: [전체] + 항목들 (기록 필터와 같은 동작, 뺀 것을 기억). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun <T> ChipRow(label: String, items: List<T>, hidden: Set<T>, name: (T) -> String, onChange: (Set<T>) -> Unit) {
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 14.dp),
+        )
+        FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AppFilterChip(
+                selected = TodayFilter.allShown(items, hidden),
+                label = "전체",
+                onClick = { onChange(TodayFilter.toggleAll(items, hidden)) },
+            )
+            items.forEach { item ->
+                AppFilterChip(selected = item !in hidden, label = name(item), onClick = { onChange(TodayFilter.toggle(item, hidden)) })
+            }
+        }
+    }
+}
+
 private enum class TodaySort(val label: String) { AMOUNT("금액"), RATE("등락률") }
 
 /** 오늘 변동 상세 화면: 요약 · 종목별 타일 · 종목 목록. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TodayChangeScreen(viewModel: PortfolioViewModel, onBack: () -> Unit, onOpenHolding: (String) -> Unit) {
-    val change by viewModel.todayChange.collectAsStateWithLifecycle()
+    val data by viewModel.data.collectAsStateWithLifecycle()
+    val filter by viewModel.todayFilter.collectAsStateWithLifecycle()
     val refresh by viewModel.refresh.collectAsStateWithLifecycle()
     var sortName by rememberSaveable { mutableStateOf(TodaySort.AMOUNT.name) }
     val sort = TodaySort.valueOf(sortName)
@@ -287,11 +326,19 @@ fun TodayChangeScreen(viewModel: PortfolioViewModel, onBack: () -> Unit, onOpenH
             )
         },
     ) { padding ->
-        val c = change
-        if (c == null) {
+        val current = data
+        if (current == null) {
             LoadingBox(Modifier.padding(padding))
             return@Scaffold
         }
+        // 필터를 적용한 오늘 변동 (계산이 가벼워 화면에서 바로 계산)
+        val c = remember(current, filter) { TodayChangeCalculator.calculate(current.summary, current.market, LocalDate.now(), filter) }
+        val accounts = current.summary.accounts.map { it.account }
+        val accountOrder = accounts.map { it.id }
+        val kinds = remember(current) { TodayChangeCalculator.presentKinds(current.summary) }
+        // 지금 있는 계좌·종류 중에 뺀 것 ("연금저축 · ETF 제외")
+        val hiddenNames = accounts.filter { it.id in filter.hiddenAccounts }.map { it.name } +
+            kinds.filter { it in filter.hiddenKinds }.map { it.label }
         LazyColumn(
             modifier = Modifier.padding(padding),
             contentPadding = PaddingValues(16.dp),
@@ -299,13 +346,43 @@ fun TodayChangeScreen(viewModel: PortfolioViewModel, onBack: () -> Unit, onOpenH
         ) {
             item {
                 SectionCard {
+                    ChipRow("계좌", accountOrder, filter.hiddenAccounts, { id -> accounts.first { it.id == id }.name }) {
+                        viewModel.setTodayFilter(filter.copy(hiddenAccounts = it))
+                    }
+                    ChipRow("종류", kinds, filter.hiddenKinds, { it.label }) {
+                        viewModel.setTodayFilter(filter.copy(hiddenKinds = it))
+                    }
+                }
+            }
+            if (c == null) {
+                item {
+                    SectionCard {
+                        Text(
+                            if (filter.isEmpty) "보유 종목이 없습니다." else "고른 범위에 보유 종목이 없습니다. 위에서 계좌나 종류를 고르세요.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                return@LazyColumn
+            }
+            item {
+                SectionCard {
+                    if (hiddenNames.isNotEmpty()) {
+                        Text(
+                            "필터 적용 중 · ${hiddenNames.joinToString(" · ")} 제외",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Text(
                         listOf(baseTime(refresh.lastRefreshedAt), "해외는 미국 시장 기준").filter { it.isNotEmpty() }.joinToString(" · "),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     TodayTotal(c)
-                    ContributionRows(c)
+                    ContributionRows(c, accountOrder)
                 }
             }
             item {
@@ -316,7 +393,11 @@ fun TodayChangeScreen(viewModel: PortfolioViewModel, onBack: () -> Unit, onOpenH
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 6.dp),
                     )
-                    TodayTiles(c, onOpenHolding)
+                    if (c.items.isEmpty()) {
+                        Text("고른 범위에 종목이 없습니다.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        TodayTiles(c, onOpenHolding)
+                    }
                 }
             }
             item {

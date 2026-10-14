@@ -14,7 +14,9 @@ import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.TodayChangeCalculator
+import com.mymoneytracker.core.portfolio.TodayFilter
 import com.mymoneytracker.core.portfolio.TodayItem
+import com.mymoneytracker.core.portfolio.TodayKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -69,6 +71,50 @@ class TodayChangeTest {
         assertEquals(listOf("s", "v"), t.topGainers().map { it.holding.id })
         assertTrue(t.topLosers().isEmpty())
         assertEquals("삼성전자", t.items.first { it.holding.id == "s" }.label)
+    }
+
+    @Test
+    fun accountsAndFilters() {
+        val all = TodayChangeCalculator.calculate(summary(), snapshot, today)!!
+        // 계좌별 가격 변동 + 환율 = 합계
+        assertEquals(listOf("a" to 50_000.0, "b" to 56_000.0), all.accounts.map { it.account.id to it.changeKrw })
+        assertEquals(all.totalKrw, all.accounts.sumOf { it.changeKrw ?: 0.0 } + all.fxKrw, 1e-6)
+        assertEquals(
+            listOf(TodayKind.KR_STOCK, TodayKind.ETF, TodayKind.OTHER, TodayKind.USD_CASH),
+            TodayChangeCalculator.presentKinds(summary()),
+        )
+
+        // 계좌 b 제외: 국내만, 환율 효과 없음
+        val noB = TodayChangeCalculator.calculate(summary(), snapshot, today, TodayFilter(hiddenAccounts = setOf("b")))!!
+        assertEquals(50_000.0, noB.totalKrw, 1e-6)
+        assertEquals(0.0, noB.fxKrw, 1e-9)
+        assertEquals(50_000.0 / 700_000.0, noB.rate!!, 1e-12)
+        assertEquals(listOf("a"), noB.accounts.map { it.account.id })
+
+        // 달러 예수금 제외: 환율 효과는 VOO 몫만 (2 × $500 × 10 = 10,000)
+        val noCash = TodayChangeCalculator.calculate(summary(), snapshot, today, TodayFilter(hiddenKinds = setOf(TodayKind.USD_CASH)))!!
+        assertEquals(10_000.0, noCash.fxKrw, 1e-6)
+        assertEquals(116_000.0, noCash.totalKrw, 1e-6)
+        assertEquals(116_000.0 / 2_090_000.0, noCash.rate!!, 1e-12)
+
+        // 개별주만: 삼성전자만, 종목이 남지 않은 계좌 b 는 줄이 없다
+        val stocks = TodayFilter(hiddenKinds = setOf(TodayKind.ETF, TodayKind.GOLD, TodayKind.OTHER, TodayKind.USD_CASH))
+        val onlyStocks = TodayChangeCalculator.calculate(summary(), snapshot, today, stocks)!!
+        assertEquals(50_000.0, onlyStocks.totalKrw, 1e-6)
+        assertEquals(listOf("a" to 50_000.0), onlyStocks.accounts.map { it.account.id to it.changeKrw })
+
+        // 펀드만 남은 계좌는 시세 없음 (null)
+        val fundOnly = TodayChangeCalculator.calculate(summary(), snapshot, today, TodayFilter(setOf("b"), setOf(TodayKind.KR_STOCK)))!!
+        assertEquals(listOf("a" to null), fundOnly.accounts.map { it.account.id to it.changeKrw })
+        assertEquals(0.0, fundOnly.totalKrw, 1e-9)
+
+        // 전부 빼면 null
+        assertNull(TodayChangeCalculator.calculate(summary(), snapshot, today, TodayFilter(setOf("a", "b"))))
+
+        // [전체] 칩
+        assertEquals(setOf("a", "b"), TodayFilter.toggleAll(listOf("a", "b"), emptySet()))
+        assertEquals(emptySet<String>(), TodayFilter.toggleAll(listOf("a", "b"), setOf("a")))
+        assertEquals(setOf("b"), TodayFilter.toggle("a", setOf("a", "b")))
     }
 
     @Test

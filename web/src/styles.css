@@ -25,6 +25,7 @@
   --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948; --series-other: #9aa5a0;
   --short-row: #eaf1fd; --over-row: #fdecee; --short-tag: #1f5fd1; --over-tag: #c62436; --short-tag-ink: #ffffff; --over-tag-ink: #ffffff;
   --chart-invested: #b5770a;
+  --fx-part: #856a00;
   color-scheme: light;
 }
 /* 화면 모드: 자동이면 PC 설정, 직접 고르면 data-theme (src/theme.tsx) */
@@ -52,6 +53,7 @@
   --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767; --series-other: #5e6b65;
   --short-row: #1d2b45; --over-row: #3b1f24; --short-tag: #8fb4ff; --over-tag: #ff8a96; --short-tag-ink: #16201c; --over-tag-ink: #16201c;
   --chart-invested: #c4851c;
+  --fx-part: #8c7000;
   color-scheme: dark;
   }
 }
@@ -78,6 +80,7 @@
   --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767; --series-other: #5e6b65;
   --short-row: #1d2b45; --over-row: #3b1f24; --short-tag: #8fb4ff; --over-tag: #ff8a96; --short-tag-ink: #16201c; --over-tag-ink: #16201c;
   --chart-invested: #c4851c;
+  --fx-part: #8c7000;
   color-scheme: dark;
 }
 
@@ -419,7 +422,14 @@ tr.over td { background: var(--over-row); }
 .today-bar > span { flex-basis: 0; }
 .today-parts { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
 .today-part { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.today-part-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .today-part-detail { flex: 1; }
+.today-part .legend-swatch { flex: none; }
+.today-filter { display: flex; flex-direction: column; gap: 6px; }
+.today-filter-row { display: flex; align-items: flex-start; gap: 10px; }
+.today-filter-row > span { flex: none; width: 32px; padding-top: 7px; }
+.today-filter-row .choices { flex: 1; }
+.today-filter-note { color: var(--green); font-weight: 600; }
 .today-movers-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 10px; margin-top: 4px; border-top: 1px solid var(--line); }
 .today-movers { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .today-mover { display: flex; align-items: center; gap: 8px; font-size: 14px; }

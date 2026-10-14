@@ -2,18 +2,36 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { decimal, rate, signedWon } from '../core/format';
 import { changeLevel, todayLabel, todayTiles, treemap, topGainers, topLosers, type TodayChange, type TodayItem } from '../core/todayChange';
-import { profitClass, tickerGroup, type TickerGroup } from './ui';
+import { profitClass, tickerGroup } from './ui';
 
-/** 국내·해외·환율 몫 (폰과 같은 색: 국내 = 국내 주식 색, 해외 = 해외 주식 색, 환율 = 금현물 색). */
-function parts(change: TodayChange): { label: string; detail: string | null; amount: number; group: TickerGroup }[] {
+/** 계좌 색: 비중 탭과 같은 범주 팔레트를 계좌 순서대로 (폰과 같은 값). */
+const accountColor = (index: number) => `var(--series-${(Math.max(index, 0) % 8) + 1})`;
+
+interface Part {
+  key: string;
+  label: string;
+  detail: string | null;
+  /** null = 시세 없음 */
+  amount: number | null;
+  color: string;
+}
+
+/** 계좌별 + 환율 몫. accountOrder 는 전체 계좌 순서 (필터와 상관없이 같은 계좌는 같은 색). */
+function parts(change: TodayChange, accountOrder: readonly string[]): Part[] {
   return [
-    { label: '국내 주식·ETF', detail: null, amount: change.domesticKrw, group: 'KR_STOCK' },
-    { label: '해외 주식', detail: '미국 시장 기준', amount: change.foreignKrw, group: 'US_STOCK' },
+    ...change.accounts.map((a) => ({
+      key: a.account.id,
+      label: a.account.name,
+      detail: null,
+      amount: a.changeKrw,
+      color: accountColor(accountOrder.indexOf(a.account.id)),
+    })),
     {
+      key: '__fx',
       label: '환율',
       detail: change.fxFrom !== null && change.fxTo !== null ? `${decimal(change.fxFrom, 2)} → ${decimal(change.fxTo, 2)}` : '오늘 환율 발표 전',
       amount: change.fxKrw,
-      group: 'GOLD',
+      color: 'var(--fx-part)',
     },
   ];
 }
@@ -27,26 +45,27 @@ export function TodayTotal({ change }: { change: TodayChange }) {
   );
 }
 
-/** 국내·해외·환율이 기여한 몫 (크기 비율 막대). */
-export function ContributionBar({ change }: { change: TodayChange }) {
-  const items = parts(change).filter((p) => Math.abs(p.amount) >= 0.5);
-  const total = items.reduce((s, p) => s + Math.abs(p.amount), 0);
+/** 계좌별 + 환율이 기여한 몫 (크기 비율 막대). */
+export function ContributionBar({ change, accountOrder }: { change: TodayChange; accountOrder: readonly string[] }) {
+  const items = parts(change, accountOrder).filter((p) => p.amount !== null && Math.abs(p.amount) >= 0.5);
+  const total = items.reduce((s, p) => s + Math.abs(p.amount!), 0);
   return (
     <div className="today-bar" aria-hidden="true">
-      {total > 0 && items.map((p) => <span key={p.label} className={`ticker-${p.group}`} style={{ flexGrow: Math.max(Math.abs(p.amount) / total, 0.01) }} />)}
+      {total > 0 && items.map((p) => <span key={p.key} style={{ background: p.color, flexGrow: Math.max(Math.abs(p.amount!) / total, 0.01) }} />)}
     </div>
   );
 }
 
-export function ContributionRows({ change }: { change: TodayChange }) {
+/** 계좌마다 한 줄 + 환율 한 줄 (모두 더하면 합계). */
+export function ContributionRows({ change, accountOrder }: { change: TodayChange; accountOrder: readonly string[] }) {
   return (
     <div className="today-parts">
-      {parts(change).map((p) => (
-        <div key={p.label} className="today-part">
-          <span className={`legend-swatch ticker-${p.group}`} aria-hidden="true" />
-          <span>{p.label}</span>
+      {parts(change, accountOrder).map((p) => (
+        <div key={p.key} className="today-part">
+          <span className="legend-swatch" style={{ background: p.color }} aria-hidden="true" />
+          <span className="today-part-name">{p.label}</span>
           <span className="muted small today-part-detail">{p.detail}</span>
-          <b className={profitClass(p.amount)}>{signedWon(p.amount)}</b>
+          {p.amount === null ? <span className="muted small">시세 없음</span> : <b className={profitClass(p.amount)}>{signedWon(p.amount)}</b>}
         </div>
       ))}
     </div>
@@ -70,7 +89,7 @@ function Movers({ title, items }: { title: string; items: TodayItem[] }) {
 }
 
 /** 홈의 "오늘 변동" 카드 (누르면 상세 페이지). */
-export function TodayCard({ change, basis }: { change: TodayChange; basis: string }) {
+export function TodayCard({ change, basis, accountOrder }: { change: TodayChange; basis: string; accountOrder: readonly string[] }) {
   const hasQuotes = change.items.some((i) => i.rate !== null);
   return (
     <Link to="/today" className="card today-card">
@@ -81,8 +100,8 @@ export function TodayCard({ change, basis }: { change: TodayChange; basis: strin
       <TodayTotal change={change} />
       {hasQuotes && (
         <>
-          <ContributionBar change={change} />
-          <ContributionRows change={change} />
+          <ContributionBar change={change} accountOrder={accountOrder} />
+          <ContributionRows change={change} accountOrder={accountOrder} />
           <div className="today-movers-row">
             <Movers title="많이 오른 종목" items={topGainers(change)} />
             <Movers title="많이 내린 종목" items={topLosers(change)} />

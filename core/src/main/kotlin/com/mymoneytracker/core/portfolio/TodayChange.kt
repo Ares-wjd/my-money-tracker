@@ -6,6 +6,8 @@ import com.mymoneytracker.core.market.PriceLookup
 import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.Holding
+import com.mymoneytracker.core.model.InvestmentAccount
+import com.mymoneytracker.core.model.Market
 import java.time.LocalDate
 import kotlin.math.abs
 import kotlin.math.max
@@ -31,6 +33,41 @@ data class TodayItem(
         }
 }
 
+/** 오늘 변동을 거르는 종류 (칩). 종목은 티커 색 구분과 같고, 달러 예수금은 환율 효과에만 들어간다. */
+enum class TodayKind(val label: String) {
+    KR_STOCK("국내 주식"), US_STOCK("해외 주식"), ETF("ETF"), GOLD("금현물"), OTHER("펀드·채권"), USD_CASH("달러 예수금");
+
+    companion object {
+        fun of(holding: Holding): TodayKind = when {
+            holding.assetType == AssetType.ETF -> ETF
+            holding.assetType == AssetType.STOCK && holding.market == Market.KR -> KR_STOCK
+            holding.assetType == AssetType.STOCK -> US_STOCK
+            holding.assetType == AssetType.GOLD -> GOLD
+            else -> OTHER
+        }
+    }
+}
+
+/** 오늘 변동 필터: 뺀 계좌·종류를 기억하므로 기본은 전부 (= 전체), 새로 생긴 계좌·종류도 보인다. */
+data class TodayFilter(val hiddenAccounts: Set<String> = emptySet(), val hiddenKinds: Set<TodayKind> = emptySet()) {
+    val isEmpty: Boolean get() = hiddenAccounts.isEmpty() && hiddenKinds.isEmpty()
+
+    companion object {
+        /** 칩에 있는 것이 모두 보이는지 ([전체] 칩이 켜진 상태). */
+        fun <T> allShown(present: List<T>, hidden: Set<T>): Boolean = present.none { it in hidden }
+
+        /** [전체] 칩: 모두 보이면 전체 해제, 아니면 전체 선택. */
+        fun <T> toggleAll(present: List<T>, hidden: Set<T>): Set<T> =
+            if (allShown(present, hidden)) hidden + present else hidden - present.toSet()
+
+        /** 칩 하나 켜기·끄기. */
+        fun <T> toggle(item: T, hidden: Set<T>): Set<T> = if (item in hidden) hidden - item else hidden + item
+    }
+}
+
+/** 계좌 한 줄: 그 계좌 종목의 가격 변동 (환율 효과는 따로). [changeKrw] 가 null 이면 종목은 있지만 시세가 하나도 없음. */
+data class TodayAccount(val account: InvestmentAccount, val changeKrw: Double?)
+
 /** 오늘 변동 (웹 todayChange.ts 와 같은 규칙). */
 data class TodayChange(
     val totalKrw: Double,
@@ -44,6 +81,8 @@ data class TodayChange(
     val fxTo: Double?,
     /** 종목별 (평가금 큰 순). */
     val items: List<TodayItem>,
+    /** 계좌별 (계좌 순서). 종목이 있는 계좌만 (예수금만 있는 계좌는 없음). 계좌 합 + [fxKrw] = [totalKrw]. */
+    val accounts: List<TodayAccount> = emptyList(),
 ) {
     val included: List<TodayItem> get() = items.filter { it.rate != null }
     val excluded: List<TodayItem> get() = items.filter { it.rate == null }
@@ -62,10 +101,18 @@ object TodayChangeCalculator {
     /** 타일이 이보다 많으면 작은 것부터 "기타"로 묶는다. */
     const val MAX_TILES = 16
 
+    /** 칩으로 보여줄 종류: 보유 종목에 있는 종류 + 달러 예수금이 있으면 달러 예수금, 정해진 순서로. */
+    fun presentKinds(summary: PortfolioSummary): List<TodayKind> {
+        val kinds = summary.accounts.flatMap { a -> a.holdings.filter { it.position.quantity > 1e-9 }.map { TodayKind.of(it.holding) } }.toMutableSet()
+        if (summary.accounts.any { abs(it.cash.usd) > 1e-9 }) kinds += TodayKind.USD_CASH
+        return TodayKind.entries.filter { it in kinds }
+    }
+
     /**
-     * 오늘 변동. [today] 는 오늘 날짜 (오늘 환율이 오늘 것인지 판단). 보유 종목이 없으면 null.
+     * 오늘 변동. [today] 는 오늘 날짜 (오늘 환율이 오늘 것인지 판단). [filter] 로 뺀 계좌·종류는 계산하지 않는다.
+     * 고른 범위에 종목도 달러 예수금도 없으면 null.
      */
-    fun calculate(summary: PortfolioSummary, snapshot: MarketSnapshot, today: LocalDate): TodayChange? {
+    fun calculate(summary: PortfolioSummary, snapshot: MarketSnapshot, today: LocalDate, filter: TodayFilter = TodayFilter()): TodayChange? {
         val fxTo = summary.usdKrw
         // 오늘 발표된 환율일 때만 환율 효과 (전 영업일 환율과 비교)
         val latestFx = snapshot.latestUsdKrw()
@@ -78,13 +125,21 @@ object TodayChangeCalculator {
         var fx = 0.0
         var previous = 0.0
         val merged = linkedMapOf<String, TodayItem>()
+        val accounts = mutableListOf<TodayAccount>()
         for (account in summary.accounts) {
-            fx += account.cash.usd * fxMove
-            previous += account.cash.usd * fxBase
+            if (account.account.id in filter.hiddenAccounts) continue
+            if (TodayKind.USD_CASH !in filter.hiddenKinds) {
+                fx += account.cash.usd * fxMove
+                previous += account.cash.usd * fxBase
+            }
+            var accountChange: Double? = null
+            var held = false
             for (v in account.holdings) {
                 val quantity = v.position.quantity
                 if (quantity <= 1e-9) continue
                 val h = v.holding
+                if (TodayKind.of(h) in filter.hiddenKinds) continue
+                held = true
                 val key = MarketKeys.of(h) ?: "id:${h.id}"
                 val value = v.marketValueKrw ?: 0.0
                 val rate = PriceLookup.dailyChangeRate(h, snapshot)
@@ -103,6 +158,7 @@ object TodayChangeCalculator {
                         domestic += change
                         previous += quantity * prev
                     }
+                    accountChange = (accountChange ?: 0.0) + change
                 }
                 val old = merged[key]
                 merged[key] = if (old == null) {
@@ -111,8 +167,9 @@ object TodayChangeCalculator {
                     old.copy(valueKrw = old.valueKrw + value, changeKrw = sumOrNull(old.changeKrw, change))
                 }
             }
+            if (held) accounts += TodayAccount(account.account, accountChange)
         }
-        if (merged.isEmpty()) return null
+        if (merged.isEmpty() && previous <= 0) return null
         val total = domestic + foreign + fx
         return TodayChange(
             totalKrw = total,
@@ -123,6 +180,7 @@ object TodayChangeCalculator {
             fxFrom = fxFrom,
             fxTo = if (fxFrom != null) fxTo else null,
             items = merged.values.sortedByDescending { it.valueKrw },
+            accounts = accounts,
         )
     }
 

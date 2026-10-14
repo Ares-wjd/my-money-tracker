@@ -69,6 +69,7 @@ import com.mymoneytracker.app.ui.common.SegmentedPills
 import com.mymoneytracker.app.ui.common.TickerBadge
 import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.app.ui.common.appCardColors
+import com.mymoneytracker.app.ui.common.paletteColor
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.portfolio.AllocationCalculator
 import com.mymoneytracker.core.portfolio.AllocationRow
@@ -79,10 +80,10 @@ import com.mymoneytracker.core.portfolio.TaxLimit
 import com.mymoneytracker.core.portfolio.TaxResult
 import com.mymoneytracker.core.portfolio.ToleranceRule
 import com.mymoneytracker.core.portfolio.TradeSuggestion
+import java.time.LocalDate
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.hypot
-import java.time.LocalDate
 
 private enum class Ring(val label: String) { CURRENT("실제"), TARGET("목표"), COMPARE("비교") }
 
@@ -92,14 +93,9 @@ private const val MAX_COLORS = PALETTE * 2
 private const val OTHER_KEY = "__other"
 
 @Composable
-private fun seriesColor(index: Int): Color {
-    val dark = isSystemInDarkTheme()
-    val light = listOf(0xFF2A78D6, 0xFFEB6834, 0xFF1BAF7A, 0xFFEDA100, 0xFFE87BA4, 0xFF008300, 0xFF6250D6, 0xFFE34948)
-    val darkColors = listOf(0xFF3987E5, 0xFFD95926, 0xFF199E70, 0xFFC98500, 0xFFD55181, 0xFF008300, 0xFF9085E9, 0xFFE66767)
-    return when {
-        index < MAX_COLORS -> Color(if (dark) darkColors[index % PALETTE] else light[index % PALETTE])
-        else -> if (dark) Color(0xFF5E6B65) else Color(0xFF9AA5A0)
-    }
+private fun seriesColor(index: Int): Color = when {
+    index < MAX_COLORS -> paletteColor(index)
+    else -> if (isSystemInDarkTheme()) Color(0xFF5E6B65) else Color(0xFF9AA5A0)
 }
 
 /** 9~16번째 종목은 빗금 무늬로 구분. */

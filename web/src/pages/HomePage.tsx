@@ -7,7 +7,7 @@ import { TodayCard } from '../components/TodayChange';
 import { Badge, Card, ListLink, Stat, Warning, profitClass } from '../components/ui';
 import { ACCOUNT_KIND_SHORT } from '../model';
 import { accountDescription } from './text';
-import { todayBasis, useTodayChange } from './todayData';
+import { accountOrderOf, todayBasis, useTodayChange } from './todayData';
 
 export function HomePage() {
   const data = useAppData();
@@ -56,7 +56,7 @@ export function HomePage() {
         </Card>
       )}
 
-      {change !== null && change.items.some((i) => i.rate !== null) && <TodayCard change={change} basis={todayBasis(data.quoteDate)} />}
+      {change !== null && change.items.some((i) => i.rate !== null) && <TodayCard change={change} basis={todayBasis(data.quoteDate)} accountOrder={accountOrderOf(data)} />}
 
       <AssetChart data={data} />
 
