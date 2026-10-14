@@ -78,6 +78,7 @@ import com.mymoneytracker.core.portfolio.DisplayConversion
 import com.mymoneytracker.core.portfolio.DisplayCurrency
 import com.mymoneytracker.core.portfolio.HoldingSort
 import com.mymoneytracker.core.portfolio.HoldingSorter
+import com.mymoneytracker.core.portfolio.PortfolioCalculator
 
 /** 기록 추가 메뉴에 보여줄 유형 (예수금은 예수금 카드의 "예수금 입력" 으로 따로 넣는다). */
 private val addableTypes = listOf(
@@ -224,6 +225,8 @@ private fun AccountDetailContent(
 ) {
     val accountId = summary.account.id
     val records = data.recordsOf(accountId)
+    // 입금·출금·이체 기록마다 그 기록까지의 누적 투자금
+    val cumulativeInvested = remember(records, accountId) { PortfolioCalculator.cumulativeInvested(accountId, records) }
     var visibleRecords by rememberSaveable(accountId) { mutableStateOf(30) }
     // 총 수익률은 보기를 따른다 (원화 보기: 매매일 환율이 모두 있으면 환차익 반영 원화 수익률)
     fun totalRate(v: com.mymoneytracker.core.portfolio.HoldingValuation): Double? =
@@ -433,6 +436,8 @@ private fun AccountDetailContent(
                             title = recordTitle(record, data, accountId),
                             subtitle = listOfNotNull(formatDate(record.date), recordDetailText(record, data)).joinToString(" · "),
                             value = recordAmountText(record, data, accountId),
+                            subValue = cumulativeInvested[record.id]?.let { "누적 투자금 ${MoneyFormat.won(it)}" },
+                            subValueColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             onClick = { onOpenRecord(record.id) },
                         )
                     }

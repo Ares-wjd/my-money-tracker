@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatDate } from '../core/dates';
 import { amount, decimal, rate as formatRate, signedWon, usd, won } from '../core/format';
-import { HOLDING_SORTS, HOLDING_SORT_LABEL, convert, displayConversion, sortHoldings, type HoldingValuation } from '../core/portfolio';
+import { HOLDING_SORTS, HOLDING_SORT_LABEL, convert, cumulativeInvested, displayConversion, sortHoldings, type HoldingValuation } from '../core/portfolio';
 import { useAppData, useData } from '../data/DataContext';
 import { Card, CurrencyToggle, ListLink, NotFound, Row, Stat, TickerBadge, TickerLegend, Warning, profitClass, tickerGroup } from '../components/ui';
 import { ASSET_TYPE_LABEL, RECORD_TYPE_LABEL, marketCurrency, type Currency, type Record, type RecordType } from '../model';
@@ -39,6 +39,8 @@ export function AccountDetailPage() {
 
   const linked = data.linked.has(accountId);
   const records = data.recordsOf(accountId);
+  // 입금·출금·이체 기록마다 그 기록까지의 누적 투자금
+  const cumulative = cumulativeInvested(accountId, records);
   // 총 수익률은 보기를 따른다 (원화 보기: 매매일 환율이 모두 있으면 환차익 반영 원화 수익률)
   const totalRate = (v: HoldingValuation) => (displayCurrency === 'KRW' ? data.krwView(v)?.returnRate : null) ?? v.returnRate;
   const sorted = sortHoldings(summary.holdings, holdingSort, totalRate, data.todayRate);
@@ -214,7 +216,7 @@ export function AccountDetailPage() {
       >
         {records.length === 0 && <p className="muted">기록이 없습니다. 기록 추가에서 입금부터 남겨 보세요.</p>}
         {records.slice(0, visible).map((r) => (
-          <RecordRow key={r.id} record={r} accountId={accountId} onClick={() => setDialog({ kind: 'record', type: r.type, existing: r })} />
+          <RecordRow key={r.id} record={r} accountId={accountId} cumulative={cumulative.get(r.id)} onClick={() => setDialog({ kind: 'record', type: r.type, existing: r })} />
         ))}
         {records.length > visible && (
           <button className="text-button" onClick={() => setVisible(visible + PAGE)}>

@@ -80,6 +80,30 @@ const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
 const rateOf = (profit: number, base: number): number | null => (base > 0 ? profit / base : null);
 
 /** 기록을 날짜순(같은 날이면 입력순)으로 정렬. */
+/** 기록 하나가 이 계좌 투자금을 바꾸는 금액 (입금 +, 출금 −, 이체는 보낸 계좌 −·받은 계좌 +, 그 밖은 null). */
+export function investedDelta(r: Record, accountId: string): number | null {
+  if (r.type === 'DEPOSIT') return r.accountId === accountId ? r.krwAmount : null;
+  if (r.type === 'WITHDRAW') return r.accountId === accountId ? -r.krwAmount : null;
+  if (r.type === 'TRANSFER') {
+    if (r.toAccountId === accountId && r.accountId !== accountId) return r.krwAmount;
+    return r.accountId === accountId ? -r.krwAmount : null;
+  }
+  return null;
+}
+
+/** 입금·출금·이체 기록 id → 그 기록까지 반영한 이 계좌의 누적 투자금 (날짜순·입력순). */
+export function cumulativeInvested(accountId: string, records: readonly Record[]): Map<string, number> {
+  const out = new Map<string, number>();
+  let total = 0;
+  for (const r of [...records].sort(compareRecords)) {
+    const delta = investedDelta(r, accountId);
+    if (delta === null) continue;
+    total += delta;
+    out.set(r.id, total);
+  }
+  return out;
+}
+
 export function compareRecords(a: Record, b: Record): number {
   if (a.date !== b.date) return a.date < b.date ? -1 : 1;
   if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;

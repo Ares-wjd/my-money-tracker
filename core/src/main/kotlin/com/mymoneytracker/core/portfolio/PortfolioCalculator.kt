@@ -134,6 +134,30 @@ object PortfolioCalculator {
         return PortfolioSummary(summaries, usdKrw)
     }
 
+    /** 기록 하나가 이 계좌 투자금을 바꾸는 금액 (입금 +, 출금 −, 이체는 보낸 계좌 −·받은 계좌 +, 그 밖은 null). */
+    fun investedDelta(r: Record, accountId: String): Double? = when (r.type) {
+        RecordType.DEPOSIT -> if (r.accountId == accountId) r.krwAmount else null
+        RecordType.WITHDRAW -> if (r.accountId == accountId) -r.krwAmount else null
+        RecordType.TRANSFER -> when {
+            r.toAccountId == accountId && r.accountId != accountId -> r.krwAmount
+            r.accountId == accountId -> -r.krwAmount
+            else -> null
+        }
+        else -> null
+    }
+
+    /** 입금·출금·이체 기록 id → 그 기록까지 반영한 이 계좌의 누적 투자금 (날짜순·입력순). */
+    fun cumulativeInvested(accountId: String, records: List<Record>): Map<String, Double> {
+        var total = 0.0
+        val out = mutableMapOf<String, Double>()
+        for (r in records.sortedWith(recordOrder)) {
+            val delta = investedDelta(r, accountId) ?: continue
+            total += delta
+            out[r.id] = total
+        }
+        return out
+    }
+
     private fun summarizeAccount(
         account: InvestmentAccount,
         holdings: List<Holding>,

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatDate } from '../core/dates';
+import { won } from '../core/format';
 import { useAppData } from '../data/DataContext';
 import type { Record, RecordType } from '../model';
 import { recordAmountText, recordDetailText, recordTitle } from './recordText';
 
-/** 기록 한 줄 (누르면 수정 창). */
-export function RecordRow({ record, accountId, onClick }: { record: Record; accountId: string; onClick: () => void }) {
+/** 기록 한 줄 (누르면 수정 창). cumulative 는 입출금·이체 기록의 누적 투자금. */
+export function RecordRow({ record, accountId, onClick, cumulative }: { record: Record; accountId: string; onClick: () => void; cumulative?: number }) {
   const data = useAppData();
   return (
     <button className="list-row record-row" onClick={onClick}>
@@ -15,6 +16,7 @@ export function RecordRow({ record, accountId, onClick }: { record: Record; acco
       </span>
       <span className="list-end">
         <span className="list-value">{recordAmountText(record, data.lookup, accountId)}</span>
+        {cumulative !== undefined && <span className="list-sub">누적 투자금 {won(cumulative)}</span>}
       </span>
     </button>
   );
