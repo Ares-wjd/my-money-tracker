@@ -57,6 +57,7 @@ import com.mymoneytracker.app.ui.goals.SavingsAccountEditScreen
 import com.mymoneytracker.app.ui.holdings.HoldingDetailScreen
 import com.mymoneytracker.app.ui.holdings.HoldingEditScreen
 import com.mymoneytracker.app.ui.home.HomeScreen
+import com.mymoneytracker.app.ui.home.TodayChangeScreen
 import com.mymoneytracker.app.ui.records.CashBalanceScreen
 import com.mymoneytracker.app.ui.records.RecordEditScreen
 import com.mymoneytracker.app.ui.records.TradeImportScreen
@@ -84,6 +85,7 @@ private object Routes {
     const val SAVINGS_EDIT = "savings-edit?savingsId={savingsId}"
     const val GOAL_EDIT = "goal-edit/{savingsId}?goalId={goalId}"
     const val ALLOCATION_EDIT = "allocation-edit?targetId={targetId}"
+    const val TODAY = "today"
 
     fun accountDetail(id: String) = "account/$id"
     fun accountEdit(id: String? = null) = if (id == null) "account-edit" else "account-edit?accountId=$id"
@@ -208,6 +210,14 @@ fun MainScreen(
                     onOpenAccount = { navController.navigate(Routes.accountDetail(it)) },
                     onAddAccount = { navController.navigate(Routes.accountEdit()) },
                     onOpenSettings = { navController.navigateToTab(Routes.SETTINGS) },
+                    onOpenToday = { navController.navigate(Routes.TODAY) },
+                )
+            }
+            composable(Routes.TODAY) {
+                TodayChangeScreen(
+                    viewModel = portfolioViewModel,
+                    onBack = { navController.popBackStack() },
+                    onOpenHolding = { navController.navigate(Routes.holdingDetail(it)) },
                 )
             }
             composable(Routes.ACCOUNTS) {

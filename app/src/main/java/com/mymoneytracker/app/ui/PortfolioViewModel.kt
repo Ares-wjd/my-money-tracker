@@ -42,6 +42,8 @@ import com.mymoneytracker.core.portfolio.KrwHoldingCalculator
 import com.mymoneytracker.core.portfolio.KrwHoldingView
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.PortfolioSummary
+import com.mymoneytracker.core.portfolio.TodayChange
+import com.mymoneytracker.core.portfolio.TodayChangeCalculator
 import com.mymoneytracker.core.portfolio.TradeImport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -183,6 +185,13 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
 
     val summary: StateFlow<PortfolioSummary?> = data.map { it?.summary }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** 오늘 변동 (홈 카드·상세 화면). */
+    val todayChange: StateFlow<TodayChange?> = data.map { current ->
+        current?.let { TodayChangeCalculator.calculate(it.summary, it.market, LocalDate.now()) }
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _refresh = MutableStateFlow(RefreshState())
     val refresh: StateFlow<RefreshState> = _refresh.asStateFlow()

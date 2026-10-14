@@ -3,13 +3,16 @@ import { formatShortDate } from '../core/dates';
 import { decimal, rate, signedWon, won } from '../core/format';
 import { useAppData } from '../data/DataContext';
 import { AssetChart } from '../components/AssetChart';
+import { TodayCard } from '../components/TodayChange';
 import { Badge, Card, ListLink, Stat, Warning, profitClass } from '../components/ui';
 import { ACCOUNT_KIND_SHORT } from '../model';
 import { accountDescription } from './text';
+import { todayBasis, useTodayChange } from './todayData';
 
 export function HomePage() {
   const data = useAppData();
   const { summary } = data;
+  const change = useTodayChange(data);
 
   if (data.accounts.length === 0) {
     return (
@@ -52,6 +55,8 @@ export function HomePage() {
           {summary.missingPrice && <Warning>현재가가 없는 종목이 있어 평가금에서 빠져 있습니다.</Warning>}
         </Card>
       )}
+
+      {change !== null && change.items.some((i) => i.rate !== null) && <TodayCard change={change} basis={todayBasis(data.quoteDate)} />}
 
       <AssetChart data={data} />
 

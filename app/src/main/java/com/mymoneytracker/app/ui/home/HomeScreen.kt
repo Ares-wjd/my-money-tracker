@@ -56,8 +56,10 @@ fun HomeScreen(
     onOpenAccount: (String) -> Unit,
     onAddAccount: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenToday: () -> Unit,
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
+    val todayChange by viewModel.todayChange.collectAsStateWithLifecycle()
     val refresh by viewModel.refresh.collectAsStateWithLifecycle()
     val chart by viewModel.chart.collectAsStateWithLifecycle()
     val apiStatus by viewModel.apiStatus.collectAsStateWithLifecycle()
@@ -199,6 +201,11 @@ private fun HomeContent(
                     }
                 }
             }
+        }
+
+        // 오늘 변동 (시세가 있는 종목이 하나라도 있으면)
+        todayChange?.takeIf { it.included.isNotEmpty() }?.let { change ->
+            item { TodayChangeCard(change, refresh.lastRefreshedAt, onOpenToday) }
         }
 
         item {

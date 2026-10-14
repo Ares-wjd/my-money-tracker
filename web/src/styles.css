@@ -407,3 +407,45 @@ tr.over td { background: var(--over-row); }
 .import-exchange .import-cell.col-2 input { width: 100px; }
 .import-exchange .import-cell.col-3 input { width: 92px; }
 .import-exchange .import-cell.col-4 input { width: 120px; }
+
+/* 오늘 변동 (홈 카드 · 상세 페이지). 타일 색은 폰과 같다 (빨강 상승, 파랑 하락, 진할수록 큼) */
+.today-card { color: inherit; gap: 8px; }
+.today-card:hover { text-decoration: none; outline: 2px solid var(--line); }
+.today-card .card-head { margin-bottom: 0; }
+.today-total { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.today-amount { font-size: 26px; font-weight: 700; }
+.today-rate { font-size: 15px; font-weight: 600; }
+.today-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--soft); }
+.today-bar > span { flex-basis: 0; }
+.today-parts { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+.today-part { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.today-part-detail { flex: 1; }
+.today-movers-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 10px; margin-top: 4px; border-top: 1px solid var(--line); }
+.today-movers { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.today-mover { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 13px; }
+.today-tiles { position: relative; width: 100%; margin-top: 6px; }
+.today-tile { position: absolute; box-sizing: border-box; border: 2px solid var(--card); border-radius: 10px; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; font-size: 12px; white-space: nowrap; color: inherit; }
+.today-tile b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+a.today-tile:hover { text-decoration: none; filter: brightness(0.95); }
+.today-tile.level-none { background: #f0f2ef; color: #55655e; }
+.today-tile.level-0 { background: #e4e8e5; color: #16201c; }
+.today-tile.level-1 { background: #f8dde1; color: #5c0716; }
+.today-tile.level-2 { background: #e7909c; color: #4a0512; }
+.today-tile.level-3 { background: #c4122f; color: #ffffff; }
+.today-tile.level-m1 { background: #dfe8fa; color: #0b2a66; }
+.today-tile.level-m2 { background: #9fbbf0; color: #071d4a; }
+.today-tile.level-m3 { background: #1f5fd1; color: #ffffff; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .today-tile.level-none { background: #242e2a; color: #b4c0ba; }
+  :root:not([data-theme="light"]) .today-tile.level-0 { background: #2f3834; color: #e3e8e5; }
+  :root:not([data-theme="light"]) .today-tile.level-1 { background: #4a1d24; color: #ffc9d0; }
+  :root:not([data-theme="light"]) .today-tile.level-2 { background: #8a2836; color: #ffffff; }
+  :root:not([data-theme="light"]) .today-tile.level-m1 { background: #1c2b4a; color: #c9daff; }
+  :root:not([data-theme="light"]) .today-tile.level-m2 { background: #2d4e95; color: #ffffff; }
+}
+:root[data-theme="dark"] .today-tile.level-none { background: #242e2a; color: #b4c0ba; }
+:root[data-theme="dark"] .today-tile.level-0 { background: #2f3834; color: #e3e8e5; }
+:root[data-theme="dark"] .today-tile.level-1 { background: #4a1d24; color: #ffc9d0; }
+:root[data-theme="dark"] .today-tile.level-2 { background: #8a2836; color: #ffffff; }
+:root[data-theme="dark"] .today-tile.level-m1 { background: #1c2b4a; color: #c9daff; }
+:root[data-theme="dark"] .today-tile.level-m2 { background: #2d4e95; color: #ffffff; }
