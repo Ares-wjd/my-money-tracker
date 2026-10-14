@@ -1,5 +1,7 @@
 // core 의 CashFlowImport · DividendImport 와 같은 규칙: 표로 일괄 입력 — 입출금·배당.
 import { marketCurrency, type Holding, type Record } from '../model';
+import { computeExchange } from './exchangeInput';
+import { decimal } from './format';
 import { parseDate, parseNumber, type Grid, type ImportStatus } from './tradeImport';
 
 // ---------------------------------------------------------------- 입출금: 날짜 / 입출금 / 금액 (원화)
@@ -118,5 +120,82 @@ export function buildDividendRecords(rows: readonly DividendRow[], accountId: st
     id: '', accountId, type: 'DIVIDEND', date: r.date!, currency: marketCurrency(r.holding!.market), amount: r.amount, krwAmount: 0,
     toAccountId: null, holdingId: r.holding!.id, quantity: 0, price: 0, fee: 0, tax: 0, cost: null, initial: false, externalId: null,
     memo: '', createdAt: 0,
+  }));
+}
+
+// ---------------------------------------------------------------- 환전: 날짜 / 달러→원화(체크박스) / 외화 / 환율 / 원화
+
+export const EXCHANGE_HEADERS = ['날짜', '달러→원화', '외화', '환율', '원화'] as const;
+export const EXCHANGE_COLUMNS = 5;
+/** 체크박스 칸 (붙여 넣은 글도 읽는다: TRUE·1·Y·O·V·✓·달러→원화·매도 = 체크). */
+export const EXCHANGE_CHECK = 1;
+/** 체크박스 칸에 저장하는 글. */
+export const EXCHANGE_CHECKED = '1';
+
+export interface ExchangeRow {
+  index: number;
+  status: ImportStatus;
+  date: string | null;
+  /** 달러 → 원화 (달러 매도) 인지 */
+  toKrw: boolean;
+  usd: number;
+  krw: number;
+  /** 저장은 하지만 확인할 것 */
+  warning: string | null;
+  error: string | null;
+}
+
+const UNCHECKED_WORDS = new Set(['FALSE', '0', 'N', 'X', '원화→달러', '매수', '달러매수']);
+const CHECKED_WORDS = new Set([EXCHANGE_CHECKED, 'TRUE', 'Y', 'O', 'V', '✓', '✔', '☑', '체크', '달러→원화', '매도', '달러매도']);
+
+/** 체크박스 칸: 체크면 true, 비었거나 해제면 false, 알 수 없는 글이면 null. */
+export function parseCheck(text: string): boolean | null {
+  const t = text.trim().replace(/ /g, '').toUpperCase();
+  if (t === '' || UNCHECKED_WORDS.has(t)) return false;
+  if (CHECKED_WORDS.has(t)) return true;
+  return null;
+}
+
+/**
+ * 표를 읽는다 (core ExchangeImport 와 같은 규칙). 체크하지 않으면 원화 → 달러, 체크하면 달러 → 원화. 금액·환율은 양수.
+ * 외화·환율·원화 중 두 칸만 있어도 나머지를 계산하고, 세 칸 모두 있으면 환율이 원화 ÷ 외화와 0.5% 넘게 다를 때 경고만 한다.
+ */
+export function analyzeExchanges(grid: Grid, accountId: string, records: readonly Record[]): ExchangeRow[] {
+  return grid.map((raw, index): ExchangeRow => {
+    const cells = Array.from({ length: EXCHANGE_COLUMNS }, (_, i) => (raw[i] ?? '').trim());
+    const blank = (status: ImportStatus, error: string | null = null): ExchangeRow => ({ index, status, date: null, toKrw: false, usd: 0, krw: 0, warning: null, error });
+    if (cells.every((c, i) => i === EXCHANGE_CHECK || c === '')) return blank('EMPTY');
+    const date = parseDate(cells[0]);
+    const toKrw = parseCheck(cells[EXCHANGE_CHECK]);
+    const read = (i: number) => (cells[i] === '' ? null : parseNumber(cells[i]));
+    const [usdIn, rateIn, krwIn] = [read(2), read(3), read(4)];
+    const unreadable = [2, 3, 4].some((i) => cells[i] !== '' && parseNumber(cells[i]) === null);
+    const values = [usdIn, rateIn, krwIn].filter((v): v is number => v !== null);
+    const error =
+      date === null ? '날짜를 읽지 못함'
+        : toKrw === null ? '방향 칸 확인 (체크 = 달러→원화)'
+          : unreadable ? '외화·환율·원화 숫자 확인'
+            : values.some((v) => v <= 0) ? '외화·환율·원화는 0보다 크게'
+              : values.length < 2 ? '외화·환율·원화 중 두 칸 필요'
+                : null;
+    if (error !== null) return blank('ERROR', error);
+    const usd = usdIn ?? computeExchange('USD', krwIn, null, rateIn)!;
+    const krw = krwIn ?? computeExchange('KRW', null, usdIn, rateIn)!;
+    const warning = usdIn !== null && krwIn !== null && rateIn !== null && Math.abs(krw / usd - rateIn) / rateIn > 0.005
+      ? `확인: 원화÷외화 = ${decimal(krw / usd, 2)}`
+      : null;
+    const currency = toKrw ? 'USD' : 'KRW';
+    // 중복 의심: 같은 날·같은 방향·같은 금액의 환전이 이미 있음
+    const duplicate = records.some((r) => r.accountId === accountId && r.type === 'EXCHANGE' && r.date === date && r.currency === currency &&
+      Math.abs(r.krwAmount - krw) < 0.5 && Math.abs(r.amount - usd) < 0.005);
+    return { index, status: duplicate ? 'DUPLICATE' : 'OK', date, toKrw: toKrw!, usd, krw, warning, error: null };
+  });
+}
+
+/** 저장할 줄 → 환전 기록 (currency = 바꾸기 전 통화, amount = 달러, krwAmount = 원화). */
+export function buildExchangeRecords(rows: readonly ExchangeRow[], accountId: string): Record[] {
+  return rows.filter((r) => r.status === 'OK').map((r) => ({
+    id: '', accountId, type: 'EXCHANGE', date: r.date!, currency: r.toKrw ? 'USD' : 'KRW', amount: r.usd, krwAmount: r.krw, toAccountId: null,
+    holdingId: null, quantity: 0, price: 0, fee: 0, tax: 0, cost: null, initial: false, externalId: null, memo: '', createdAt: 0,
   }));
 }

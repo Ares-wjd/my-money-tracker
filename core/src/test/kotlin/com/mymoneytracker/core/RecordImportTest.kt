@@ -7,6 +7,7 @@ import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.CashFlowImport
 import com.mymoneytracker.core.portfolio.DividendImport
+import com.mymoneytracker.core.portfolio.ExchangeImport
 import com.mymoneytracker.core.portfolio.TradeImport
 import com.mymoneytracker.core.portfolio.TradeImport.Status
 import org.junit.Assert.assertEquals
@@ -87,5 +88,48 @@ class RecordImportTest {
         val records = DividendImport.build(rows, "a")
         assertEquals(listOf("t", "v", "v"), records.map { it.holdingId })
         assertEquals(Currency.USD, records[1].currency)
+    }
+
+    @Test
+    fun exchangeCheckboxAndTwoOfThree() {
+        // 웹 recordImport.test.ts 와 같은 케이스. 칸: 날짜 / 달러→원화 / 외화 / 환율 / 원화
+        val existing = Record(id = "r", accountId = "a", type = RecordType.EXCHANGE, date = d(10, 1), currency = Currency.KRW, amount = 1_000.0, krwAmount = 1_394_500.0)
+        val rows = ExchangeImport.analyze(
+            grid(
+                "2026-10-02		1,000	1,394.5	",
+                "2026-10-03	1		1,390	1,000,000",
+                "2026-10-04	TRUE	500		700,000",
+                "2026-10-05		1000	1400	1,500,000",
+                "2026-10-01		1,000		1,394,500",
+                "2026-10-06		1,000		",
+                "2026-10-06	뭐지	1,000	1,390	",
+                "2026-10-06		-1,000	1,390	",
+                "	1			",
+            ),
+            "a", listOf(existing),
+        )
+        // 원화 → 달러: 1,000달러 × 1,394.5 = 1,394,500원
+        assertEquals(Status.OK, rows[0].status)
+        assertEquals(false, rows[0].toKrw)
+        assertEquals(1_394_500.0, rows[0].krw, 1e-9)
+        // 달러 → 원화: 1,000,000원 ÷ 1,390 = 719.42달러
+        assertEquals(true, rows[1].toKrw)
+        assertEquals(719.42, rows[1].usd, 1e-9)
+        // 붙여 넣은 TRUE 도 체크, 환율은 원화 ÷ 외화
+        assertEquals(true, rows[2].toKrw)
+        assertEquals(1_400.0, rows[2].rate, 1e-9)
+        // 세 칸 모두: 1,500,000 ÷ 1,000 = 1,500 은 1,400 과 0.5% 넘게 달라 경고 (저장은 함)
+        assertEquals(Status.OK, rows[3].status)
+        assertEquals("확인: 원화÷외화 = 1,500", rows[3].warning)
+        assertEquals(Status.DUPLICATE, rows[4].status)
+        assertEquals("외화·환율·원화 중 두 칸 필요", rows[5].error)
+        assertEquals("방향 칸 확인 (체크 = 달러→원화)", rows[6].error)
+        assertEquals("외화·환율·원화는 0보다 크게", rows[7].error)
+        assertEquals(Status.EMPTY, rows[8].status)
+        val built = ExchangeImport.build(rows, "a")
+        assertEquals(4, built.size)
+        assertEquals(Currency.USD, built[1].currency)
+        assertEquals(1_000_000.0, built[1].krwAmount, 1e-9)
+        assertNull(rows[0].warning)
     }
 }

@@ -149,3 +149,96 @@ object DividendImport {
         )
     }
 }
+
+/**
+ * 표로 일괄 입력 — 환전. 칸: 날짜 / 달러→원화(체크박스) / 외화 / 환율 / 원화 (웹 recordImport.ts 와 같은 규칙).
+ * 체크하지 않으면 원화 → 달러(달러 매수), 체크하면 달러 → 원화(달러 매도). 금액·환율은 양수.
+ * 외화·환율·원화 중 두 칸만 있어도 나머지를 [ExchangeInput] 규칙으로 계산한다. 세 칸 모두 있으면 원화·외화를 쓰고,
+ * 환율이 원화 ÷ 외화와 0.5% 넘게 다르면 경고만 한다.
+ */
+object ExchangeImport {
+    val HEADERS = listOf("날짜", "달러→원화", "외화", "환율", "원화")
+    const val COLUMNS = 5
+    const val DATE = 0
+    /** 체크박스 칸 (붙여 넣은 글도 읽는다: TRUE·1·Y·O·V·✓·달러→원화·매도 = 체크). */
+    const val CHECK = 1
+    const val USD = 2
+    const val RATE = 3
+    const val KRW = 4
+
+    /** 체크박스 칸에 저장하는 글. */
+    const val CHECKED = "1"
+
+    data class Row(
+        val index: Int,
+        val status: Status,
+        val date: LocalDate? = null,
+        /** 달러 → 원화 (달러 매도) 인지 */
+        val toKrw: Boolean = false,
+        val usd: Double = 0.0,
+        val krw: Double = 0.0,
+        /** 저장은 하지만 확인할 것 */
+        val warning: String? = null,
+        val error: String? = null,
+    ) {
+        val rate: Double get() = if (usd > 0) krw / usd else 0.0
+    }
+
+    /** 체크박스 칸: 체크면 true, 비었거나 해제면 false, 알 수 없는 글이면 null. */
+    fun parseCheck(text: String): Boolean? {
+        val t = text.trim().replace(" ", "").uppercase()
+        return when {
+            t.isEmpty() || t in setOf("FALSE", "0", "N", "X", "원화→달러", "매수", "달러매수") -> false
+            t in setOf(CHECKED, "TRUE", "Y", "O", "V", "✓", "✔", "☑", "체크", "달러→원화", "매도", "달러매도") -> true
+            else -> null
+        }
+    }
+
+    /** 표를 읽는다. [records] 는 이 계좌의 기록 (중복 확인용). 체크박스만 켠 빈 줄은 빈 줄로 본다. */
+    fun analyze(grid: List<List<String>>, accountId: String, records: List<Record>): List<Row> = grid.mapIndexed { index, raw ->
+        val cells = List(COLUMNS) { raw.getOrNull(it)?.trim().orEmpty() }
+        if (cells.filterIndexed { i, _ -> i != CHECK }.all { it.isEmpty() }) return@mapIndexed Row(index, Status.EMPTY)
+        val date = TradeImport.parseDate(cells[DATE])
+        val toKrw = parseCheck(cells[CHECK])
+        val usdIn = cells[USD].takeIf { it.isNotEmpty() }?.let(TradeImport::parseNumber)
+        val rateIn = cells[RATE].takeIf { it.isNotEmpty() }?.let(TradeImport::parseNumber)
+        val krwIn = cells[KRW].takeIf { it.isNotEmpty() }?.let(TradeImport::parseNumber)
+        val unreadable = listOf(USD, RATE, KRW).any { cells[it].isNotEmpty() && TradeImport.parseNumber(cells[it]) == null }
+        val values = listOfNotNull(usdIn, rateIn, krwIn)
+        val error = when {
+            date == null -> "날짜를 읽지 못함"
+            toKrw == null -> "방향 칸 확인 (체크 = 달러→원화)"
+            unreadable -> "외화·환율·원화 숫자 확인"
+            values.any { it <= 0 } -> "외화·환율·원화는 0보다 크게"
+            values.size < 2 -> "외화·환율·원화 중 두 칸 필요"
+            else -> null
+        }
+        if (error != null) return@mapIndexed Row(index, Status.ERROR, error = error)
+        val usd = usdIn ?: ExchangeInput.compute(ExchangeField.USD, krwIn, null, rateIn)!!
+        val krw = krwIn ?: ExchangeInput.compute(ExchangeField.KRW, null, usdIn, rateIn)!!
+        val warning = if (usdIn != null && krwIn != null && rateIn != null && abs(krw / usd - rateIn) / rateIn > 0.005) {
+            "확인: 원화÷외화 = ${com.mymoneytracker.core.MoneyFormat.decimal(krw / usd, 2)}"
+        } else {
+            null
+        }
+        val currency = if (toKrw!!) Currency.USD else Currency.KRW
+        // 중복 의심: 같은 날·같은 방향·같은 금액의 환전이 이미 있음
+        val duplicate = records.any {
+            it.accountId == accountId && it.type == RecordType.EXCHANGE && it.date == date && it.currency == currency &&
+                abs(it.krwAmount - krw) < 0.5 && abs(it.amount - usd) < 0.005
+        }
+        Row(index, if (duplicate) Status.DUPLICATE else Status.OK, date, toKrw, usd, krw, warning)
+    }
+
+    /** 저장할 줄 → 환전 기록 (currency = 바꾸기 전 통화, amount = 달러, krwAmount = 원화). */
+    fun build(rows: List<Row>, accountId: String): List<Record> = rows.filter { it.status == Status.OK }.map { row ->
+        Record(
+            accountId = accountId,
+            type = RecordType.EXCHANGE,
+            date = row.date!!,
+            currency = if (row.toKrw) Currency.USD else Currency.KRW,
+            amount = row.usd,
+            krwAmount = row.krw,
+        )
+    }
+}

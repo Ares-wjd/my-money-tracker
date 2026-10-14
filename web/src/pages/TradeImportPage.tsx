@@ -7,13 +7,13 @@ import {
   type Grid, type ImportRow, type ImportStatus, type NewHolding,
 } from '../core/tradeImport';
 import {
-  CASH_COLUMNS, CASH_HEADERS, DIVIDEND_COLUMNS, DIVIDEND_HEADERS, analyzeCashFlows, analyzeDividends, buildCashFlowRecords,
-  buildDividendRecords,
+  CASH_COLUMNS, CASH_HEADERS, DIVIDEND_COLUMNS, DIVIDEND_HEADERS, EXCHANGE_CHECK, EXCHANGE_CHECKED, EXCHANGE_COLUMNS, EXCHANGE_HEADERS,
+  analyzeCashFlows, analyzeDividends, analyzeExchanges, buildCashFlowRecords, buildDividendRecords, buildExchangeRecords, parseCheck,
 } from '../core/recordImport';
 import { useAppData, useData } from '../data/DataContext';
 import { importTrades } from '../data/writes';
 import { ASSET_TYPES, ASSET_TYPE_LABEL, MARKETS, MARKET_LABEL, marketCurrency, quantityUnit, type Holding } from '../model';
-import { amount as formatAmount, decimal, won } from '../core/format';
+import { amount as formatAmount, decimal, usd, won } from '../core/format';
 
 /** 비었음 · 오류 · 중복 줄의 글 (표 종류와 상관없이 같다). */
 function commonText(status: ImportStatus, error: string | null): string {
@@ -28,15 +28,18 @@ function statusText(row: ImportRow, unit: string): string {
 }
 
 /** 표 종류: 입출금 · 매매 · 배당. 표마다 칸이 다르다. */
-type ImportKind = 'CASH' | 'TRADE' | 'DIVIDEND';
-const KINDS: readonly ImportKind[] = ['CASH', 'TRADE', 'DIVIDEND'];
-const KIND_LABEL: Record<ImportKind, string> = { CASH: '입출금', TRADE: '매매', DIVIDEND: '배당' };
-const KIND_HEADERS: Record<ImportKind, readonly string[]> = { CASH: CASH_HEADERS, TRADE: IMPORT_HEADERS, DIVIDEND: DIVIDEND_HEADERS };
-const KIND_COLUMNS: Record<ImportKind, number> = { CASH: CASH_COLUMNS, TRADE: IMPORT_COLUMNS, DIVIDEND: DIVIDEND_COLUMNS };
+type ImportKind = 'CASH' | 'TRADE' | 'DIVIDEND' | 'EXCHANGE';
+const KINDS: readonly ImportKind[] = ['CASH', 'TRADE', 'DIVIDEND', 'EXCHANGE'];
+const KIND_LABEL: Record<ImportKind, string> = { CASH: '입출금', TRADE: '매매', DIVIDEND: '배당', EXCHANGE: '환전' };
+const KIND_HEADERS: Record<ImportKind, readonly string[]> = { CASH: CASH_HEADERS, TRADE: IMPORT_HEADERS, DIVIDEND: DIVIDEND_HEADERS, EXCHANGE: EXCHANGE_HEADERS };
+const KIND_COLUMNS: Record<ImportKind, number> = { CASH: CASH_COLUMNS, TRADE: IMPORT_COLUMNS, DIVIDEND: DIVIDEND_COLUMNS, EXCHANGE: EXCHANGE_COLUMNS };
+/** 체크박스로 보여줄 칸 (환전의 달러→원화). */
+const KIND_CHECK: Record<ImportKind, number | null> = { CASH: null, TRADE: null, DIVIDEND: null, EXCHANGE: EXCHANGE_CHECK };
 const KIND_HELP: Record<ImportKind, string> = {
   CASH: '금액은 입금 +, 출금 −(예: -300000)로 쓰고, 입출금 칸은 비워도 됩니다. 원화 입출금만 넣습니다 (이체는 기록 추가에서 직접).',
   TRADE: '수량은 매수 +, 매도 −(예: -3)로 쓰고, 매매구분은 비워도 됩니다.',
   DIVIDEND: '종목은 이 계좌의 종목코드로 찾습니다 (종목명은 확인용 — 다르면 경고만). 국내 종목은 원화배당금, 해외 종목은 외화배당금 칸에 세후 금액을 넣으세요.',
+  EXCHANGE: '달러→원화를 체크하지 않으면 원화→달러(달러 매수)입니다. 외화·환율·원화 중 두 칸만 넣으면 나머지는 계산합니다 (양수로).',
 };
 
 /** 줄 하나의 인식 결과 (표 종류와 상관없이 화면에 쓰는 모양). */
@@ -57,7 +60,7 @@ export function TradeImportPage() {
   const navigate = useNavigate();
   const [kindChoice, setKind] = useState<ImportKind>('TRADE');
   const [grids, setGrids] = useState<Record<ImportKind, Grid>>(() => ({
-    CASH: emptyGrid(10, CASH_COLUMNS), TRADE: emptyGrid(), DIVIDEND: emptyGrid(10, DIVIDEND_COLUMNS),
+    CASH: emptyGrid(10, CASH_COLUMNS), TRADE: emptyGrid(), DIVIDEND: emptyGrid(10, DIVIDEND_COLUMNS), EXCHANGE: emptyGrid(10, EXCHANGE_COLUMNS),
   }));
   const [overrides, setOverrides] = useState<Map<string, Pick<NewHolding, 'market' | 'assetType'>>>(new Map());
   const [saving, setSaving] = useState(false);
@@ -69,7 +72,8 @@ export function TradeImportPage() {
   const accountRecords = useMemo(() => data.records.filter((r) => r.accountId === accountId), [data.records, accountId]);
   // 한투 연결 계좌는 매매를 불러오므로 매매 표를 뺀다 (중복 방지)
   const linked = data.linked.has(accountId);
-  const kinds = KINDS.filter((k) => !linked || k !== 'TRADE');
+  // 한투 연결 계좌는 매매를 불러오고 환전 기록을 쓰지 않는다
+  const kinds = KINDS.filter((k) => !linked || (k !== 'TRADE' && k !== 'EXCHANGE'));
   const kind = kinds.includes(kindChoice) ? kindChoice : kinds[0];
   const grid = grids[kind];
   const columns = KIND_COLUMNS[kind];
@@ -82,6 +86,7 @@ export function TradeImportPage() {
   );
   const cashRows = useMemo(() => analyzeCashFlows(grids.CASH, accountId, accountRecords), [grids.CASH, accountId, accountRecords]);
   const dividendRows = useMemo(() => analyzeDividends(grids.DIVIDEND, accountHoldings, accountRecords), [grids.DIVIDEND, accountHoldings, accountRecords]);
+  const exchangeRows = useMemo(() => analyzeExchanges(grids.EXCHANGE, accountId, accountRecords), [grids.EXCHANGE, accountId, accountRecords]);
   if (!account) return <NotFound what="계좌" />;
 
   // 줄마다 인식 결과
@@ -98,7 +103,15 @@ export function TradeImportPage() {
           text: row.status === 'OK' ? `${row.type === 'DEPOSIT' ? '입금' : '출금'} ${won(row.amount)}` : commonText(row.status, row.error),
           warning: false,
         }))
-        : dividendRows.map((row) => ({
+        : kind === 'EXCHANGE'
+          ? exchangeRows.map((row) => ({
+            status: row.status,
+            text: row.status === 'OK'
+              ? `${row.toKrw ? '달러→원화' : '원화→달러'} · ${usd(row.usd)} · ${won(row.krw)} (환율 ${decimal(row.krw / row.usd, 2)})${row.warning ? `\n${row.warning}` : ''}`
+              : commonText(row.status, row.error),
+            warning: row.status === 'OK' && row.warning !== null,
+          }))
+          : dividendRows.map((row) => ({
           status: row.status,
           text: row.status === 'OK'
             ? `${row.holding!.name} · 배당 ${formatAmount(marketCurrency(row.holding!.market), row.amount)}${row.warning ? `\n${row.warning}` : ''}`
@@ -134,7 +147,9 @@ export function TradeImportPage() {
     setSaveError(null);
     try {
       if (kind !== 'TRADE') {
-        const records = kind === 'CASH' ? buildCashFlowRecords(cashRows, accountId) : buildDividendRecords(dividendRows, accountId);
+        const records = kind === 'CASH' ? buildCashFlowRecords(cashRows, accountId)
+          : kind === 'EXCHANGE' ? buildExchangeRecords(exchangeRows, accountId)
+            : buildDividendRecords(dividendRows, accountId);
         await importTrades(uid, new Map(), records);
         navigate(`/accounts/${accountId}`);
         return;
@@ -204,12 +219,23 @@ export function TradeImportPage() {
                     <td className="num muted small">{r + 1}</td>
                     {Array.from({ length: columns }, (_, c) => (
                       <td key={c} className={`import-cell col-${c}`}>
-                        <input
-                          aria-label={`${r + 1}번 줄 ${headers[c]}`}
-                          value={row[c] ?? ''}
-                          onChange={(e) => setCell(r, c, e.target.value)}
-                          onPaste={onPaste(r, c)}
-                        />
+                        {c === KIND_CHECK[kind] ? (
+                          // 체크박스 칸 (붙여 넣은 글이 체크로 읽히면 체크 표시)
+                          <input
+                            type="checkbox"
+                            className="import-check"
+                            aria-label={`${r + 1}번 줄 ${headers[c]}`}
+                            checked={parseCheck(row[c] ?? '') === true}
+                            onChange={(e) => setCell(r, c, e.target.checked ? EXCHANGE_CHECKED : '')}
+                          />
+                        ) : (
+                          <input
+                            aria-label={`${r + 1}번 줄 ${headers[c]}`}
+                            value={row[c] ?? ''}
+                            onChange={(e) => setCell(r, c, e.target.value)}
+                            onPaste={onPaste(r, c)}
+                          />
+                        )}
                       </td>
                     ))}
                     <td className="import-status small">{view?.text ?? ''}</td>

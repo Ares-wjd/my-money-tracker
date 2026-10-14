@@ -1,6 +1,6 @@
 // core RecordImportTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
-import { CASH_COLUMNS, analyzeCashFlows, analyzeDividends, buildCashFlowRecords, buildDividendRecords } from './recordImport';
+import { CASH_COLUMNS, analyzeCashFlows, analyzeDividends, analyzeExchanges, buildCashFlowRecords, buildDividendRecords, buildExchangeRecords } from './recordImport';
 import { emptyGrid, pasteInto } from './tradeImport';
 import { holding, record } from './testData';
 
@@ -71,5 +71,42 @@ describe('표로 일괄 입력 — 입출금·배당 (RecordImportTest)', () => 
     const records = buildDividendRecords(rows, 'a');
     expect(records.map((r) => r.holdingId)).toEqual(['t', 'v', 'v']);
     expect(records[1].currency).toBe('USD');
+  });
+
+  it('환전: 체크박스 방향, 세 칸 중 두 칸 (exchangeCheckboxAndTwoOfThree)', () => {
+    const existing = record({ id: 'r', accountId: 'a', type: 'EXCHANGE', date: '2026-10-01', currency: 'KRW', amount: 1_000, krwAmount: 1_394_500 });
+    const rows = analyzeExchanges(
+      [
+        '2026-10-02\t\t1,000\t1,394.5\t',
+        '2026-10-03\t1\t\t1,390\t1,000,000',
+        '2026-10-04\tTRUE\t500\t\t700,000',
+        '2026-10-05\t\t1000\t1400\t1,500,000',
+        '2026-10-01\t\t1,000\t\t1,394,500',
+        '2026-10-06\t\t1,000\t\t',
+        '2026-10-06\t뭐지\t1,000\t1,390\t',
+        '2026-10-06\t\t-1,000\t1,390\t',
+        '\t1\t\t\t',
+      ].map((r) => r.split('\t')),
+      'a', [existing],
+    );
+    expect(rows[0].status).toBe('OK');
+    expect(rows[0].toKrw).toBe(false);
+    expect(rows[0].krw).toBeCloseTo(1_394_500, 9);
+    expect(rows[1].toKrw).toBe(true);
+    expect(rows[1].usd).toBeCloseTo(719.42, 9);
+    expect(rows[2].toKrw).toBe(true);
+    expect(rows[2].krw / rows[2].usd).toBeCloseTo(1_400, 9);
+    expect(rows[3].status).toBe('OK');
+    expect(rows[3].warning).toBe('확인: 원화÷외화 = 1,500');
+    expect(rows[4].status).toBe('DUPLICATE');
+    expect(rows[5].error).toBe('외화·환율·원화 중 두 칸 필요');
+    expect(rows[6].error).toBe('방향 칸 확인 (체크 = 달러→원화)');
+    expect(rows[7].error).toBe('외화·환율·원화는 0보다 크게');
+    expect(rows[8].status).toBe('EMPTY');
+    const built = buildExchangeRecords(rows, 'a');
+    expect(built.length).toBe(4);
+    expect(built[1].currency).toBe('USD');
+    expect(built[1].krwAmount).toBeCloseTo(1_000_000, 9);
+    expect(rows[0].warning).toBeNull();
   });
 });

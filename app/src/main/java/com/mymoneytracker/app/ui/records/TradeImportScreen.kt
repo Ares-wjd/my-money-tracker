@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -66,6 +67,7 @@ import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.CashCalculator
 import com.mymoneytracker.core.portfolio.CashFlowImport
 import com.mymoneytracker.core.portfolio.DividendImport
+import com.mymoneytracker.core.portfolio.ExchangeImport
 import com.mymoneytracker.core.portfolio.TradeImport
 
 /** 표 종류: 칸 제목과 칸 폭 (dp). */
@@ -73,9 +75,13 @@ private enum class ImportKind(val label: String, val headers: List<String>, val 
     CASH("입출금", CashFlowImport.HEADERS, listOf(104, 64, 120)),
     TRADE("매매", TradeImport.HEADERS, listOf(104, 64, 140, 92, 92, 68, 84)),
     DIVIDEND("배당", DividendImport.HEADERS, listOf(104, 92, 140, 96, 96)),
+    EXCHANGE("환전", ExchangeImport.HEADERS, listOf(104, 80, 100, 92, 120)),
     ;
 
     val columns: Int get() = headers.size
+
+    /** 체크박스로 보여줄 칸 (환전의 달러→원화). */
+    val checkColumn: Int? get() = if (this == EXCHANGE) ExchangeImport.CHECK else null
 }
 
 private const val INDEX_WIDTH = 28
@@ -107,23 +113,27 @@ fun TradeImportScreen(
     val apiStatus by viewModel.apiStatus.collectAsStateWithLifecycle()
     val linked = apiStatus.linkedAccountId == accountId ||
         data?.let { CashCalculator.isBrokerLinked(accountId, it.records) } == true
-    val kinds = ImportKind.entries.filter { !linked || it != ImportKind.TRADE }
+    // 한투 연결 계좌는 매매를 불러오고 환전 기록을 쓰지 않는다
+    val kinds = ImportKind.entries.filter { !linked || (it != ImportKind.TRADE && it != ImportKind.EXCHANGE) }
     var kindName by rememberSaveable { mutableStateOf(if (linked) ImportKind.CASH.name else ImportKind.TRADE.name) }
     val kind = kinds.firstOrNull { it.name == kindName } ?: kinds.first()
     // 표 종류마다 따로 (바꿔도 입력한 칸이 남는다)
     var cashGrid by rememberSaveable(stateSaver = gridSaver(ImportKind.CASH.columns)) { mutableStateOf(TradeImport.emptyGrid(10, ImportKind.CASH.columns)) }
     var tradeGrid by rememberSaveable(stateSaver = gridSaver(ImportKind.TRADE.columns)) { mutableStateOf(TradeImport.emptyGrid()) }
     var dividendGrid by rememberSaveable(stateSaver = gridSaver(ImportKind.DIVIDEND.columns)) { mutableStateOf(TradeImport.emptyGrid(10, ImportKind.DIVIDEND.columns)) }
+    var exchangeGrid by rememberSaveable(stateSaver = gridSaver(ImportKind.EXCHANGE.columns)) { mutableStateOf(TradeImport.emptyGrid(10, ImportKind.EXCHANGE.columns)) }
     val grid = when (kind) {
         ImportKind.CASH -> cashGrid
         ImportKind.TRADE -> tradeGrid
         ImportKind.DIVIDEND -> dividendGrid
+        ImportKind.EXCHANGE -> exchangeGrid
     }
     val setGrid: (List<List<String>>) -> Unit = { value ->
         when (kind) {
             ImportKind.CASH -> cashGrid = value
             ImportKind.TRADE -> tradeGrid = value
             ImportKind.DIVIDEND -> dividendGrid = value
+            ImportKind.EXCHANGE -> exchangeGrid = value
         }
     }
     val columns = kind.columns
@@ -133,7 +143,7 @@ fun TradeImportScreen(
     var confirmClear by rememberSaveable { mutableStateOf(false) }
     var addRowsText by rememberSaveable { mutableStateOf("") }
     val hasContent = grid.any { row -> row.any { it.isNotBlank() } }
-    val anyContent = listOf(cashGrid, tradeGrid, dividendGrid).any { g -> g.any { row -> row.any { it.isNotBlank() } } }
+    val anyContent = listOf(cashGrid, tradeGrid, dividendGrid, exchangeGrid).any { g -> g.any { row -> row.any { it.isNotBlank() } } }
     val leave = { if (anyContent) confirmLeave = true else onBack() }
     BackHandler(onBack = leave)
 
@@ -161,6 +171,7 @@ fun TradeImportScreen(
         val dividendRows = remember(dividendGrid, current.holdings, current.records) {
             DividendImport.analyze(dividendGrid, accountHoldings, accountRecords)
         }
+        val exchangeRows = remember(exchangeGrid, current.records) { ExchangeImport.analyze(exchangeGrid, accountId, accountRecords) }
         // 표 종류와 상관없이 화면에 보여줄 줄별 결과
         val views: List<RowView> = when (kind) {
             ImportKind.TRADE -> analysis.rows.map { row ->
@@ -195,6 +206,19 @@ fun TradeImportScreen(
                     warning = row.warning != null,
                 )
             }
+            ImportKind.EXCHANGE -> exchangeRows.map { row ->
+                RowView(
+                    row.status,
+                    when (row.status) {
+                        TradeImport.Status.EMPTY -> ""
+                        TradeImport.Status.ERROR -> row.error.orEmpty()
+                        TradeImport.Status.DUPLICATE -> "중복 의심 (저장 안 함)"
+                        TradeImport.Status.OK -> (if (row.toKrw) "달러→원화 · " else "원화→달러 · ") + MoneyFormat.usd(row.usd) + " · " +
+                            MoneyFormat.won(row.krw) + " (환율 ${MoneyFormat.decimal(row.rate, 2)})" + (row.warning?.let { "\n$it" } ?: "")
+                    },
+                    warning = row.warning != null,
+                )
+            }
         }
         val errorRows = views.withIndex().filter { it.value.status == TradeImport.Status.ERROR }.map { it.index }
         val saveCount = views.count { it.status == TradeImport.Status.OK }
@@ -215,6 +239,7 @@ fun TradeImportScreen(
                                 ImportKind.CASH -> "금액은 입금 +, 출금 −(예: -300000)로 쓰고, 입출금 칸은 비워도 됩니다 (원화). 이체는 기록 추가에서 직접 넣으세요."
                                 ImportKind.TRADE -> "수량은 매수 +, 매도 −(예: -3)로 쓰고, 매매구분은 비워도 됩니다."
                                 ImportKind.DIVIDEND -> "종목은 종목코드로 찾고 종목명은 확인용입니다. 세후 금액을 국내 종목은 원화배당금, 해외 종목은 외화배당금 칸에 넣으세요."
+                                ImportKind.EXCHANGE -> "달러→원화를 체크하지 않으면 원화→달러(달러 매수)입니다. 외화·환율·원화 중 두 칸만 넣으면 나머지는 계산합니다 (양수로)."
                             },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -229,6 +254,7 @@ fun TradeImportScreen(
                     view = views.getOrNull(r),
                     widths = kind.widths,
                     scroll = hScroll,
+                    checkColumn = kind.checkColumn,
                     onCellChange = { c, old, value ->
                         setGrid(if (value.contains('\t') || value.contains('\n')) {
                             // 붙여넣기: 원래 글 뒤에 붙었으면 붙인 부분만
@@ -315,6 +341,7 @@ fun TradeImportScreen(
                                 ImportKind.TRADE -> viewModel.saveImport(accountId, analysis)
                                 ImportKind.CASH -> viewModel.saveImportedRecords(CashFlowImport.build(cashRows, accountId))
                                 ImportKind.DIVIDEND -> viewModel.saveImportedRecords(DividendImport.build(dividendRows, accountId))
+                                ImportKind.EXCHANGE -> viewModel.saveImportedRecords(ExchangeImport.build(exchangeRows, accountId))
                             }
                             onDone()
                         },
@@ -374,6 +401,7 @@ private fun GridRow(
     view: RowView?,
     widths: List<Int>,
     scroll: ScrollState,
+    checkColumn: Int?,
     onCellChange: (col: Int, old: String, value: String) -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -387,7 +415,17 @@ private fun GridRow(
     ) {
         Text("${index + 1}", Modifier.width(INDEX_WIDTH.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         cells.forEachIndexed { c, value ->
-            Cell(value, widths[c]) { onCellChange(c, value, it) }
+            if (c == checkColumn) {
+                // 체크박스 칸 (붙여 넣은 글이 체크로 읽히면 체크 표시)
+                Box(Modifier.width(widths[c].dp), contentAlignment = Alignment.Center) {
+                    Checkbox(
+                        checked = ExchangeImport.parseCheck(value) == true,
+                        onCheckedChange = { onCellChange(c, value, if (it) ExchangeImport.CHECKED else "") },
+                    )
+                }
+            } else {
+                Cell(value, widths[c]) { onCellChange(c, value, it) }
+            }
         }
         Text(
             view?.text.orEmpty(),

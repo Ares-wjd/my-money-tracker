@@ -13,7 +13,7 @@ const ETF_BRANDS = ['KODEX', 'TIGER', 'ACE', 'SOL', 'RISE', 'KBSTAR', 'HANARO', 
 // 표 일괄 입력(매매·입출금·배당)의 제목 줄 글자
 const HEADER_WORDS = [
   ...IMPORT_HEADERS, '일자', '거래일', '구분', '종목', '코드', '단가', '가격', '매매가', '비용', '수수료',
-  '입출금', '입금', '출금', '금액', '배당', '원화', '외화',
+  '입출금', '입금', '출금', '금액', '배당', '원화', '외화', '환율', '달러', '방향',
 ];
 
 export type Grid = string[][];

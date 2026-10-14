@@ -402,3 +402,8 @@ tr.over td { background: var(--over-row); }
 .import-dividend .import-cell.col-2 input { width: 150px; }
 .import-dividend .import-cell.col-3 input, .import-dividend .import-cell.col-4 input { width: 96px; }
 .record-filter { margin-bottom: 8px; }
+.import-exchange .import-cell.col-1 { text-align: center; }
+.import-cell input.import-check { width: 18px; height: 18px; accent-color: var(--green); }
+.import-exchange .import-cell.col-2 input { width: 100px; }
+.import-exchange .import-cell.col-3 input { width: 92px; }
+.import-exchange .import-cell.col-4 input { width: 120px; }
