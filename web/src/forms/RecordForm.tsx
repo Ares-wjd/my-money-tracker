@@ -4,6 +4,7 @@ import { Row } from '../components/ui';
 import { formatDate, today } from '../core/dates';
 import { amount as formatAmount, amountPreview, decimal, manwon, parseDecimal, usd, won } from '../core/format';
 import { NO_COST, buildRecord, costBreakdown, costPartsLocked, effectiveCost, inputFromRecord, recordProblem, type RecordInput } from '../core/recordForm';
+import { computeExchange, exchangeAutoField, touchExchange, type ExchangeField } from '../core/exchangeInput';
 import { useAppData, useData } from '../data/DataContext';
 import { deleteRecord, saveRecord } from '../data/writes';
 import { CURRENCIES, CURRENCY_LABEL, RECORD_TYPE_LABEL, marketCurrency, type Currency, type Record, type RecordType } from '../model';
@@ -36,7 +37,8 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
   const [currency, setCurrency] = useState<Currency>(initial.currency);
   const [amountText, setAmountText] = useState(numberText(initial.amount));
   const [krwText, setKrwText] = useState(numberText(initial.krw));
-  const [rateText, setRateText] = useState(numberText(initial.rate, 4));
+  // 새 환전 기록은 환율을 비워 둔다 (세 칸 중 입력한 두 칸으로 계산하므로)
+  const [rateText, setRateText] = useState(!existing && type === 'EXCHANGE' ? '' : numberText(initial.rate, 4));
   const [toAccountId, setToAccountId] = useState<string | null>(initial.toAccountId);
   const [holdingId, setHoldingId] = useState<string | null>(initial.holdingId);
   const [quantityText, setQuantityText] = useState(numberText(initial.quantity));
@@ -45,13 +47,22 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
   const [feeText, setFeeText] = useState(numberText(initial.cost.fee));
   const [taxText, setTaxText] = useState(numberText(initial.cost.tax));
   const [memo, setMemo] = useState(initial.memo);
+  // 환전: 입력한 순서 (최근 두 칸으로 나머지 한 칸을 자동 계산). 기존 기록은 원화·달러를 입력한 것으로 본다 → 환율이 자동
+  const [exchangeEdited, setExchangeEdited] = useState<ExchangeField[]>(existing?.type === 'EXCHANGE' ? ['KRW', 'USD'] : []);
 
   const holdings = data.holdings.filter((h) => h.accountId === accountId);
   const holding = holdings.find((h) => h.id === holdingId);
   const holdingCurrency: Currency = holding ? marketCurrency(holding.market) : 'KRW';
+  const exAuto = recordType === 'EXCHANGE' ? exchangeAutoField(exchangeEdited) : null;
+  const exComputed = exAuto === null ? null : computeExchange(exAuto, parseDecimal(krwText), parseDecimal(amountText), parseDecimal(rateText));
+  const pick = (field: ExchangeField, text: string) => (exAuto === field ? exComputed : parseDecimal(text));
+  // 자동 칸에 보여줄 값 (계산할 수 없으면 빈칸)
+  const exchangeText = (field: ExchangeField, text: string, digits: number) =>
+    exAuto === field ? (exComputed === null ? '' : String(Number(exComputed.toFixed(digits)))) : text;
+  const exchangeLabel = (field: ExchangeField, label: string) => (exAuto === field ? `${label} · 자동 계산` : label);
   const input: RecordInput = {
     type: recordType, date, currency, toAccountId, holdingId, memo,
-    amount: parseDecimal(amountText), krw: parseDecimal(krwText), rate: parseDecimal(rateText),
+    amount: pick('USD', amountText), krw: pick('KRW', krwText), rate: pick('RATE', rateText),
     quantity: parseDecimal(quantityText), price: parseDecimal(priceText),
     cost: { total: parseDecimal(costText), fee: parseDecimal(feeText), tax: parseDecimal(taxText) },
   };
@@ -103,9 +114,26 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
       {recordType === 'EXCHANGE' && (
         <>
           <Choice label="방향" options={CURRENCIES} value={currency} text={(c) => (c === 'KRW' ? '원화 → 달러' : '달러 → 원화')} onChange={setCurrency} />
-          <WonField label="원화 금액" value={krwText} onChange={setKrwText} preview={manwon} />
-          <NumberField label="달러 금액" value={amountText} onChange={setAmountText} preview={usd} />
-          {input.krw !== null && input.amount !== null && input.amount > 0 && <Row label="적용 환율" value={`${decimal(input.krw / input.amount, 2)}원`} />}
+          {/* 셋 중 마지막으로 입력한 두 칸으로 나머지 한 칸을 자동 계산 */}
+          <WonField
+            label={exchangeLabel('KRW', '원화 금액')}
+            value={exchangeText('KRW', krwText, 0)}
+            onChange={(v) => { setKrwText(v); setExchangeEdited(touchExchange(exchangeEdited, 'KRW')); }}
+            preview={manwon}
+          />
+          <NumberField
+            label={exchangeLabel('USD', '달러 금액')}
+            value={exchangeText('USD', amountText, 2)}
+            onChange={(v) => { setAmountText(v); setExchangeEdited(touchExchange(exchangeEdited, 'USD')); }}
+            preview={usd}
+          />
+          <NumberField
+            label={exchangeLabel('RATE', '환율 (1달러당 원)')}
+            value={exchangeText('RATE', rateText, 2)}
+            onChange={(v) => { setRateText(v); setExchangeEdited(touchExchange(exchangeEdited, 'RATE')); }}
+            preview={(n) => `1달러 = ${decimal(n, 2)}원`}
+          />
+          {exAuto === null && <p className="muted small">원화 금액·달러 금액·환율 중 두 칸을 입력하면 나머지 한 칸은 자동으로 계산합니다.</p>}
         </>
       )}
 

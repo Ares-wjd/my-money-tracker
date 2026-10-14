@@ -47,6 +47,8 @@ import com.mymoneytracker.core.model.CostInput
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.ExchangeField
+import com.mymoneytracker.core.portfolio.ExchangeInput
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import java.time.LocalDate
 
@@ -128,6 +130,8 @@ private fun RecordForm(
     val initialRate = when {
         initial != null && initial.currency == Currency.USD && initial.amount > 0 -> initial.krwAmount / initial.amount
         initial?.type == RecordType.EXCHANGE && initial.amount > 0 -> initial.krwAmount / initial.amount
+        // 새 환전 기록은 환율을 비워 둔다 (세 칸 중 입력한 두 칸으로 계산하므로)
+        initial == null && type == RecordType.EXCHANGE -> null
         else -> data.usdKrw
     }
 
@@ -145,13 +149,27 @@ private fun RecordForm(
     var costText by rememberSaveable { mutableStateOf(text(initialCost.total)) }
     var feeText by rememberSaveable { mutableStateOf(text(initialCost.fee)) }
     var taxText by rememberSaveable { mutableStateOf(text(initialCost.tax)) }
+    // 환전: 입력한 순서 (최근 두 칸으로 나머지 한 칸을 자동 계산). 기존 기록은 원화·달러를 입력한 것으로 본다 → 환율이 자동
+    var exchangeEdited by rememberSaveable { mutableStateOf(if (initial?.type == RecordType.EXCHANGE) "KRW,USD" else "") }
     var memo by rememberSaveable { mutableStateOf(initial?.memo.orEmpty()) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
     val date = LocalDate.ofEpochDay(day)
-    val amount = MoneyFormat.parseDecimal(amountText)
-    val krw = MoneyFormat.parseDecimal(krwText)
-    val rate = MoneyFormat.parseDecimal(rateText)
+    val exEdited = exchangeEdited.split(",").mapNotNull { name -> ExchangeField.entries.firstOrNull { it.name == name } }
+    val exAuto = if (type == RecordType.EXCHANGE) ExchangeInput.autoField(exEdited) else null
+    val exComputed = exAuto?.let {
+        ExchangeInput.compute(it, MoneyFormat.parseDecimal(krwText), MoneyFormat.parseDecimal(amountText), MoneyFormat.parseDecimal(rateText))
+    }
+    val amount = if (exAuto == ExchangeField.USD) exComputed else MoneyFormat.parseDecimal(amountText)
+    val krw = if (exAuto == ExchangeField.KRW) exComputed else MoneyFormat.parseDecimal(krwText)
+    val rate = if (exAuto == ExchangeField.RATE) exComputed else MoneyFormat.parseDecimal(rateText)
+    fun touchExchange(field: ExchangeField) {
+        exchangeEdited = ExchangeInput.touch(exEdited, field).joinToString(",") { it.name }
+    }
+    // 자동 칸에 보여줄 값 (계산할 수 없으면 빈칸)
+    fun exchangeText(field: ExchangeField, input: String, digits: Int): String =
+        if (exAuto == field) exComputed?.let { MoneyFormat.decimal(it, digits).replace(",", "") }.orEmpty() else input
+    fun exchangeLabel(field: ExchangeField, label: String) = if (exAuto == field) "$label · 자동 계산" else label
     val quantity = MoneyFormat.parseDecimal(quantityText)
     val price = MoneyFormat.parseDecimal(priceText)
     val cost = CostInput(MoneyFormat.parseDecimal(costText), MoneyFormat.parseDecimal(feeText), MoneyFormat.parseDecimal(taxText))
@@ -261,10 +279,25 @@ private fun RecordForm(
                     { if (it == Currency.KRW) "원화 → 달러" else "달러 → 원화" },
                     { currency = it },
                 )
-                MoneyField("원화 금액", krwText, { krwText = it })
-                NumberField("달러 금액", amountText, { amountText = it }, preview = { MoneyFormat.usd(it) })
-                if (krw != null && amount != null && amount > 0) {
-                    LabeledValue("적용 환율", "${MoneyFormat.decimal(krw / amount, 2)}원")
+                // 셋 중 마지막으로 입력한 두 칸으로 나머지 한 칸을 자동 계산
+                MoneyField(exchangeLabel(ExchangeField.KRW, "원화 금액"), exchangeText(ExchangeField.KRW, krwText, 0), {
+                    krwText = it
+                    touchExchange(ExchangeField.KRW)
+                })
+                NumberField(exchangeLabel(ExchangeField.USD, "달러 금액"), exchangeText(ExchangeField.USD, amountText, 2), {
+                    amountText = it
+                    touchExchange(ExchangeField.USD)
+                }, preview = { MoneyFormat.usd(it) })
+                NumberField(exchangeLabel(ExchangeField.RATE, "환율 (1달러당 원)"), exchangeText(ExchangeField.RATE, rateText, 2), {
+                    rateText = it
+                    touchExchange(ExchangeField.RATE)
+                }, preview = { "1달러 = ${MoneyFormat.decimal(it, 2)}원" })
+                if (exAuto == null) {
+                    Text(
+                        "원화 금액·달러 금액·환율 중 두 칸을 입력하면 나머지 한 칸은 자동으로 계산합니다.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 
