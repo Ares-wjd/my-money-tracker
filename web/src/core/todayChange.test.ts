@@ -43,7 +43,7 @@ describe('오늘 변동 (TodayChangeTest)', () => {
     expect(excludedItems(t).map((i) => i.holding.id)).toEqual(['f']);
     expect(topGainers(t).map((i) => i.holding.id)).toEqual(['s', 'v']);
     expect(topLosers(t)).toEqual([]);
-    expect(todayLabel(t.items.find((i) => i.holding.id === 's')!)).toBe('005930');
+    expect(todayLabel(t.items.find((i) => i.holding.id === 's')!)).toBe('삼성전자');
   });
 
   it('오늘 환율 발표 전에는 환율 효과 0', () => {

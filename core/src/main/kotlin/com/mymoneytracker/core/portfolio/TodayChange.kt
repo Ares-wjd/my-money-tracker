@@ -22,12 +22,12 @@ data class TodayItem(
     val changeKrw: Double?,
     val rate: Double?,
 ) {
-    /** 타일·배지에 쓰는 짧은 이름: 금현물, 종목코드, 코드가 없으면 종목명. */
+    /** 타일·목록에 쓰는 이름: 금현물, 종목명, 이름이 없으면 종목코드. */
     val label: String
         get() = when {
             holding.assetType == AssetType.GOLD -> "금현물"
-            holding.code.isNotBlank() -> holding.code.uppercase()
-            else -> holding.name
+            holding.name.isNotBlank() -> holding.name.trim()
+            else -> holding.code.uppercase()
         }
 }
 

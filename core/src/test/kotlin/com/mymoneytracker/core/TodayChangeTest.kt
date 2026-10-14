@@ -68,7 +68,7 @@ class TodayChangeTest {
         assertEquals(listOf("f"), t.excluded.map { it.holding.id })
         assertEquals(listOf("s", "v"), t.topGainers().map { it.holding.id })
         assertTrue(t.topLosers().isEmpty())
-        assertEquals("005930", t.items.first { it.holding.id == "s" }.label)
+        assertEquals("삼성전자", t.items.first { it.holding.id == "s" }.label)
     }
 
     @Test

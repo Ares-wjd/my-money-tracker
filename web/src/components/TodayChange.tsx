@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { decimal, rate, signedWon } from '../core/format';
 import { changeLevel, todayLabel, todayTiles, treemap, topGainers, topLosers, type TodayChange, type TodayItem } from '../core/todayChange';
-import { TickerBadge, profitClass, type TickerGroup } from './ui';
+import { profitClass, tickerGroup, type TickerGroup } from './ui';
 
 /** 국내·해외·환율 몫 (폰과 같은 색: 국내 = 국내 주식 색, 해외 = 해외 주식 색, 환율 = 금현물 색). */
 function parts(change: TodayChange): { label: string; detail: string | null; amount: number; group: TickerGroup }[] {
@@ -60,7 +60,8 @@ function Movers({ title, items }: { title: string; items: TodayItem[] }) {
       {items.length === 0 && <span className="muted small">없음</span>}
       {items.map((i) => (
         <div key={i.key} className="today-mover">
-          <TickerBadge code={i.holding.code} name={i.holding.name} market={i.holding.market} assetType={i.holding.assetType} />
+          <span className={`legend-swatch ticker-${tickerGroup(i.holding.market, i.holding.assetType)}`} aria-hidden="true" />
+          <span className="today-mover-name">{todayLabel(i)}</span>
           <b className={profitClass(i.rate)}>{rate(i.rate)}</b>
         </div>
       ))}
@@ -117,13 +118,15 @@ export function TodayTiles({ change }: { change: TodayChange }) {
           const r = rects[i];
           const level = item === null ? null : changeLevel(item.rate);
           const style = { left: r.x, top: r.y, width: r.w, height: r.h };
+          // 좁은 칸은 글자를 줄여 등락률이 잘리지 않게, 큰 칸은 이름을 2줄까지
+          const compact = r.w < 72;
           const body = r.w >= 40 && r.h >= 30 && (
             <>
-              <b>{item === null ? '기타' : todayLabel(item)}</b>
+              <b className={r.h >= 80 && !compact ? 'two-lines' : ''}>{item === null ? '기타' : todayLabel(item)}</b>
               {r.h >= 50 && item !== null && <span>{item.rate === null ? '시세 없음' : rate(item.rate)}</span>}
             </>
           );
-          const className = `today-tile level-${level === null ? 'none' : level < 0 ? `m${-level}` : level}`;
+          const className = `today-tile${compact ? ' compact' : ''} level-${level === null ? 'none' : level < 0 ? `m${-level}` : level}`;
           return item === null ? (
             <div key="rest" className={className} style={style} title="기타">
               {body}

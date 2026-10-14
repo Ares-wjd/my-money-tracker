@@ -37,9 +37,9 @@ export interface TileRect {
 /** 타일이 이보다 많으면 작은 것부터 "기타"로 묶는다. */
 export const MAX_TILES = 16;
 
-/** 타일·배지에 쓰는 짧은 이름: 금현물, 종목코드, 코드가 없으면 종목명. */
+/** 타일·목록에 쓰는 이름: 금현물, 종목명, 이름이 없으면 종목코드. */
 export const todayLabel = (item: TodayItem): string =>
-  item.holding.assetType === 'GOLD' ? '금현물' : item.holding.code.trim() !== '' ? item.holding.code.toUpperCase() : item.holding.name;
+  item.holding.assetType === 'GOLD' ? '금현물' : item.holding.name.trim() !== '' ? item.holding.name.trim() : item.holding.code.toUpperCase();
 
 export const includedItems = (c: TodayChange) => c.items.filter((i) => i.rate !== null);
 export const excludedItems = (c: TodayChange) => c.items.filter((i) => i.rate === null);

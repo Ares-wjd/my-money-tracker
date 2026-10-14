@@ -40,7 +40,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioViewModel
 import com.mymoneytracker.app.ui.common.LoadingBox
@@ -51,6 +53,7 @@ import com.mymoneytracker.app.ui.common.TickerGroup
 import com.mymoneytracker.app.ui.common.TopBarTitle
 import com.mymoneytracker.app.ui.common.profitColor
 import com.mymoneytracker.app.ui.common.tickerColor
+import com.mymoneytracker.app.ui.common.tickerGroup
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.portfolio.TodayChange
 import com.mymoneytracker.core.portfolio.TodayChangeCalculator
@@ -167,19 +170,26 @@ private fun ContributionRows(change: TodayChange) {
 
 @Composable
 private fun Movers(title: String, items: List<TodayItem>, modifier: Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (items.isEmpty()) Text("없음", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         items.forEach { item ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TickerBadge(item.holding.code, item.holding.name, item.holding.market, item.holding.assetType)
+            // 종목명 (앞의 작은 점 = 티커 색), 긴 이름은 줄이고 등락률은 항상 보이게
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(Modifier.size(8.dp).background(tickerColor(tickerGroup(item.holding.market, item.holding.assetType)), RoundedCornerShape(4.dp)))
+                Text(
+                    item.label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
                 Text(
                     MoneyFormat.rate(item.rate),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.SemiBold,
                     color = profitColor(item.rate),
-                    modifier = Modifier.weight(1f).padding(start = 6.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                    maxLines = 1,
                 )
             }
         }
@@ -224,13 +234,15 @@ private fun TodayTiles(change: TodayChange, onOpenHolding: (String) -> Unit) {
                     .padding(6.dp),
             ) {
                 if (r.w >= 40 && r.h >= 30) {
+                    // 좁은 칸은 글자를 줄여 등락률이 잘리지 않게, 큰 칸은 이름을 2줄까지
+                    val compact = r.w < 72
                     Column {
                         Text(
                             item?.label ?: "기타",
-                            style = MaterialTheme.typography.labelMedium,
+                            style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = fg,
-                            maxLines = 1,
+                            maxLines = if (r.h >= 80 && !compact) 2 else 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         if (r.h >= 50) {
@@ -241,8 +253,10 @@ private fun TodayTiles(change: TodayChange, onOpenHolding: (String) -> Unit) {
                                     else -> MoneyFormat.rate(item.rate)
                                 },
                                 style = MaterialTheme.typography.labelSmall,
+                                fontSize = if (compact) 9.sp else TextUnit.Unspecified,
                                 color = fg,
                                 maxLines = 1,
+                                softWrap = false,
                             )
                         }
                     }
