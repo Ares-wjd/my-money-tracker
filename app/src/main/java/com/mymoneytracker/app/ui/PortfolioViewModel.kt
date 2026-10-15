@@ -509,6 +509,49 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         chartSelection.value = chartSelection.value.copy(accountId = accountId)
     }
 
+    private val _fxProbe = MutableStateFlow<String?>(null)
+    /** 설정의 [한투 환율 조회 확인] 결과 글 (테스트용, 저장하지 않음). */
+    val fxProbe: StateFlow<String?> = _fxProbe.asStateFlow()
+
+    /** 한투에서 원/달러 일별 시세를 최근부터 거꾸로 불러 어디까지 받을 수 있는지 확인한다 (테스트용, 저장하지 않음). */
+    fun probeKisFx() {
+        if (_fxProbe.value == "확인하는 중...") return
+        _fxProbe.value = "확인하는 중..."
+        viewModelScope.launch {
+            val all = sortedMapOf<LocalDate, Double>()
+            var current: Double? = null
+            var prevClose: Double? = null
+            var calls = 0
+            var error: String? = null
+            var until = LocalDate.now()
+            // 한 번에 최대 100개 → 140일씩 거꾸로, 최대 40번 (약 15년)
+            while (calls < 40) {
+                val result = runCatching { kis.usdKrwDaily(until.minusDays(140), until) }
+                calls++
+                val page = result.getOrElse { error = it.message; null } ?: break
+                if (calls == 1) {
+                    current = page.current
+                    prevClose = page.prevClose
+                }
+                val fresh = page.closes.filter { it.date !in all }
+                if (fresh.isEmpty()) break
+                fresh.forEach { all[it.date] = it.close }
+                until = fresh.minOf { it.date }.minusDays(1)
+                _fxProbe.value = "확인하는 중... (${calls}번 조회, 가장 오래된 날짜 ${all.firstKey()})"
+            }
+            _fxProbe.value = buildString {
+                appendLine("조회 ${calls}번 · 받은 날짜 ${all.size}개")
+                if (all.isNotEmpty()) appendLine("가장 오래된 날짜: ${all.firstKey()}")
+                appendLine("현재가: ${current?.let { MoneyFormat.decimal(it, 2) } ?: "없음"} · 전일 종가: ${prevClose?.let { MoneyFormat.decimal(it, 2) } ?: "없음"}")
+                if (all.isNotEmpty()) {
+                    appendLine("최근 10개 (날짜 종가):")
+                    all.entries.toList().takeLast(10).reversed().forEach { (d, v) -> appendLine("  $d  ${MoneyFormat.decimal(v, 2)}") }
+                }
+                error?.let { append("오류: $it") }
+            }.trim()
+        }
+    }
+
     /** 설정의 [그래프 전체 다시 계산]: 모든 계좌의 일별 값을 처음부터 다시 계산한다. */
     fun recomputeCharts() {
         forceChart = true

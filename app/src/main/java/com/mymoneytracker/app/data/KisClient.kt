@@ -270,6 +270,31 @@ class KisClient(private val store: SecureStore) {
         }
     }
 
+    /** 원/달러 일별 시세 결과: 현재가·전일 종가와 [from] ~ [until] 일별 종가 (최대 100개). */
+    data class FxDaily(val current: Double?, val prevClose: Double?, val closes: List<DailyClose>)
+
+    /** 원/달러 일별 시세 (해외 지수·환율 기간별 시세, 조회 전용). 환율 소스 확인용. */
+    suspend fun usdKrwDaily(from: LocalDate, until: LocalDate): FxDaily {
+        val r = call(
+            "/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
+            "FHKST03030100",
+            mapOf(
+                "FID_COND_MRKT_DIV_CODE" to "X",
+                "FID_INPUT_ISCD" to "FX@KRW",
+                "FID_INPUT_DATE_1" to from.format(YMD),
+                "FID_INPUT_DATE_2" to until.format(YMD),
+                "FID_PERIOD_DIV_CODE" to "D",
+            ),
+        )
+        val output = r.json.optJSONObject("output1")
+        val closes = r.json.optJSONArray("output2")?.objects().orEmpty().mapNotNull { row ->
+            val date = parseYmd(row.str("stck_bsop_date")) ?: return@mapNotNull null
+            val close = row.num("ovrs_nmix_prpr")?.takeIf { it > 0 } ?: return@mapNotNull null
+            DailyClose(date, close)
+        }
+        return FxDaily(output?.num("ovrs_nmix_prpr")?.takeIf { it > 0 }, output?.num("ovrs_nmix_prdy_clpr")?.takeIf { it > 0 }, closes)
+    }
+
     // ---------------------------------------------------------------- 계좌 조회 (M5)
 
     private fun account(): Pair<String, String> {
