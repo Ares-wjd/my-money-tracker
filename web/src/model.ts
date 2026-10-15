@@ -153,6 +153,8 @@ export interface MarketSnapshot {
   usdKrw: Map<string, number>;
   /** 오늘 받은 환율 [날짜, 환율] (오늘 평가금용, 과거 환율 목록에는 넣지 않는다) */
   usdKrwLatest?: [string, number] | null;
+  /** usdKrwLatest 의 출처 ('KIS' 한투 / 'EXIM' 수출입은행, 모르면 null) */
+  usdKrwLatestSource?: string | null;
 }
 
 export const savingsBalance = (account: SavingsAccount): number =>

@@ -68,7 +68,7 @@ export interface TodayChange {
   domesticKrw: number;
   foreignKrw: number;
   fxKrw: number;
-  /** 환율 효과에 쓴 전 영업일·오늘 환율 (오늘 환율 발표 전이면 null). */
+  /** 환율 효과에 쓴 전 영업일·오늘 환율 (오늘 환율이 없으면 null). */
   fxFrom: number | null;
   fxTo: number | null;
   /** 종목별 (평가금 큰 순). */

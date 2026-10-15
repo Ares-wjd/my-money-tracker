@@ -76,7 +76,7 @@ data class TodayChange(
     val domesticKrw: Double,
     val foreignKrw: Double,
     val fxKrw: Double,
-    /** 환율 효과에 쓴 전 영업일·오늘 환율 (오늘 환율 발표 전이면 null). */
+    /** 환율 효과에 쓴 전 영업일·오늘 환율 (오늘 환율이 없으면 null). */
     val fxFrom: Double?,
     val fxTo: Double?,
     /** 종목별 (평가금 큰 순). */

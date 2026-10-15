@@ -2,6 +2,14 @@
 
 기능 구현 시 참고할 외부 API 명세 요약. (원문 명세가 바뀌면 이 문서도 갱신)
 
+## 한국투자증권 원/달러 환율 (v2.8 기본 환율 소스)
+
+- API: 해외주식 종목/지수/환율 기간별 시세(일/주/월/년), `GET /uapi/overseas-price/v1/quotations/inquire-daily-chartprice`, tr_id `FHKST03030100` (시세 조회 전용)
+- 파라미터: `FID_COND_MRKT_DIV_CODE=X`(환율), `FID_INPUT_ISCD=FX@KRW`(원/달러), `FID_INPUT_DATE_1`·`FID_INPUT_DATE_2`(yyyyMMdd), `FID_PERIOD_DIV_CODE=D`
+- 응답: `output1.ovrs_nmix_prpr` 현재가, `output1.ovrs_nmix_prdy_clpr` 전일 종가, `output2[]` 일별 (`stck_bsop_date` 날짜, `ovrs_nmix_prpr` 종가), 최신순, 한 번에 최대 100개
+- 앱에서 확인한 값 (2026-10-15): 2011-06-27 부터 받을 수 있음 (3,767일). 한국 공휴일(10/05 대체공휴일, 10/09 한글날)에도 값이 있고 주말은 없음.
+  소수점 0.1원 단위. 하나은행 고시(삼성증권 화면)와 ±2원 안팎, 오르내림 방향은 같음.
+
 ## 한국수출입은행 현재환율 API
 
 - 출처: 한국수출입은행 Open API "현재환율 API" 개발명세 (2026-04-28 수정본 기준)

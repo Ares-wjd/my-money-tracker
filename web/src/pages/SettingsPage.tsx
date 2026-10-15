@@ -19,10 +19,10 @@ export function SettingsPage() {
     <div className="stack">
       <h1 className="page-title">설정</h1>
       <Card title="직접 입력 환율">
-        <p className="muted small">폰 앱이 저장한 환율(수출입은행)이 없을 때 계산에 쓰는 원/달러 환율입니다. 비우고 저장하면 지웁니다.</p>
+        <p className="muted small">폰 앱이 저장한 환율(한투 원/달러, 예비로 수출입은행)이 없을 때 계산에 쓰는 원/달러 환율입니다. 비우고 저장하면 지웁니다.</p>
         <Row
           label="지금 계산에 쓰는 환율"
-          value={data.usdKrw === null ? '없음' : `${decimal(data.usdKrw, 2)}원` + (data.usdKrwDate ? ` (${formatDate(data.usdKrwDate)}, 자동)` : ' (직접 입력)')}
+          value={data.usdKrw === null ? '없음' : `${decimal(data.usdKrw, 2)}원` + (data.usdKrwDate ? ` (${formatDate(data.usdKrwDate)}, ${data.usdKrwSource ?? '자동'})` : ' (직접 입력)')}
         />
         <NumberField label="직접 입력 환율 (원/달러)" value={rateText} onChange={(v) => { setRateText(v); setSaved(false); }} preview={(n) => `1달러 = ${decimal(n, 2)}원`} />
         <FormActions problem={problem} onSave={() => saveManualUsdKrw(uid, rateText.trim() === '' ? null : rate)} onDone={() => setSaved(true)} />

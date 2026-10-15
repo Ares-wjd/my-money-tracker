@@ -175,7 +175,8 @@ private fun HomeContent(
                 }
                 val footnote = listOfNotNull(
                     current.usdKrw?.let { rate ->
-                        "환율 ${MoneyFormat.decimal(rate, 2)}원" + (current.usdKrwDate?.let { " (${formatDate(it)})" } ?: " (직접 입력)")
+                        "환율 ${MoneyFormat.decimal(rate, 2)}원" +
+                            (current.usdKrwDate?.let { " (${listOfNotNull(formatDate(it), current.usdKrwSource).joinToString(" · ")})" } ?: " (직접 입력)")
                     },
                     refresh.lastRefreshedAt?.let { "시세 " + SimpleDateFormat("M/d HH:mm", Locale.KOREA).format(Date(it)) },
                 ).joinToString(" · ")

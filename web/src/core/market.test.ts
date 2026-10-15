@@ -1,7 +1,7 @@
 // core MarketDataTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
 import { GOLD_CODE, quantityUnit, type MarketSnapshot, type PricePoint } from '../model';
-import { agreedFx, currentPrice, dailyChangeRate, isRecentFxDate, keyOf, latestUsdKrw, marketKey, priceAt, tradeUsdKrw, usdKrwAt } from './market';
+import { agreedFx, currentPrice, dailyChangeRate, fxSourceLabel, isRecentFxDate, keyOf, latestUsdKrw, latestUsdKrwSourceLabel, marketKey, priceAt, tradeUsdKrw, usdKrwAt } from './market';
 import { toMarketSnapshot } from '../data/mappers';
 import { holding } from './testData';
 
@@ -92,5 +92,24 @@ describe('시세 (MarketDataTest)', () => {
     expect(s.usdKrw.has(today)).toBe(false);
     expect(latestUsdKrw(s)).toEqual([today, 1400]);
     expect(usdKrwAt(s, '2026-10-13')).toBe(1390);
+  });
+
+  it('환율 출처 표시 (v2.8): 오늘 받은 환율일 때만', () => {
+    expect(fxSourceLabel('KIS')).toBe('한투');
+    expect(fxSourceLabel('EXIM')).toBe('수출입은행');
+    expect(fxSourceLabel(null)).toBeNull();
+    const s = toMarketSnapshot([
+      { id: 'fx_USD', data: { rates: { '2026-10-14': 1342.3 } } },
+      { id: 'fx_USD_checked', data: { rates: {}, latest: 1347.7, latestDate: '2026-10-15', latestSource: 'KIS' } },
+    ]);
+    expect(s.usdKrwLatestSource).toBe('KIS');
+    expect(latestUsdKrw(s)).toEqual(['2026-10-15', 1347.7]);
+    expect(latestUsdKrwSourceLabel(s)).toBe('한투');
+    // 오늘 환율이 과거 목록보다 오래됐으면 (과거 목록 값을 쓰므로) 출처 표시 없음
+    const old = toMarketSnapshot([
+      { id: 'fx_USD', data: { rates: { '2026-10-14': 1342.3 } } },
+      { id: 'fx_USD_checked', data: { latest: 1338.6, latestDate: '2026-10-13', latestSource: 'EXIM' } },
+    ]);
+    expect(latestUsdKrwSourceLabel(old)).toBeNull();
   });
 });

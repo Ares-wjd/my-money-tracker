@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,7 +67,6 @@ fun SettingsScreen(
     val apiStatus by portfolioViewModel.apiStatus.collectAsStateWithLifecycle()
     val syncing by portfolioViewModel.syncing.collectAsStateWithLifecycle()
     val chartComputing by portfolioViewModel.chartComputing.collectAsStateWithLifecycle()
-    val fxProbe by portfolioViewModel.fxProbe.collectAsStateWithLifecycle()
     val updateState by updateViewModel.state.collectAsStateWithLifecycle()
     var confirmSignOut by rememberSaveable { mutableStateOf(false) }
 
@@ -109,19 +107,6 @@ fun SettingsScreen(
                 OutlinedButton(onClick = { portfolioViewModel.recomputeCharts() }, enabled = !chartComputing) {
                     Text(if (chartComputing) "계산하는 중..." else "그래프 전체 다시 계산")
                 }
-            }
-
-            // 환율 소스 확인용 (테스트, 확인이 끝나면 없앤다)
-            SectionCard(title = "한투 환율 조회 확인 (테스트)") {
-                Text(
-                    "한국투자증권에서 원/달러 일별 시세를 최근부터 거꾸로 불러, 어디까지 받을 수 있는지와 최근 값을 보여줍니다. 저장하지 않습니다.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedButton(onClick = { portfolioViewModel.probeKisFx() }, enabled = fxProbe != "확인하는 중...") {
-                    Text("한투 환율 조회 확인")
-                }
-                fxProbe?.let { SelectionContainer { Text(it, style = MaterialTheme.typography.bodySmall) } }
             }
 
             SectionCard(title = "앱 정보") {
@@ -299,7 +284,8 @@ private fun EximCard(status: ApiStatus, viewModel: PortfolioViewModel) {
     var key by rememberSaveable { mutableStateOf("") }
     SectionCard(title = "수출입은행 환율 API") {
         Text(
-            "달러 자산의 원화 환산에 매매기준율을 자동으로 받습니다. 인증키는 이 기기에만 암호화해 저장됩니다. " +
+            "환율은 한국투자증권 원/달러가 기본이고, 한투가 연결되지 않았거나 조회에 실패했을 때와 2011년 6월 이전 날짜에만 " +
+                "수출입은행 매매기준율(전 영업일 평균이라 하루 늦음)을 씁니다. 인증키는 이 기기에만 암호화해 저장됩니다. " +
                 "인증키는 2년마다 재동의(이메일 안내)가 필요합니다.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

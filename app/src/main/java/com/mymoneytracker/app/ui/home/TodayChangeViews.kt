@@ -134,7 +134,7 @@ private fun parts(change: TodayChange, accountOrder: List<String>): List<Part> =
         if (change.fxFrom != null && change.fxTo != null) {
             "${MoneyFormat.decimal(change.fxFrom!!, 2)} → ${MoneyFormat.decimal(change.fxTo!!, 2)}"
         } else {
-            "오늘 환율 발표 전"
+            "오늘 환율 없음"
         },
         change.fxKrw,
         tickerColor(TickerGroup.GOLD),

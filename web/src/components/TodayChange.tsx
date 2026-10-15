@@ -29,7 +29,7 @@ function parts(change: TodayChange, accountOrder: readonly string[]): Part[] {
     {
       key: '__fx',
       label: '환율',
-      detail: change.fxFrom !== null && change.fxTo !== null ? `${decimal(change.fxFrom, 2)} → ${decimal(change.fxTo, 2)}` : '오늘 환율 발표 전',
+      detail: change.fxFrom !== null && change.fxTo !== null ? `${decimal(change.fxFrom, 2)} → ${decimal(change.fxTo, 2)}` : '오늘 환율 없음',
       amount: change.fxKrw,
       color: 'var(--fx-part)',
     },

@@ -23,6 +23,8 @@ data class MarketSnapshot(
     val usdKrw: TreeMap<LocalDate, Double> = TreeMap(),
     /** 오늘 받은 환율 (오늘 평가금용, 과거 환율 목록에는 넣지 않는다). */
     val usdKrwLatest: Pair<LocalDate, Double>? = null,
+    /** [usdKrwLatest] 의 출처 ([FxRules.SOURCE_KIS] / [FxRules.SOURCE_EXIM], 모르면 null). */
+    val usdKrwLatestSource: String? = null,
 ) {
     fun history(holding: Holding): PriceHistory? = MarketKeys.of(holding)?.let { prices[it] }
 
@@ -32,6 +34,10 @@ data class MarketSnapshot(
         val today = usdKrwLatest?.takeIf { it.second > 0 }
         return if (today != null && (past == null || !today.first.isBefore(past.first))) today else past
     }
+
+    /** 가장 최근 환율의 출처 표시 글 (오늘 받은 환율일 때만, 과거 목록 값이면 null). */
+    fun latestUsdKrwSourceLabel(): String? =
+        if (usdKrwLatest != null && latestUsdKrw() == usdKrwLatest) FxRules.sourceLabel(usdKrwLatestSource) else null
 
     /** [date] 당일 또는 그 이전의 가장 가까운 환율. */
     fun usdKrwAt(date: LocalDate): Double? =
@@ -66,6 +72,38 @@ object FxRules {
 
     /** 더 받아야 하는지: 두 번 같은 값이 없고 아직 세 번을 받지 않았으면. */
     fun needsMore(values: List<Double>): Boolean = agreed(values) == null && values.size < 3
+
+    /**
+     * 한투 일별 종가를 여러 번 받은 것([fetches])으로 [from] ~ [to] 날짜별 고정 값을 만든다 (v2.8):
+     * 두 번 이상 같은 값, 모두 없으면 "없음"(-1, 주말 등). 받은 값이 서로 달라 정할 수 없는 날짜는 빠진다.
+     */
+    fun agreeDaily(fetches: List<Map<LocalDate, Double>>, from: LocalDate, to: LocalDate): Map<LocalDate, Double> {
+        val result = linkedMapOf<LocalDate, Double>()
+        var day = from
+        while (!day.isAfter(to)) {
+            agreed(fetches.map { it[day] ?: -1.0 })?.let { result[day] = it }
+            day = day.plusDays(1)
+        }
+        return result
+    }
+
+    /** 한 페이지를 더 받아야 하는지: 정할 수 없는 날짜가 있고 아직 세 번을 받지 않았으면. */
+    fun needsMoreDaily(fetches: List<Map<LocalDate, Double>>, from: LocalDate, to: LocalDate): Boolean {
+        if (fetches.size >= 3) return false
+        if (fetches.size < 2) return true
+        val days = generateSequence(from) { it.plusDays(1) }.takeWhile { !it.isAfter(to) }.count()
+        return agreeDaily(fetches, from, to).size < days
+    }
+
+    /** 출처 표시 글: "KIS" → 한투, "EXIM" → 수출입은행. */
+    fun sourceLabel(source: String?): String? = when (source) {
+        SOURCE_KIS -> "한투"
+        SOURCE_EXIM -> "수출입은행"
+        else -> null
+    }
+
+    const val SOURCE_KIS = "KIS"
+    const val SOURCE_EXIM = "EXIM"
 }
 
 object MarketKeys {

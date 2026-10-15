@@ -118,4 +118,25 @@ class MarketDataTest {
         assertEquals(today to 1400.0, s.latestUsdKrw())
         assertEquals(1390.0, s.usdKrwAt(today.minusDays(1))!!, 1e-9)
     }
+
+    @Test
+    fun agreeDailyKisPages() {
+        val rules = com.mymoneytracker.core.market.FxRules
+        val d = { day: Int -> LocalDate.of(2026, 10, day) }
+        val first = mapOf(d(12) to 1335.8, d(13) to 1341.5, d(14) to 1342.3)
+        // 두 번 같으면 고정, 둘 다 없는 날(10/10·10/11 주말)은 없음(-1)
+        val same = rules.agreeDaily(listOf(first, first), d(10), d(14))
+        assertEquals(mapOf(d(10) to -1.0, d(11) to -1.0, d(12) to 1335.8, d(13) to 1341.5, d(14) to 1342.3), same)
+        assertFalse(rules.needsMoreDaily(listOf(first, first), d(10), d(14)))
+        // 한 번만 받았으면 더 받는다
+        assertTrue(rules.needsMoreDaily(listOf(first), d(10), d(14)))
+        // 10/14 가 다르면 그날만 빠지고 한 번 더 받아 세 번 중 두 번 같은 값
+        val other = first + (d(14) to 1342.4)
+        assertEquals(null, rules.agreeDaily(listOf(first, other), d(14), d(14))[d(14)])
+        assertTrue(rules.needsMoreDaily(listOf(first, other), d(10), d(14)))
+        assertEquals(1342.3, rules.agreeDaily(listOf(first, other, first), d(10), d(14))[d(14)]!!, 1e-9)
+        assertFalse(rules.needsMoreDaily(listOf(first, other, first), d(10), d(14)))
+        assertEquals("한투", rules.sourceLabel("KIS"))
+        assertEquals("수출입은행", rules.sourceLabel("EXIM"))
+    }
 }

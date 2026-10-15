@@ -28,8 +28,10 @@ import java.util.TreeMap
  * 받아 온 시세·환율을 Firestore 에 캐시한다. 과거 종가와 환율은 바뀌지 않으므로 한 번 받으면 다시 받지 않는다.
  *
  * users/{uid}/marketData/price_{KR|US}_{코드}  { closes: {날짜: 종가}, latest, latestDate, prevClose, historyFrom, historyTo }
- * users/{uid}/marketData/fx_USD                 { rates: {날짜: 매매기준율, 데이터 없는 날은 -1} } 최근 1주일(계속 다시 받음)·확인 전 값
- * users/{uid}/marketData/fx_USD_checked         { rates: {날짜: 고정된 환율 (두 번 받아 같은 값)}, latest, latestDate (오늘 환율) }
+ * users/{uid}/marketData/fx_USD                 { rates: {날짜: 환율, 데이터 없는 날은 -1} } 최근 1주일(계속 다시 받음)·확인 전 값
+ * users/{uid}/marketData/fx_USD_checked         { rates: {날짜: 고정된 환율 (두 번 받아 같은 값)}, latest, latestDate, latestSource (오늘 환율),
+ *                                                 kisFrom, kisTo (한투 종가로 고정한 구간), kisComplete (한투에 더 오래된 값 없음) }
+ * 환율은 한투 원/달러(FX@KRW) 가 기본, 수출입은행 매매기준율은 한투가 없을 때와 한투 구간 이전 날짜에만 (v2.8).
  */
 class MarketDataRepository(
     db: FirebaseFirestore,
@@ -43,7 +45,13 @@ class MarketDataRepository(
     private var fxRecent = TreeMap<LocalDate, Double>()
     private var fxChecked = TreeMap<LocalDate, Double>()
     private var fxLatest: Pair<LocalDate, Double>? = null
+    private var fxLatestSource: String? = null
     private var lastRecentFxAt = 0L
+    /** 한투 종가로 고정한 구간 (그 구간은 수출입은행으로 받지 않는다). */
+    private var kisFrom: LocalDate? = null
+    private var kisTo: LocalDate? = null
+    private var kisComplete = false
+    private var lastLatestFxSavedAt = 0L
     private val docMeta = mutableMapOf<String, Pair<LocalDate?, LocalDate?>>()
 
     /** 자주 받는 현재가는 메모리에 두고, Firestore 에는 [PERSIST_INTERVAL_MS] 마다 한 번만 저장한다 (쓰기 횟수 절약). */
@@ -111,7 +119,16 @@ class MarketDataRepository(
                         fxChecked = readDateMap(doc, "rates")
                         val rate = doc.getDouble("latest")
                         val date = doc.getString("latestDate")?.let(::parseDate)
-                        fxLatest = if (rate != null && date != null) date to rate else null
+                        // 메모리에 같은 날 값(방금 받은 현재가, Firestore 에는 가끔 저장)이 있으면 그것을 둔다
+                        val stored = if (rate != null && date != null) date to rate else null
+                        val memory = fxLatest
+                        if (stored != null && (memory == null || stored.first.isAfter(memory.first))) {
+                            fxLatest = stored
+                            fxLatestSource = doc.getString("latestSource")
+                        }
+                        kisFrom = doc.getString("kisFrom")?.let(::parseDate)
+                        kisTo = doc.getString("kisTo")?.let(::parseDate)
+                        kisComplete = doc.getBoolean("kisComplete") == true
                     }
                     doc.id.startsWith(PRICE_PREFIX) -> {
                         val key = doc.id.removePrefix(PRICE_PREFIX)
@@ -123,7 +140,7 @@ class MarketDataRepository(
                     }
                 }
             }
-            cache = MarketSnapshot(prices, fxUnion(), fxLatest)
+            cache = MarketSnapshot(prices, fxUnion(), fxLatest, fxLatestSource)
             loaded.complete(Unit)
             trySend(cache)
         }
@@ -173,20 +190,34 @@ class MarketDataRepository(
         } else if (holdings.any { MarketKeys.quotable(it) }) {
             errors += "한국투자증권 API 키가 없어 시세를 받지 못했습니다. 설정에서 입력하세요."
         }
-        // 환율은 하루 한 번 바뀌므로 30분에 한 번만 조회한다 (일일 호출 한도 1,000회).
-        val fxDue = forceFx || System.currentTimeMillis() - lastFxAttemptAt >= FX_INTERVAL_MS
-        if (needsFx && fxDue) {
-            lastFxAttemptAt = System.currentTimeMillis()
-            if (exim.hasKey) {
+        if (needsFx) {
+            // 한투 원/달러가 기본 (새로고침할 때마다 현재가, 실패하면 수출입은행)
+            var kisError: String? = null
+            if (kis.hasCredentials) {
                 try {
-                    refreshFxNow(today)
+                    refreshKisFx(today)
+                    return errors
                 } catch (e: ApiException) {
-                    errors += e.message.orEmpty()
+                    kisError = "환율(한투): ${e.message}"
                 } catch (e: Exception) {
-                    errors += "환율: 네트워크 오류"
+                    kisError = "환율(한투): 네트워크 오류"
+                }
+            }
+            // 수출입은행은 하루 한 번 바뀌므로 30분에 한 번만 조회한다 (일일 호출 한도 1,000회).
+            val fxDue = forceFx || System.currentTimeMillis() - lastFxAttemptAt >= FX_INTERVAL_MS
+            if (exim.hasKey) {
+                if (fxDue) {
+                    lastFxAttemptAt = System.currentTimeMillis()
+                    try {
+                        refreshFxNow(today)
+                    } catch (e: ApiException) {
+                        errors += listOfNotNull(kisError, e.message)
+                    } catch (e: Exception) {
+                        errors += listOfNotNull(kisError, "환율: 네트워크 오류")
+                    }
                 }
             } else {
-                errors += "수출입은행 환율 인증키가 없어 설정의 직접 입력 환율을 사용합니다."
+                errors += kisError ?: "환율을 받을 한투·수출입은행 키가 없어 설정의 직접 입력 환율을 사용합니다."
             }
         }
         return errors
@@ -285,6 +316,8 @@ class MarketDataRepository(
         return try {
             // 최근 1주일은 따로 계속 다시 받으므로, 그보다 오래된 날짜만 두 번 받아 고정한다
             var day = today.minusDays(FxRules.RECENT_DAYS + 1)
+            // 한투 종가로 고정한 구간은 건너뛰고 그 이전만
+            kisFrom?.let { if (!day.isBefore(it)) day = it.minusDays(1) }
             while (!day.isBefore(from) && calls < budget) {
                 if (fxChecked[day] == null) {
                     val (rate, used) = verifiedRate(day)
@@ -323,12 +356,16 @@ class MarketDataRepository(
         return FxRules.agreed(values) to calls
     }
 
-    /** 오늘 환율 (11시 이후 발표) 과, 최근 1주일 환율 (3시간마다 다시 받아 바꿈). */
+    /** (예비) 수출입은행 오늘 환율 (11시 이후 발표) 과, 최근 1주일 환율 (3시간마다 다시 받아 바꿈). */
     private suspend fun refreshFxNow(today: LocalDate) {
         exim.usdKrw(today)?.let { rate ->
             fxLatest = today to rate
-            col.document(FX_CHECKED_DOC).set(mapOf("latest" to rate, "latestDate" to today.toString()), SetOptions.merge())
-            cache = cache.copy(usdKrwLatest = fxLatest)
+            fxLatestSource = FxRules.SOURCE_EXIM
+            col.document(FX_CHECKED_DOC).set(
+                mapOf("latest" to rate, "latestDate" to today.toString(), "latestSource" to FxRules.SOURCE_EXIM),
+                SetOptions.merge(),
+            )
+            cache = cache.copy(usdKrwLatest = fxLatest, usdKrwLatestSource = fxLatestSource)
         }
         val now = System.currentTimeMillis()
         if (now - lastRecentFxAt < RECENT_FX_INTERVAL_MS) return
@@ -341,6 +378,119 @@ class MarketDataRepository(
         saveRecentFx(recent)
     }
 
+    /**
+     * 한투 원/달러: 현재가(오늘 평가금)와 최근 1주일 일별 종가 (fx_USD, 바뀐 날만 저장). 현재가는 메모리에 바로,
+     * Firestore 에는 [PERSIST_INTERVAL_MS] 마다 (날짜가 바뀌면 바로).
+     */
+    private suspend fun refreshKisFx(today: LocalDate) {
+        val page = kis.usdKrwDaily(today.minusDays(FxRules.RECENT_DAYS + 7), today)
+        val closes = page.closes.associate { it.date to it.close }
+        // 오늘 줄이 있으면 오늘, 없으면(주말 등) 마지막 거래일
+        val lastDay = closes.keys.maxOrNull()
+        val current = page.current ?: lastDay?.let { closes[it] }
+        if (current != null) {
+            val date = if (lastDay == null || closes.containsKey(today)) today else lastDay
+            val dateChanged = fxLatest?.first != date
+            fxLatest = date to current
+            fxLatestSource = FxRules.SOURCE_KIS
+            cache = cache.copy(usdKrwLatest = fxLatest, usdKrwLatestSource = fxLatestSource)
+            val now = System.currentTimeMillis()
+            if (dateChanged || now - lastLatestFxSavedAt >= PERSIST_INTERVAL_MS) {
+                lastLatestFxSavedAt = now
+                col.document(FX_CHECKED_DOC).set(
+                    mapOf("latest" to current, "latestDate" to date.toString(), "latestSource" to FxRules.SOURCE_KIS),
+                    SetOptions.merge(),
+                )
+            }
+        }
+        val recent = (1..FxRules.RECENT_DAYS).associate { back ->
+            val day = today.minusDays(back)
+            day.toString() to (closes[day] ?: -1.0)
+        }.filter { (k, v) -> parseDate(k)?.let { fxRecent[it] } != v }
+        if (recent.isNotEmpty()) saveRecentFx(recent)
+    }
+
+    /**
+     * 한투 원/달러 일별 종가로 1주일보다 오래된 과거 환율을 고정한다 (같은 기간을 두 번 받아 같은 날짜만, 다르면 한 번 더).
+     * 처음에는 8일 전부터 [from] 까지 거꾸로 (기존 수출입은행 값을 바꿈), 그 뒤에는 새로 1주일이 지난 날짜와
+     * [from] 이 더 이르게 바뀐 만큼만. 한투에 더 오래된 값이 없으면 kisComplete. 돌려주는 값: 오류.
+     */
+    suspend fun backfillKisFx(from: LocalDate): List<String> {
+        if (!kis.hasCredentials) return emptyList()
+        awaitLoaded()
+        val end = LocalDate.now().minusDays(FxRules.RECENT_DAYS + 1)
+        return try {
+            val to = kisTo
+            val start = kisFrom
+            if (to == null || start == null) {
+                confirmKisRange(from, end)
+            } else {
+                // 새로 1주일이 지난 날짜
+                if (to.isBefore(end)) confirmKisRange(to.plusDays(1), end)
+                // 필요한 기간이 더 이르면 그만큼 더 거꾸로
+                if (!kisComplete && from.isBefore(start)) confirmKisRange(from, start.minusDays(1))
+            }
+            emptyList()
+        } catch (e: ApiException) {
+            listOf("환율(한투): ${e.message}")
+        } catch (e: Exception) {
+            listOf("환율(한투): 네트워크 오류")
+        }
+    }
+
+    /** [from] ~ [to] 를 최근부터 [KIS_FX_PAGE_DAYS] 일씩 거꾸로 받아 고정하고, 고정한 구간을 kisFrom·kisTo 에 넓혀 저장한다. */
+    private suspend fun confirmKisRange(from: LocalDate, to: LocalDate) {
+        var until = to
+        var pages = 0
+        while (!until.isBefore(from) && pages < KIS_FX_MAX_PAGES) {
+            val pageFrom = maxOf(from, until.minusDays(KIS_FX_PAGE_DAYS - 1))
+            val fetches = mutableListOf<Map<LocalDate, Double>>()
+            var truncatedAt: LocalDate? = null
+            while (FxRules.needsMoreDaily(fetches, pageFrom, until)) {
+                val page = kis.usdKrwDaily(pageFrom, until)
+                // 한 번에 최대 100개라 기간 앞쪽이 잘렸으면 받은 가장 이른 날짜까지만 고정
+                if (page.closes.size >= KIS_FX_PAGE_LIMIT) {
+                    val oldest = page.closes.minOf { it.date }
+                    truncatedAt = maxOf(truncatedAt ?: oldest, oldest)
+                }
+                fetches += page.closes.associate { it.date to it.close }
+                // 두 번 다 비어 있으면 한투에 더 오래된 값이 없음
+                if (fetches.size >= 2 && fetches.all { it.isEmpty() }) break
+            }
+            pages++
+            if (fetches.all { it.isEmpty() }) {
+                kisComplete = true
+                col.document(FX_CHECKED_DOC).set(mapOf("kisComplete" to true), SetOptions.merge())
+                break
+            }
+            // 가장 이른 값이 기간 시작보다 1주일 넘게 뒤면 한투 기록의 시작 (그 이전은 수출입은행이 채우도록 비워 둔다)
+            val oldestRow = fetches.flatMap { it.keys }.min()
+            val historyStart = truncatedAt == null && oldestRow.isAfter(pageFrom.plusDays(7))
+            val fixedFrom = truncatedAt ?: if (historyStart) oldestRow else pageFrom
+            val agreed = FxRules.agreeDaily(fetches, fixedFrom, until)
+            val newFrom = minOf(kisFrom ?: fixedFrom, fixedFrom)
+            val newTo = maxOf(kisTo ?: until, until)
+            kisFrom = newFrom
+            kisTo = newTo
+            col.document(FX_CHECKED_DOC).set(
+                mapOf(
+                    "rates" to agreed.mapKeys { it.key.toString() },
+                    "kisFrom" to newFrom.toString(),
+                    "kisTo" to newTo.toString(),
+                ),
+                SetOptions.merge(),
+            )
+            agreed.forEach { (d, v) -> fxChecked[d] = v }
+            cache = cache.copy(usdKrw = fxUnion())
+            if (historyStart) {
+                kisComplete = true
+                col.document(FX_CHECKED_DOC).set(mapOf("kisComplete" to true), SetOptions.merge())
+                break
+            }
+            until = fixedFrom.minusDays(1)
+        }
+    }
+
     /** 그래프 날짜들의 환율을 받아 둔다 (이미 받은 날짜·오늘은 건너뛴다). */
     suspend fun ensureFx(dates: List<LocalDate>): List<String> {
         if (!exim.hasKey) return emptyList()
@@ -348,6 +498,8 @@ class MarketDataRepository(
         return try {
             for (date in dates.distinct().filter { it.isBefore(today) }) {
                 if (cache.usdKrw.containsKey(date) && (FxRules.isRecent(date, today) || fxChecked.containsKey(date))) continue
+                // 한투로 받는 구간은 수출입은행으로 받지 않는다
+                if (kis.hasCredentials && (FxRules.isRecent(date, today) || kisFrom?.let { !date.isBefore(it) } == true)) continue
                 fetchFxOnOrBefore(date, maxBack = 7)
             }
             emptyList()
@@ -421,6 +573,11 @@ class MarketDataRepository(
         const val FX_INTERVAL_MS = 30 * 60 * 1000L
         const val LOAD_TIMEOUT_MS = 10_000L
         const val FX_SAVE_CHUNK = 50
+        /** 한투 환율 일별 조회 한 번의 기간 (최대 100개라 140일이면 거의 다 들어온다, 넘치면 받은 만큼만). */
+        const val KIS_FX_PAGE_DAYS = 140L
+        const val KIS_FX_PAGE_LIMIT = 100
+        /** 한 번에 받는 최대 페이지 (약 23년). */
+        const val KIS_FX_MAX_PAGES = 60
         const val HISTORY_GAP_MS = 500L
     }
 }

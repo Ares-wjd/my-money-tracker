@@ -86,7 +86,7 @@ describe('오늘 변동 (TodayChangeTest)', () => {
     expect(toggleChip('a', new Set(['a', 'b']))).toEqual(new Set(['b']));
   });
 
-  it('오늘 환율 발표 전에는 환율 효과 0', () => {
+  it('오늘 환율이 없으면 환율 효과 0', () => {
     const early: MarketSnapshot = { ...snapshot, usdKrwLatest: null };
     const t = todayChange(summaryOf(early), early, today)!;
     expect(t.fxKrw).toBe(0);

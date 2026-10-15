@@ -167,6 +167,7 @@ export function toMarketSnapshot(docs: readonly { id: string; data: Data }[]): M
   let recent = new Map<string, number>();
   let checked = new Map<string, number>();
   let usdKrwLatest: [string, number] | null = null;
+  let usdKrwLatestSource: string | null = null;
   for (const { id, data } of docs) {
     if (id === FX_DOC) {
       recent = dateMap(data.rates);
@@ -175,6 +176,7 @@ export function toMarketSnapshot(docs: readonly { id: string; data: Data }[]): M
       const rate = num(data.latest);
       const day = date(data.latestDate);
       usdKrwLatest = rate !== null && day !== null ? [day, rate] : null;
+      usdKrwLatestSource = typeof data.latestSource === 'string' ? data.latestSource : null;
     } else if (id.startsWith(PRICE_PREFIX)) {
       const latest = num(data.latest);
       prices.set(id.slice(PRICE_PREFIX.length), {
@@ -185,7 +187,7 @@ export function toMarketSnapshot(docs: readonly { id: string; data: Data }[]): M
     }
   }
   const usdKrw = new Map([...recent, ...checked]);
-  return { prices, usdKrw, usdKrwLatest };
+  return { prices, usdKrw, usdKrwLatest, usdKrwLatestSource };
 }
 
 /** 가장 최근 "최신가" 저장일 (웹 화면의 시세 기준 표시용). */

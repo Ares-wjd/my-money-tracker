@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { today } from '../core/dates';
 import { summarizeSavings, type SavingsSummary } from '../core/goals';
-import { currentPrice, dailyChangeRate, latestUsdKrw, tradeUsdKrw } from '../core/market';
+import { currentPrice, dailyChangeRate, latestUsdKrw, latestUsdKrwSourceLabel, tradeUsdKrw } from '../core/market';
 import { compareRecords, krwHoldingView, summarize, type DisplayCurrency, type HoldingSort, type HoldingValuation, type KrwHoldingView, type PortfolioSummary } from '../core/portfolio';
 import { linkedAccountIds, type Holding, type InvestmentAccount, type Record } from '../model';
 import type { RecordLookup } from '../records/recordText';
@@ -16,6 +16,8 @@ export interface AppData extends UserData {
   /** 계산에 쓰는 환율: 폰이 저장한 최신 환율, 없으면 직접 입력한 환율 */
   usdKrw: number | null;
   usdKrwDate: string | null;
+  /** 환율 출처 표시 ('한투' / '수출입은행', 과거 목록 값이면 null) */
+  usdKrwSource: string | null;
   quoteDate: string | null;
   linked: Set<string>;
   lookup: RecordLookup;
@@ -89,6 +91,7 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       ),
       usdKrw,
       usdKrwDate: fx?.[0] ?? null,
+      usdKrwSource: fx ? latestUsdKrwSourceLabel(raw.market) : null,
       quoteDate: latestQuoteDate(raw.market),
       linked: linkedAccountIds(raw.records),
       lookup: { holding: (id) => holdingById.get(id), account: (id) => accountById.get(id) },

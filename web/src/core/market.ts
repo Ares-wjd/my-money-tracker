@@ -28,6 +28,17 @@ function sortedDates(map: Map<string, number>): string[] {
 }
 
 /** 가장 최근 환율 [날짜, 환율] (0 이하는 "그날 데이터 없음" 표시라 건너뛴다). 오늘 받은 환율이 더 최근이면 그것. */
+/** 환율 출처 표시 글 (core FxRules.sourceLabel 과 같음). */
+export const fxSourceLabel = (source: string | null | undefined): string | null =>
+  source === 'KIS' ? '한투' : source === 'EXIM' ? '수출입은행' : null;
+
+/** 가장 최근 환율의 출처 표시 글 (오늘 받은 환율일 때만, 과거 목록 값이면 null). */
+export function latestUsdKrwSourceLabel(snapshot: MarketSnapshot): string | null {
+  const latest = latestUsdKrw(snapshot);
+  const today = snapshot.usdKrwLatest;
+  return latest !== null && today && latest[0] === today[0] && latest[1] === today[1] ? fxSourceLabel(snapshot.usdKrwLatestSource) : null;
+}
+
 export function latestUsdKrw(snapshot: MarketSnapshot): [string, number] | null {
   let past: [string, number] | null = null;
   const dates = sortedDates(snapshot.usdKrw);

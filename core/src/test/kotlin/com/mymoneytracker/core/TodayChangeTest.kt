@@ -119,7 +119,7 @@ class TodayChangeTest {
 
     @Test
     fun noFxEffectBeforeTodaysRate() {
-        // 오늘 환율 발표 전 (최신 환율이 어제 것) → 환율 효과 0
+        // 오늘 환율이 없으면 (최신 환율이 어제 것) → 환율 효과 0
         val early = snapshot.copy(usdKrwLatest = null)
         val t = TodayChangeCalculator.calculate(summary(early), early, today)!!
         assertEquals(0.0, t.fxKrw, 1e-9)

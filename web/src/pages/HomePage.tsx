@@ -41,7 +41,7 @@ export function HomePage() {
         <span className="hero-foot">
           {[
             data.usdKrw !== null &&
-              `환율 ${decimal(data.usdKrw, 2)}원` + (data.usdKrwDate ? ` (${formatShortDate(data.usdKrwDate)})` : ' (직접 입력)'),
+              `환율 ${decimal(data.usdKrw, 2)}원` + (data.usdKrwDate ? ` (${[formatShortDate(data.usdKrwDate), data.usdKrwSource].filter(Boolean).join(' · ')})` : ' (직접 입력)'),
             data.quoteDate && `시세 ${formatShortDate(data.quoteDate)} 기준 (폰 앱이 저장한 값)`,
           ]
             .filter(Boolean)
