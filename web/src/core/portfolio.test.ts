@@ -1,7 +1,7 @@
 // core PortfolioCalculatorTest · DisplayCurrencyTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
 import type { Record, RecordType } from '../model';
-import { convert, cumulativeInvested, displayConversion, krwHoldingView, position, quantityAt, sortHoldings, summarize } from './portfolio';
+import { convert, cumulativeInvested, displayConversion, krwHoldingView, noRateReason, position, quantityAt, sortHoldings, summarize } from './portfolio';
 import { account, holding, record } from './testData';
 
 const day1 = '2026-01-02';
@@ -265,5 +265,19 @@ describe('보유 종목 정렬 (HoldingSortTest)', () => {
     ];
     expect(Object.fromEntries(cumulativeInvested('kr', records))).toEqual({ d1: 1_000_000, t1: 700_000, d2: 750_000, w1: 650_000 });
     expect(Object.fromEntries(cumulativeInvested('us', records))).toEqual({ t1: 300_000 });
+  });
+
+  it('수익률을 계산할 수 없는 이유 (noRateReason)', () => {
+    const deposit = record({ id: 'd', accountId: 'a', type: 'DEPOSIT', date: day1, amount: 100, krwAmount: 100, createdAt: 1 });
+    const outAll = record({ id: 't', accountId: 'a', type: 'TRANSFER', date: day2, toAccountId: 'b', amount: 100, krwAmount: 100, createdAt: 2 });
+    const outMore = { ...outAll, id: 't2', amount: 150, krwAmount: 150 };
+    expect(noRateReason('a', 100, [deposit])).toBeNull();
+    expect(noRateReason('a', 0, [])).toBe('NO_DEPOSIT');
+    expect(noRateReason('a', 0, [deposit, outAll])).toBe('BALANCED');
+    expect(noRateReason('a', -50, [deposit, outMore])).toBe('NEGATIVE');
+    // 다른 계좌에서 받은 이체만 있어도 들어온 기록 (받은 계좌 b 는 이체가 +)
+    expect(noRateReason('b', 0, [outAll])).toBe('BALANCED');
+    // 나가기만 했으면 들어온 기록 없음
+    expect(noRateReason('a', -100, [outAll])).toBe('NO_DEPOSIT');
   });
 });

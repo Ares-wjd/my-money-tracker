@@ -192,7 +192,7 @@ private fun HoldingDetailContent(
                 }
                 if (missingTradeFx) {
                     Text(
-                        "매매일 환율이 아직 없어 오늘 환율로 단순 환산했습니다 (환율 인증키가 있으면 자동으로 받아 옵니다).",
+                        "매매일 환율이 아직 없어 오늘 환율로 단순 환산했습니다 (한투가 연결되어 있으면 자동으로 받아 옵니다).",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }

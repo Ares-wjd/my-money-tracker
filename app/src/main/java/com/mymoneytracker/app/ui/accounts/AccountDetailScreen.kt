@@ -287,14 +287,17 @@ private fun AccountDetailContent(
                     StatTile("수익률", MoneyFormat.rate(summary.returnRate), Modifier.weight(0.8f), valueColor = profitColor(summary.returnRate))
                 }
                 if (summary.returnRate == null) {
-                    // 투자금(입금 기록)이 없으면 수익률을 계산할 수 없다 → 이유와 바로가기
+                    // 투자금이 0원 이하면 수익률을 계산할 수 없다 → 이유 (입금 기록이 없을 때만 바로가기)
+                    val reason = PortfolioCalculator.noRateReason(accountId, summary.investedKrw, allRecords)
                     Text(
-                        "입금 기록이 없어 수익률을 계산할 수 없어요 · 누적 배당 ${MoneyFormat.won(summary.dividendsKrw)}",
+                        "${noRateText(reason)} · 누적 배당 ${MoneyFormat.won(summary.dividendsKrw)}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp),
                     )
-                    TextButton(onClick = { onAddRecord(RecordType.DEPOSIT) }, contentPadding = PaddingValues(0.dp)) { Text("입금 기록하기") }
+                    if (reason == PortfolioCalculator.NoRateReason.NO_DEPOSIT) {
+                        TextButton(onClick = { onAddRecord(RecordType.DEPOSIT) }, contentPadding = PaddingValues(0.dp)) { Text("입금 기록하기") }
+                    }
                 } else {
                     Text(
                         "배당 미포함 ${MoneyFormat.rate(summary.returnRateExDividends)} · 누적 배당 ${MoneyFormat.won(summary.dividendsKrw)}",
@@ -628,4 +631,11 @@ private fun cashBasis(detail: CashDetail?, currency: Currency, withLabel: Boolea
         !detail.estimated -> "${formatDate(date)} 입력한 값"
         else -> "${formatDate(date)} 입력 ${amount(anchor)} + 이후 기록 ${signed(detail.change)} (계산)"
     }
+}
+
+/** 수익률을 계산할 수 없는 이유 안내 (웹 AccountDetailPage 와 같은 문구). */
+private fun noRateText(reason: PortfolioCalculator.NoRateReason?): String = when (reason) {
+    PortfolioCalculator.NoRateReason.BALANCED -> "넣은 돈과 뺀 돈(출금·이체)이 같아 투자금이 0원이라 수익률을 계산할 수 없어요"
+    PortfolioCalculator.NoRateReason.NEGATIVE -> "넣은 돈보다 뺀 돈(출금·이체)이 많아 투자금이 0원 이하라 수익률을 계산할 수 없어요"
+    else -> "입금 기록이 없어 수익률을 계산할 수 없어요"
 }

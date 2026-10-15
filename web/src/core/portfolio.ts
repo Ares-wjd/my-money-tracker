@@ -91,6 +91,16 @@ export function investedDelta(r: Record, accountId: string): number | null {
   return null;
 }
 
+/** 수익률을 계산할 수 없는 이유 (core NoRateReason 과 같은 규칙). */
+export type NoRateReason = 'NO_DEPOSIT' | 'BALANCED' | 'NEGATIVE';
+
+/** investedKrw 가 0원 이하일 때 그 이유: 들어온 기록(입금·다른 계좌에서 온 이체)이 없음 / 들어온 돈 = 나간 돈 / 나간 돈이 더 많음. 0원보다 크면 null. */
+export function noRateReason(accountId: string, investedKrw: number, records: readonly Record[]): NoRateReason | null {
+  if (investedKrw > 0) return null;
+  if (!records.some((r) => (investedDelta(r, accountId) ?? 0) > 0)) return 'NO_DEPOSIT';
+  return investedKrw < -0.5 ? 'NEGATIVE' : 'BALANCED';
+}
+
 /** 입금·출금·이체 기록 id → 그 기록까지 반영한 이 계좌의 누적 투자금 (날짜순·입력순). */
 export function cumulativeInvested(accountId: string, records: readonly Record[]): Map<string, number> {
   const out = new Map<string, number>();

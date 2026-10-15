@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatDate } from '../core/dates';
 import { amount, decimal, rate as formatRate, signedWon, usd, won } from '../core/format';
-import { HOLDING_SORTS, HOLDING_SORT_LABEL, convert, cumulativeInvested, displayConversion, sortHoldings, type HoldingValuation } from '../core/portfolio';
+import { HOLDING_SORTS, HOLDING_SORT_LABEL, convert, cumulativeInvested, displayConversion, noRateReason, sortHoldings, type HoldingValuation, type NoRateReason } from '../core/portfolio';
 import { useAppData, useData } from '../data/DataContext';
 import { Card, CurrencyToggle, ListLink, NotFound, Row, Stat, TickerBadge, TickerLegend, Warning, profitClass, tickerGroup } from '../components/ui';
 import { ASSET_TYPE_LABEL, RECORD_TYPE_LABEL, marketCurrency, type Currency, type Record, type RecordType } from '../model';
@@ -16,6 +16,13 @@ import { accountDescription } from './text';
 import { allShown, applyRecordFilter, presentTypes, recordFilterLabel, toggleAll, toggleType } from '../core/recordFilter';
 
 const PAGE = 30;
+
+/** 수익률을 계산할 수 없는 이유 안내 (폰 AccountDetailScreen 과 같은 문구). */
+const NO_RATE_TEXT: { [K in NoRateReason]: string } = {
+  NO_DEPOSIT: '입금 기록이 없어 수익률을 계산할 수 없어요',
+  BALANCED: '넣은 돈과 뺀 돈(출금·이체)이 같아 투자금이 0원이라 수익률을 계산할 수 없어요',
+  NEGATIVE: '넣은 돈보다 뺀 돈(출금·이체)이 많아 투자금이 0원 이하라 수익률을 계산할 수 없어요',
+};
 
 type Dialog =
   | { kind: 'account' }
@@ -44,6 +51,8 @@ export function AccountDetailPage() {
   const allRecords = data.recordsOf(accountId);
   // 입금·출금·이체 기록마다 그 기록까지의 누적 투자금 (걸러 봐도 전체 기록 기준)
   const cumulative = cumulativeInvested(accountId, allRecords);
+  // 수익률을 계산할 수 없을 때 그 이유
+  const noRate = noRateReason(accountId, summary.investedKrw, allRecords);
   const hidden = hiddenByAccount[accountId] ?? readHidden(accountId);
   const setHidden = (next: Set<RecordType>) => {
     setHiddenByAccount({ ...hiddenByAccount, [accountId]: next });
@@ -118,8 +127,10 @@ export function AccountDetailPage() {
         </div>
         {summary.returnRate === null ? (
           <p className="muted sub-line">
-            입금 기록이 없어 수익률을 계산할 수 없어요.{' '}
-            <button className="text-button inline" onClick={() => setDialog({ kind: 'record', type: 'DEPOSIT', existing: null })}>입금 기록하기</button>
+            {NO_RATE_TEXT[noRate ?? 'NO_DEPOSIT']}.{' '}
+            {noRate === 'NO_DEPOSIT' && (
+              <button className="text-button inline" onClick={() => setDialog({ kind: 'record', type: 'DEPOSIT', existing: null })}>입금 기록하기</button>
+            )}
             {' · '}누적 배당 {won(summary.dividendsKrw)}
           </p>
         ) : (

@@ -146,6 +146,17 @@ object PortfolioCalculator {
         else -> null
     }
 
+    /** 수익률을 계산할 수 없는 이유 (웹 noRateReason 과 같은 규칙). 투자금이 0원보다 크면 null. */
+    enum class NoRateReason { NO_DEPOSIT, BALANCED, NEGATIVE }
+
+    /** [investedKrw] 가 0원 이하일 때 그 이유: 들어온 기록(입금·다른 계좌에서 온 이체)이 없음 / 들어온 돈 = 나간 돈 / 나간 돈이 더 많음. */
+    fun noRateReason(accountId: String, investedKrw: Double, records: List<Record>): NoRateReason? = when {
+        investedKrw > 0 -> null
+        records.none { (investedDelta(it, accountId) ?: 0.0) > 0 } -> NoRateReason.NO_DEPOSIT
+        investedKrw < -0.5 -> NoRateReason.NEGATIVE
+        else -> NoRateReason.BALANCED
+    }
+
     /** 입금·출금·이체 기록 id → 그 기록까지 반영한 이 계좌의 누적 투자금 (날짜순·입력순). */
     fun cumulativeInvested(accountId: String, records: List<Record>): Map<String, Double> {
         var total = 0.0

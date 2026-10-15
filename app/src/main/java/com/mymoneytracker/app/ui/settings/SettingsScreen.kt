@@ -282,11 +282,10 @@ private fun KisLinkCard(
 @Composable
 private fun EximCard(status: ApiStatus, viewModel: PortfolioViewModel) {
     var key by rememberSaveable { mutableStateOf("") }
-    SectionCard(title = "수출입은행 환율 API") {
+    SectionCard(title = "수출입은행 환율 API (예비용 · 없어도 됨)") {
         Text(
-            "환율은 한국투자증권 원/달러가 기본이고, 한투가 연결되지 않았거나 조회에 실패했을 때와 2011년 6월 이전 날짜에만 " +
-                "수출입은행 매매기준율(전 영업일 평균이라 하루 늦음)을 씁니다. 인증키는 이 기기에만 암호화해 저장됩니다. " +
-                "인증키는 2년마다 재동의(이메일 안내)가 필요합니다.",
+            "환율은 한국투자증권 원/달러를 씁니다. 이 키는 한투가 연결되지 않았거나 조회에 실패할 때, 2011년 6월 이전 날짜에만 " +
+                "쓰는 예비용이라 입력하지 않아도 됩니다. 인증키는 이 기기에만 암호화해 저장되며 2년마다 재동의(이메일 안내)가 필요합니다.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

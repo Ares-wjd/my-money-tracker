@@ -63,6 +63,23 @@ class PortfolioCalculatorTest {
     }
 
     @Test
+    fun noRateReason() {
+        // 웹 portfolio.test.ts 와 같은 케이스
+        val deposit = Record(id = "d", accountId = "a", type = RecordType.DEPOSIT, date = day1, amount = 100.0, krwAmount = 100.0, createdAt = 1)
+        val outAll = Record(id = "t", accountId = "a", type = RecordType.TRANSFER, date = day2, toAccountId = "b", amount = 100.0, krwAmount = 100.0, createdAt = 2)
+        val outMore = outAll.copy(id = "t2", amount = 150.0, krwAmount = 150.0)
+        val r = PortfolioCalculator
+        assertNull(r.noRateReason("a", 100.0, listOf(deposit)))
+        assertEquals(PortfolioCalculator.NoRateReason.NO_DEPOSIT, r.noRateReason("a", 0.0, emptyList()))
+        assertEquals(PortfolioCalculator.NoRateReason.BALANCED, r.noRateReason("a", 0.0, listOf(deposit, outAll)))
+        assertEquals(PortfolioCalculator.NoRateReason.NEGATIVE, r.noRateReason("a", -50.0, listOf(deposit, outMore)))
+        // 다른 계좌에서 받은 이체만 있어도 들어온 기록 (받은 계좌 b 는 이체가 +)
+        assertEquals(PortfolioCalculator.NoRateReason.BALANCED, r.noRateReason("b", 0.0, listOf(outAll)))
+        // 나가기만 했으면 들어온 기록 없음
+        assertEquals(PortfolioCalculator.NoRateReason.NO_DEPOSIT, r.noRateReason("a", -100.0, listOf(outAll)))
+    }
+
+    @Test
     fun movingAverageAndRealizedProfit() {
         val records = listOf(
             rec("kr", RecordType.BUY, day1, holding = "s", qty = 10.0, price = 70_000.0, fee = 100.0),
