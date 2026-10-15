@@ -19,14 +19,14 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -45,7 +45,7 @@ jobs:
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch && vars.FIREBASE_WEB_CONFIG != ''
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: web/dist
 
@@ -53,7 +53,7 @@ jobs:
   deploy:
     needs: build
     if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch && vars.FIREBASE_WEB_CONFIG != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       pages: write
       id-token: write
