@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatDate } from '../core/dates';
 import { amount, decimal, rate as formatRate, signedWon, usd, won } from '../core/format';
@@ -13,6 +13,7 @@ import { HoldingForm } from '../forms/HoldingForm';
 import { RecordForm } from '../forms/RecordForm';
 import { AddRecordMenu, RecordRow } from '../records/RecordList';
 import { accountDescription, shortSellLabel } from './text';
+import { periodLine, usePeriodSeries } from './periodData';
 import { allShown, applyRecordFilter, presentTypes, recordFilterLabel, toggleAll, toggleType } from '../core/recordFilter';
 
 const PAGE = 30;
@@ -43,6 +44,9 @@ export function AccountDetailPage() {
   const [showSoldOut, setShowSoldOut] = useState(false);
   // 기록 유형 필터 (기본은 전부 보임, 이 브라우저에 계좌마다 기억)
   const [hiddenByAccount, setHiddenByAccount] = useState<{ [id: string]: Set<RecordType> }>({});
+  // 이 계좌의 올해·연평균 수익률 (그래프 일별 값으로 계산, 계산 중이면 빈 글)
+  const accountIds = useMemo(() => new Set([accountId]), [accountId]);
+  const period = periodLine(usePeriodSeries(data, accountIds));
   const navigate = useNavigate();
   const summary = data.summary.accounts.find((a) => a.account.id === accountId);
   if (!summary) return <NotFound what="계좌" />;
@@ -141,6 +145,7 @@ export function AccountDetailPage() {
             배당 미포함 {formatRate(summary.returnRateExDividends)} · 누적 배당 {won(summary.dividendsKrw)}
           </p>
         )}
+        {period && <Link to="/period" className="sub-line period-line">{period} ›</Link>}
         {summary.missingFx && <Warning>환율이 없어 달러 금액이 원화 합계에서 빠져 있습니다.</Warning>}
         {summary.missingPrice && <Warning>현재가가 없는 종목이 있습니다.</Warning>}
       </Card>

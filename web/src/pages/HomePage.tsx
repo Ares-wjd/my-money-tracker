@@ -8,11 +8,13 @@ import { Badge, Card, ListLink, Stat, Warning, profitClass } from '../components
 import { ACCOUNT_KIND_SHORT } from '../model';
 import { accountDescription } from './text';
 import { accountOrderOf, todayBasis, useTodayChange } from './todayData';
+import { periodLine, usePeriodSeries } from './periodData';
 
 export function HomePage() {
   const data = useAppData();
   const { summary } = data;
   const change = useTodayChange(data);
+  const period = periodLine(usePeriodSeries(data));
 
   if (data.accounts.length === 0) {
     return (
@@ -32,6 +34,7 @@ export function HomePage() {
           {signedWon(summary.profitKrw)}
           {summary.returnRate !== null && ` · ${rate(summary.returnRate)}`}
         </span>
+        {period && <Link to="/period" className="hero-period">{period} ›</Link>}
         <div className="stats">
           <Stat label="투자금" value={won(summary.investedKrw)} />
           <Stat label="수익금 (배당 미포함)" value={signedWon(summary.profitExDividendsKrw)} />

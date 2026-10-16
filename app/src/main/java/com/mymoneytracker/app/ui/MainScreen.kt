@@ -57,6 +57,7 @@ import com.mymoneytracker.app.ui.goals.SavingsAccountEditScreen
 import com.mymoneytracker.app.ui.holdings.HoldingDetailScreen
 import com.mymoneytracker.app.ui.holdings.HoldingEditScreen
 import com.mymoneytracker.app.ui.home.HomeScreen
+import com.mymoneytracker.app.ui.home.PeriodScreen
 import com.mymoneytracker.app.ui.home.TodayChangeScreen
 import com.mymoneytracker.app.ui.records.CashBalanceScreen
 import com.mymoneytracker.app.ui.records.RecordEditScreen
@@ -86,6 +87,7 @@ private object Routes {
     const val GOAL_EDIT = "goal-edit/{savingsId}?goalId={goalId}"
     const val ALLOCATION_EDIT = "allocation-edit?targetId={targetId}"
     const val TODAY = "today"
+    const val PERIOD = "period"
 
     fun accountDetail(id: String) = "account/$id"
     fun accountEdit(id: String? = null) = if (id == null) "account-edit" else "account-edit?accountId=$id"
@@ -211,7 +213,11 @@ fun MainScreen(
                     onAddAccount = { navController.navigate(Routes.accountEdit()) },
                     onOpenSettings = { navController.navigateToTab(Routes.SETTINGS) },
                     onOpenToday = { navController.navigate(Routes.TODAY) },
+                    onOpenPeriod = { navController.navigate(Routes.PERIOD) },
                 )
+            }
+            composable(Routes.PERIOD) {
+                PeriodScreen(viewModel = portfolioViewModel, onBack = { navController.popBackStack() })
             }
             composable(Routes.TODAY) {
                 TodayChangeScreen(
@@ -331,6 +337,7 @@ fun MainScreen(
                     onEnterCash = { navController.navigate(Routes.cashBalance(accountId)) },
                     onOpenSettings = { navController.navigateToTab(Routes.SETTINGS) },
                     onImportTrades = { navController.navigate(Routes.tradeImport(accountId)) },
+                    onOpenPeriod = { navController.navigate(Routes.PERIOD) },
                 )
             }
             composable(Routes.TRADE_IMPORT) { entry ->

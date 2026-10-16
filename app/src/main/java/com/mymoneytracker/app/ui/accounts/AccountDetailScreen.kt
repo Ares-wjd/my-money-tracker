@@ -1,22 +1,11 @@
 package com.mymoneytracker.app.ui.accounts
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import com.mymoneytracker.app.ui.common.fabContainerColor
-import com.mymoneytracker.app.ui.common.fabContentColor
-import com.mymoneytracker.app.ui.common.TopBarTitle
-import com.mymoneytracker.core.portfolio.HoldingValuation
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,11 +13,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,12 +36,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.ApiStatus
@@ -64,11 +60,15 @@ import com.mymoneytracker.app.ui.common.SegmentedPills
 import com.mymoneytracker.app.ui.common.StatTile
 import com.mymoneytracker.app.ui.common.TickerBadge
 import com.mymoneytracker.app.ui.common.TickerLegend
-import com.mymoneytracker.app.ui.common.tickerGroup
+import com.mymoneytracker.app.ui.common.TopBarTitle
 import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.app.ui.common.accountDescription
+import com.mymoneytracker.app.ui.common.fabContainerColor
+import com.mymoneytracker.app.ui.common.fabContentColor
 import com.mymoneytracker.app.ui.common.formatDate
 import com.mymoneytracker.app.ui.common.profitColor
+import com.mymoneytracker.app.ui.common.tickerGroup
+import com.mymoneytracker.app.ui.home.periodLine
 import com.mymoneytracker.app.ui.records.recordAmountText
 import com.mymoneytracker.app.ui.records.recordDetailText
 import com.mymoneytracker.app.ui.records.recordTitle
@@ -82,6 +82,7 @@ import com.mymoneytracker.core.portfolio.DisplayConversion
 import com.mymoneytracker.core.portfolio.DisplayCurrency
 import com.mymoneytracker.core.portfolio.HoldingSort
 import com.mymoneytracker.core.portfolio.HoldingSorter
+import com.mymoneytracker.core.portfolio.HoldingValuation
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.RecordFilter
 
@@ -110,8 +111,10 @@ fun AccountDetailScreen(
     onEnterCash: () -> Unit,
     onOpenSettings: () -> Unit,
     onImportTrades: () -> Unit,
+    onOpenPeriod: () -> Unit = {},
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
+    val stored by viewModel.storedCharts.collectAsStateWithLifecycle()
     val apiStatus by viewModel.apiStatus.collectAsStateWithLifecycle()
     val syncing by viewModel.syncing.collectAsStateWithLifecycle()
     val refresh by viewModel.refresh.collectAsStateWithLifecycle()
@@ -204,6 +207,9 @@ fun AccountDetailScreen(
                 hiddenTypes = recordHidden[accountId].orEmpty(),
                 onHiddenTypesChange = { viewModel.setRecordHidden(accountId, it) },
                 listState = listState,
+                // 이 계좌의 올해·연평균 수익률 (그래프 일별 값으로 계산, 계산 중이면 빈 글)
+                periodText = remember(current, stored, accountId) { periodLine(current, stored, setOf(accountId)) },
+                onOpenPeriod = onOpenPeriod,
             )
         }
     }
@@ -233,6 +239,8 @@ private fun AccountDetailContent(
     hiddenTypes: Set<RecordType>,
     onHiddenTypesChange: (Set<RecordType>) -> Unit,
     listState: LazyListState,
+    periodText: String = "",
+    onOpenPeriod: () -> Unit = {},
 ) {
     val accountId = summary.account.id
     val allRecords = data.recordsOf(accountId)
@@ -308,6 +316,14 @@ private fun AccountDetailContent(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+                if (periodText.isNotEmpty()) {
+                    Text(
+                        "$periodText ›",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp).clickable(onClick = onOpenPeriod),
                     )
                 }
                 if (summary.missingFx) WarningText("환율이 없어 달러 금액이 원화 합계에서 빠져 있습니다. 설정에서 환율을 입력하세요.")

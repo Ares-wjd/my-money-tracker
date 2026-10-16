@@ -299,8 +299,8 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     private var historyJob: Job? = null
     private var historyCheckedAt = 0L
 
-    /** 미리 계산해 저장한 그래프 일별 값 (계좌 id → 값). null 이면 아직 읽기 전. */
-    private val storedCharts: StateFlow<Map<String, StoredChart>?> = chartRepository.stored()
+    /** 미리 계산해 저장한 그래프 일별 값 (계좌 id → 값). null 이면 아직 읽기 전. 기간별 수익 계산에도 쓴다. */
+    val storedCharts: StateFlow<Map<String, StoredChart>?> = chartRepository.stored()
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val _chartComputing = MutableStateFlow(false)
     /** 그래프 일별 값을 계산하는 중 (설정의 [그래프 전체 다시 계산] 표시용). */

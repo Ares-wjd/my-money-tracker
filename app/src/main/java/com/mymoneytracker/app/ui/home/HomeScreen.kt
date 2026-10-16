@@ -1,5 +1,6 @@
 package com.mymoneytracker.app.ui.home
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -58,6 +60,7 @@ fun HomeScreen(
     onAddAccount: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenToday: () -> Unit,
+    onOpenPeriod: () -> Unit,
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     val todayChange by viewModel.todayChange.collectAsStateWithLifecycle()
@@ -102,6 +105,7 @@ fun HomeScreen(
                 onOpenSettings = onOpenSettings,
                 todayChange = todayChange,
                 onOpenToday = onOpenToday,
+                onOpenPeriod = onOpenPeriod,
             )
         }
     }
@@ -120,8 +124,12 @@ private fun HomeContent(
     onOpenSettings: () -> Unit,
     todayChange: TodayChange?,
     onOpenToday: () -> Unit,
+    onOpenPeriod: () -> Unit,
 ) {
     val summary = current.summary
+    // 올해·연평균 수익률 (그래프 일별 값으로 계산, 계산 중이면 숨김)
+    val stored by viewModel.storedCharts.collectAsStateWithLifecycle()
+    val periodText = remember(current, stored) { periodLine(current, stored, null) }
     LazyColumn(
         modifier = Modifier.padding(padding),
         contentPadding = PaddingValues(16.dp),
@@ -168,6 +176,13 @@ private fun HomeContent(
                     MoneyFormat.signedWon(summary.profitKrw) + (summary.returnRate?.let { " · " + MoneyFormat.rate(it) } ?: ""),
                     summary.profitKrw,
                 )
+                if (periodText.isNotEmpty()) {
+                    Text(
+                        "$periodText ›",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 8.dp).clickable(onClick = onOpenPeriod),
+                    )
+                }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatTile("투자금", MoneyFormat.won(summary.investedKrw), Modifier.weight(1f), onHero = true)
                     StatTile("배당 미포함", MoneyFormat.rate(summary.returnRateExDividends), Modifier.weight(1f), onHero = true)
