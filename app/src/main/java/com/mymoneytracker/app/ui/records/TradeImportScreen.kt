@@ -178,7 +178,8 @@ fun TradeImportScreen(
                 // 수량 단위 (금현물은 g)
                 val unit = row.holding?.assetType?.unit
                     ?: analysis.newHoldings.firstOrNull { it.key == row.newKey }?.assetType?.unit ?: "주"
-                RowView(row.status, statusText(row, unit))
+                val warning = row.warning.takeIf { row.status == TradeImport.Status.OK }
+                RowView(row.status, statusText(row, unit) + (warning?.let { "\n$it" } ?: ""), warning = warning != null)
             }
             ImportKind.CASH -> cashRows.map { row ->
                 RowView(
@@ -334,6 +335,15 @@ fun TradeImportScreen(
                                 (if (errors.size > 10) " 외 ${errors.size - 10}줄" else "") + " — 고치거나 줄을 빼세요.",
                         )
                         count == 0 -> WarningText("저장할 줄이 없습니다. 표에 붙여 넣거나 입력하세요.")
+                    }
+                    if (kind == ImportKind.TRADE && views.any { it.warning }) {
+                        WarningText("보유 수량이 모자란 매도 줄이 있습니다. 저장은 되지만 그 매도는 계산되지 않습니다 — 같은 날 매수 줄을 위로 옮기세요.")
+                    }
+                    if (kind == ImportKind.TRADE && analysis.brokenSells.isNotEmpty()) {
+                        WarningText(
+                            "저장하면 아래 기존 매도가 보유 수량이 모자라 계산되지 않습니다: " +
+                                analysis.brokenSells.joinToString(", ") { s -> shortSellLabel(s, current.holdings.firstOrNull { it.id == s.record.holdingId }) },
+                        )
                     }
                     Button(
                         onClick = {

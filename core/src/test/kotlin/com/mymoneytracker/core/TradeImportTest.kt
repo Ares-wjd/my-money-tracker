@@ -130,8 +130,35 @@ class TradeImportTest {
         assertEquals("종목명이나 종목코드 필요", r[2].error)
         assertEquals("수량 확인 (매수 +, 매도 −)", r[3].error)
         assertEquals(Status.DUPLICATE, r[4].status) // 이미 있는 기록과 같음
-        assertEquals(Status.ERROR, r[5].status) // 10주 보유 + 다른 매도 10주 → 11주 매도 불가
-        assertEquals(Status.ERROR, r[6].status) // 다른 줄의 11주 매도까지 합치면 부족
+        // 매도는 계산 순서로 그 줄 시점 보유 수량이 모자라면 경고만 하고 저장 (v2.8)
+        assertEquals(Status.OK, r[5].status)
+        assertTrue(r[5].warning!!.startsWith("이 줄 시점 보유 수량(10)")) // 10주 보유 → 11주 매도
+        assertTrue(r[6].warning!!.startsWith("이 줄 시점 보유 수량(0)")) // 앞 줄이 다 팔아 남은 것이 없음
+    }
+
+    @Test
+    fun sellWarningFollowsRowOrder() {
+        // 웹 tradeImport.test.ts 와 같은 케이스: 같은 날 매도 줄이 매수 줄보다 위면 경고, 아래면 정상
+        val sellFirst = TradeImport.analyze(
+            grid("2026-10-07\t매도\t삼성전자\t005930\t80000\t-2\t", "2026-10-07\t매수\t삼성전자\t005930\t80000\t2\t"),
+            "a", holdings, all, emptyList(),
+        ).rows
+        assertTrue(sellFirst[0].warning != null)
+        assertEquals(Status.OK, sellFirst[0].status)
+        assertEquals(null, sellFirst[1].warning)
+        val buyFirst = TradeImport.analyze(
+            grid("2026-10-07\t매수\t삼성전자\t005930\t80000\t2\t", "2026-10-07\t매도\t삼성전자\t005930\t80000\t-2\t"),
+            "a", holdings, all, emptyList(),
+        ).rows
+        assertTrue(buyFirst.all { it.warning == null })
+        // 표의 매도 때문에 뒤의 기존 매도가 계산되지 않게 되면 brokenSells
+        val laterSell = buy.copy(id = "s9", type = RecordType.SELL, date = LocalDate.of(2026, 10, 20), quantity = 10.0, createdAt = 9)
+        val broken = TradeImport.analyze(
+            grid("2026-10-07\t매도\t삼성전자\t005930\t80000\t-5\t"),
+            "a", holdings, all, listOf(buy, laterSell),
+        )
+        assertEquals(null, broken.rows[0].warning)
+        assertEquals(listOf("s9"), broken.brokenSells.map { it.record.id })
     }
 
     @Test

@@ -63,6 +63,37 @@ class PortfolioCalculatorTest {
     }
 
     @Test
+    fun shortSellsInCalculationOrder() {
+        // 웹 portfolio.test.ts 와 같은 케이스
+        val d = LocalDate.of(2026, 10, 7)
+        fun trade(id: String, type: RecordType, qty: Double, created: Long, date: LocalDate = d) =
+            Record(id = id, accountId = "a", type = type, date = date, holdingId = "s", quantity = qty, price = 100.0, createdAt = created)
+        val r = PortfolioCalculator
+        // 같은 날 매도(먼저 입력) → 매수: 매도 시점 보유 0주
+        val sellFirst = listOf(trade("s1", RecordType.SELL, 2.0, 1), trade("b1", RecordType.BUY, 2.0, 2))
+        assertEquals(listOf("s1" to 0.0), r.shortSells(sellFirst).map { it.record.id to it.held })
+        // 매수 → 매도: 정상
+        assertTrue(r.shortSells(listOf(trade("b1", RecordType.BUY, 2.0, 1), trade("s1", RecordType.SELL, 2.0, 2))).isEmpty())
+        // 전날 2주 보유 + 같은 날 매도 → 매수: 매도 시점 2주라 정상
+        val held = listOf(trade("b0", RecordType.BUY, 2.0, 1, d.minusDays(1))) + sellFirst.map { it.copy(createdAt = it.createdAt + 1) }
+        assertTrue(r.shortSells(held).isEmpty())
+
+        // 단건 입력: 새 매도는 그날 맨 뒤 → 같은 날 매수 뒤에 들어간다
+        val newSell = trade("", RecordType.SELL, 2.0, 0)
+        assertEquals(2.0, r.quantityBefore("s", listOf(trade("b1", RecordType.BUY, 2.0, 5)), newSell), 1e-9)
+        // 수정: 먼저 입력된 매도는 같은 날 뒤 매수 앞 (자기 자신의 수정 전 값은 뺌)
+        assertEquals(0.0, r.quantityBefore("s", sellFirst, sellFirst[0].copy(quantity = 1.0)), 1e-9)
+
+        // 매수를 지우거나 매도 뒤로 옮기면 그 매도가 새로 계산되지 않음
+        val ok = listOf(trade("b1", RecordType.BUY, 2.0, 1), trade("s1", RecordType.SELL, 2.0, 2, d.plusDays(1)))
+        assertEquals(listOf("s1"), r.newlyShortSells(ok, ok[0], null).map { it.record.id })
+        assertEquals(listOf("s1"), r.newlyShortSells(ok, ok[0], ok[0].copy(date = d.plusDays(2))).map { it.record.id })
+        // 이미 계산되지 않던 매도는 다시 알리지 않고, 저장하는 기록 자신도 빼고 본다
+        assertTrue(r.newlyShortSells(sellFirst, sellFirst[1], sellFirst[1].copy(quantity = 1.0)).isEmpty())
+        assertTrue(r.newlyShortSells(ok, ok[1], ok[1].copy(quantity = 5.0)).isEmpty())
+    }
+
+    @Test
     fun noRateReason() {
         // 웹 portfolio.test.ts 와 같은 케이스
         val deposit = Record(id = "d", accountId = "a", type = RecordType.DEPOSIT, date = day1, amount = 100.0, krwAmount = 100.0, createdAt = 1)

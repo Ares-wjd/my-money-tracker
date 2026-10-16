@@ -263,6 +263,61 @@ object PortfolioCalculator {
         return Position(holding, quantity, average, realized, dividends, fees)
     }
 
+    /** 계산 순서상 그 시점 보유 수량([held])이 모자라 (전부 또는 일부) 계산되지 않는 매도 (웹 shortSells 와 같은 규칙). */
+    data class ShortSell(val record: Record, val held: Double)
+
+    /** 저장 전 기록(createdAt 0)은 같은 날 맨 뒤로 (저장하면 그 날 마지막 기록이 되므로). */
+    private val checkOrder: Comparator<Record> =
+        compareBy<Record>({ it.date }, { if (it.createdAt > 0) it.createdAt else Long.MAX_VALUE }, { it.id })
+
+    /**
+     * 계산 순서(날짜 → 입력 순서)대로 종목마다 보유 수량을 따라가며, 그 시점 보유 수량보다 많이 판 매도를 찾는다 (v2.8).
+     * 같은 날 매도가 먼저여도 그 시점에 잔고가 있으면 해당하지 않는다.
+     */
+    fun shortSells(records: List<Record>): List<ShortSell> {
+        val held = mutableMapOf<String, Double>()
+        val result = mutableListOf<ShortSell>()
+        for (r in records.sortedWith(checkOrder)) {
+            val id = r.holdingId ?: continue
+            when (r.type) {
+                RecordType.BUY -> held[id] = (held[id] ?: 0.0) + r.quantity
+                RecordType.SELL -> {
+                    val q = held[id] ?: 0.0
+                    if (r.quantity > q + EPSILON) result += ShortSell(r, q)
+                    held[id] = maxOf(0.0, q - r.quantity)
+                }
+                else -> Unit
+            }
+        }
+        return result
+    }
+
+    /** [target] 바로 앞(계산 순서)까지의 보유 수량. [target] 과 같은 id 의 기록(수정 전 값)은 뺀다. 단건 매도 입력 검사용. */
+    fun quantityBefore(holdingId: String, records: List<Record>, target: Record): Double {
+        var q = 0.0
+        val ordered = (records.filter { it.id != target.id || target.id.isEmpty() } + target).sortedWith(checkOrder)
+        for (r in ordered) {
+            if (r === target) break
+            if (r.holdingId != holdingId) continue
+            when (r.type) {
+                RecordType.BUY -> q += r.quantity
+                RecordType.SELL -> q = maxOf(0.0, q - r.quantity)
+                else -> Unit
+            }
+        }
+        return q
+    }
+
+    /**
+     * 기록 하나를 저장([after], 새 기록이면 [before] 는 null)하거나 지우면([after] null) 새로 계산되지 않게 되는 다른 매도들.
+     * 저장하는 기록 자신은 빼고 본다 (그 매도는 입력 검사에서 막는다).
+     */
+    fun newlyShortSells(records: List<Record>, before: Record?, after: Record?): List<ShortSell> {
+        val already = shortSells(records).map { it.record.id }.toSet()
+        val next = records.filter { before == null || it.id != before.id } + listOfNotNull(after)
+        return shortSells(next).filter { it.record.id !in already && (after == null || it.record !== after) }
+    }
+
     /** [date] 시점의 보유 수량 (매도 가능 수량 확인용). [excludeRecordId] 는 수정 중인 기록을 빼고 계산할 때 사용. */
     fun quantityAt(holding: Holding, records: List<Record>, date: LocalDate, excludeRecordId: String? = null): Double =
         position(

@@ -3,8 +3,10 @@ package com.mymoneytracker.app.ui.records
 import com.mymoneytracker.app.ui.PortfolioData
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.Currency
+import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.PortfolioCalculator
 
 /** 기록 목록에 보여줄 제목. [accountId] 는 지금 보고 있는 계좌 (이체 방향 표시용). */
 fun recordTitle(record: Record, data: PortfolioData, accountId: String): String {
@@ -67,4 +69,12 @@ fun recordDetailText(record: Record, data: PortfolioData): String? {
         }
         else -> record.memo.ifBlank { null }
     }
+}
+
+/** 계산되지 않는 매도 한 줄: "10.14 삼성전자 매도 2주 (그 시점 보유 0주)" (웹 shortSellLabel 과 같은 문구). */
+fun shortSellLabel(s: PortfolioCalculator.ShortSell, holding: Holding?): String {
+    val unit = holding?.assetType?.unit ?: "주"
+    val d = s.record.date
+    return "${d.monthValue}.${d.dayOfMonth} ${holding?.name ?: "종목"} 매도 ${MoneyFormat.decimal(s.record.quantity)}$unit " +
+        "(그 시점 보유 ${MoneyFormat.decimal(s.held)}$unit)"
 }

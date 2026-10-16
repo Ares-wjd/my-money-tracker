@@ -6,13 +6,14 @@ import type { Record, RecordType } from '../model';
 import { recordAmountText, recordDetailText, recordTitle } from './recordText';
 
 /** 기록 한 줄 (누르면 수정 창). cumulative 는 입출금·이체 기록의 누적 투자금. */
-export function RecordRow({ record, accountId, onClick, cumulative }: { record: Record; accountId: string; onClick: () => void; cumulative?: number }) {
+export function RecordRow({ record, accountId, onClick, cumulative, short = false }: { record: Record; accountId: string; onClick: () => void; cumulative?: number; short?: boolean }) {
   const data = useAppData();
   return (
     <button className="list-row record-row" onClick={onClick}>
       <span className="list-main">
         <span className="list-title">{recordTitle(record, data.lookup, accountId)}</span>
         <span className="list-sub">{[formatDate(record.date), recordDetailText(record, data.lookup)].filter(Boolean).join(' · ')}</span>
+        {short && <span className="list-sub short-sell-tag">⚠ 보유 수량 부족 · 계산 안 됨</span>}
       </span>
       <span className="list-end">
         <span className="list-value">{recordAmountText(record, data.lookup, accountId)}</span>

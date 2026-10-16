@@ -72,6 +72,7 @@ import com.mymoneytracker.app.ui.common.profitColor
 import com.mymoneytracker.app.ui.records.recordAmountText
 import com.mymoneytracker.app.ui.records.recordDetailText
 import com.mymoneytracker.app.ui.records.recordTitle
+import com.mymoneytracker.app.ui.records.shortSellLabel
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.RecordType
@@ -237,6 +238,9 @@ private fun AccountDetailContent(
     val allRecords = data.recordsOf(accountId)
     // 입금·출금·이체 기록마다 그 기록까지의 누적 투자금 (걸러 봐도 전체 기록 기준)
     val cumulativeInvested = remember(allRecords, accountId) { PortfolioCalculator.cumulativeInvested(accountId, allRecords) }
+    // 계산 순서상 보유 수량이 모자라 계산되지 않는 매도 (이 계좌)
+    val shorts = remember(allRecords, accountId) { PortfolioCalculator.shortSells(allRecords).filter { it.record.accountId == accountId } }
+    val shortIds = shorts.map { it.record.id }.toSet()
     // 기록 유형 필터 (기본은 전부 보임)
     val presentTypes = remember(allRecords) { RecordFilter.present(allRecords) }
     val records = RecordFilter.apply(allRecords, hiddenTypes)
@@ -432,6 +436,27 @@ private fun AccountDetailContent(
             }
         }
 
+        if (shorts.isNotEmpty()) {
+            item {
+                SectionCard(Modifier.padding(top = 12.dp)) {
+                    Text(
+                        "⚠ 계산되지 않는 매도 ${shorts.size}건",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Text(
+                        "그 매도 시점의 보유 수량이 모자랍니다. 같은 날이면 매수를 먼저 입력하세요. 누르면 그 기록을 엽니다.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    shorts.forEach { s ->
+                        TextButton(onClick = { onOpenRecord(s.record.id) }, contentPadding = PaddingValues(0.dp)) {
+                            Text(shortSellLabel(s, data.holdings.firstOrNull { it.id == s.record.holdingId }))
+                        }
+                    }
+                }
+            }
+        }
         item {
             Text(
                 if (filtered) "기록 ${records.size}건 / 전체 ${allRecords.size}건" else "기록",
@@ -489,6 +514,14 @@ private fun AccountDetailContent(
                             subValueColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             onClick = { onOpenRecord(record.id) },
                         )
+                        if (record.id in shortIds) {
+                            Text(
+                                "⚠ 보유 수량 부족 · 계산 안 됨",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 6.dp),
+                            )
+                        }
                     }
                     if (records.size > visibleRecords) {
                         TextButton(onClick = { visibleRecords += 30 }) { Text("기록 더 보기 (${records.size - visibleRecords}건 남음)") }

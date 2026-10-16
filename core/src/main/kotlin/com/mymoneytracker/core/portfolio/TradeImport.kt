@@ -106,6 +106,9 @@ object TradeImport {
 
     // ---------------------------------------------------------------- 분석
 
+    /** 검사용 표의 줄 입력 순서 (기존 기록보다 뒤, 저장하면 지금 시각 + 줄 순서가 된다). */
+    private const val DRAFT_CREATED_AT = Long.MAX_VALUE / 4
+
     /** 새로 만들 종목 (같은 코드끼리, 코드가 없으면 같은 이름끼리 하나). */
     data class NewHolding(val key: String, val name: String, val code: String, val market: Market, val assetType: AssetType)
 
@@ -124,11 +127,18 @@ object TradeImport {
         /** 새 종목 키 ([NewHolding.key]) */
         val newKey: String? = null,
         val error: String? = null,
+        /** 저장은 하지만 알릴 것 (계산 순서상 그 매도 시점 보유 수량이 모자람). */
+        val warning: String? = null,
     ) {
         val saved: Boolean get() = status == Status.OK
     }
 
-    data class Analysis(val rows: List<Row>, val newHoldings: List<NewHolding>) {
+    data class Analysis(
+        val rows: List<Row>,
+        val newHoldings: List<NewHolding>,
+        /** 표의 줄을 저장하면 새로 계산되지 않게 되는 기존 매도 기록. */
+        val brokenSells: List<PortfolioCalculator.ShortSell> = emptyList(),
+    ) {
         val saveCount: Int get() = rows.count { it.saved }
         val errorRows: List<Row> get() = rows.filter { it.status == Status.ERROR }
         val duplicateCount: Int get() = rows.count { it.status == Status.DUPLICATE }
@@ -225,25 +235,18 @@ object TradeImport {
             if (duplicate) row.copy(status = Status.DUPLICATE) else row
         }
 
-        // 매도 수량: 그날 보유 수량 (기존 기록 + 표의 다른 저장할 줄)
-        val draft = build(withDuplicates, accountId) { key -> "new:$key" }.map { (i, r) -> r.copy(id = "draft:$i") }
-        val allRecords = records + draft
+        // 매도: 계산 순서(기존 기록 다음에 표의 줄 순서)로 그 줄 시점 보유 수량이 모자라면 경고만 (저장은 한다, v2.8)
+        val draft = build(withDuplicates, accountId) { key -> "new:$key" }
+            .mapIndexed { n, (i, r) -> r.copy(id = "draft:$i", createdAt = DRAFT_CREATED_AT + n) }
+        val short = PortfolioCalculator.shortSells(records + draft)
+        val shortById = short.associateBy { it.record.id }
         val rows = withDuplicates.map { row ->
-            if (row.status != Status.OK || row.type != RecordType.SELL) return@map row
-            val holdingId = row.holding?.id ?: "new:${row.newKey}"
-            val held = PortfolioCalculator.quantityAt(
-                Holding(id = holdingId, accountId = accountId, name = ""),
-                allRecords,
-                row.date!!,
-                excludeRecordId = "draft:${row.index}",
-            )
-            if (held + 1e-9 < row.quantity) {
-                row.copy(status = Status.ERROR, error = "매도 수량이 그날 보유 수량(${MoneyFormat.decimal(held)})보다 많음")
-            } else {
-                row
-            }
+            val s = shortById["draft:${row.index}"] ?: return@map row
+            row.copy(warning = "이 줄 시점 보유 수량(${MoneyFormat.decimal(s.held)})보다 많아 매도가 다 계산되지 않음 · 같은 날 매수 줄을 위로 옮기세요")
         }
-        return Analysis(rows, newHoldings.values.toList())
+        val before = PortfolioCalculator.shortSells(records).map { it.record.id }.toSet()
+        val broken = short.filter { !it.record.id.startsWith("draft:") && it.record.id !in before }
+        return Analysis(rows, newHoldings.values.toList(), broken)
     }
 
     /**

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatDate } from '../core/dates';
 import { amount, decimal, rate as formatRate, signedWon, usd, won } from '../core/format';
-import { HOLDING_SORTS, HOLDING_SORT_LABEL, convert, cumulativeInvested, displayConversion, noRateReason, sortHoldings, type HoldingValuation, type NoRateReason } from '../core/portfolio';
+import { HOLDING_SORTS, HOLDING_SORT_LABEL, convert, cumulativeInvested, displayConversion, noRateReason, shortSells, sortHoldings, type HoldingValuation, type NoRateReason } from '../core/portfolio';
 import { useAppData, useData } from '../data/DataContext';
 import { Card, CurrencyToggle, ListLink, NotFound, Row, Stat, TickerBadge, TickerLegend, Warning, profitClass, tickerGroup } from '../components/ui';
 import { ASSET_TYPE_LABEL, RECORD_TYPE_LABEL, marketCurrency, type Currency, type Record, type RecordType } from '../model';
@@ -12,7 +12,7 @@ import { CashForm } from '../forms/CashForm';
 import { HoldingForm } from '../forms/HoldingForm';
 import { RecordForm } from '../forms/RecordForm';
 import { AddRecordMenu, RecordRow } from '../records/RecordList';
-import { accountDescription } from './text';
+import { accountDescription, shortSellLabel } from './text';
 import { allShown, applyRecordFilter, presentTypes, recordFilterLabel, toggleAll, toggleType } from '../core/recordFilter';
 
 const PAGE = 30;
@@ -51,6 +51,9 @@ export function AccountDetailPage() {
   const allRecords = data.recordsOf(accountId);
   // 입금·출금·이체 기록마다 그 기록까지의 누적 투자금 (걸러 봐도 전체 기록 기준)
   const cumulative = cumulativeInvested(accountId, allRecords);
+  // 계산 순서상 보유 수량이 모자라 계산되지 않는 매도 (이 계좌)
+  const shorts = shortSells(allRecords).filter((x) => x.record.accountId === accountId);
+  const shortById = new Map(shorts.map((x) => [x.record.id, x]));
   // 수익률을 계산할 수 없을 때 그 이유
   const noRate = noRateReason(accountId, summary.investedKrw, allRecords);
   const hidden = hiddenByAccount[accountId] ?? readHidden(accountId);
@@ -239,6 +242,16 @@ export function AccountDetailPage() {
           </div>
         }
       >
+        {shorts.length > 0 && (
+          <div className="warning short-sells">
+            <span><strong>⚠ 계산되지 않는 매도 {shorts.length}건</strong> — 그 매도 시점의 보유 수량이 모자랍니다. 같은 날이면 매수를 먼저 입력하세요.</span>
+            {shorts.map((x) => (
+              <button key={x.record.id} className="text-button inline short-sell-link" onClick={() => setDialog({ kind: 'record', type: 'SELL', existing: x.record })}>
+                {shortSellLabel(x, data.lookup.holding(x.record.holdingId ?? ''))}
+              </button>
+            ))}
+          </div>
+        )}
         {types.length > 1 && (
           <div className="choices record-filter" role="group" aria-label="기록 유형">
             <button aria-pressed={allShown(types, hidden)} className={allShown(types, hidden) ? 'choice on' : 'choice'} onClick={() => setHidden(toggleAll(types, hidden))}>전체</button>
@@ -254,7 +267,7 @@ export function AccountDetailPage() {
           <p className="muted">{types.every((t) => hidden.has(t)) ? '보여줄 유형을 고르세요.' : '선택한 유형의 기록이 없습니다.'}</p>
         )}
         {records.slice(0, visible).map((r) => (
-          <RecordRow key={r.id} record={r} accountId={accountId} cumulative={cumulative.get(r.id)} onClick={() => setDialog({ kind: 'record', type: r.type, existing: r })} />
+          <RecordRow key={r.id} record={r} accountId={accountId} cumulative={cumulative.get(r.id)} short={shortById.has(r.id)} onClick={() => setDialog({ kind: 'record', type: r.type, existing: r })} />
         ))}
         {records.length > visible && (
           <button className="text-button" onClick={() => setVisible(visible + PAGE)}>

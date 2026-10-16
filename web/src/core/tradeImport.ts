@@ -2,7 +2,10 @@
 // 칸: 날짜 / 매매구분 / 종목명 / 종목코드 / 평단가 / 수량 / 제비용합
 import { GOLD_CODE, type AssetType, type Holding, type Market, type Record } from '../model';
 import { decimal } from './format';
-import { quantityAt } from './portfolio';
+import { shortSells, type ShortSell } from './portfolio';
+
+/** 검사용 표의 줄 입력 순서 (기존 기록보다 뒤, 저장하면 지금 시각 + 줄 순서가 된다). */
+const DRAFT_CREATED_AT = 4_000_000_000_000;
 
 export const IMPORT_HEADERS = ['날짜', '매매구분', '종목명', '종목코드', '평단가', '수량', '제비용합'] as const;
 export const IMPORT_COLUMNS = 7;
@@ -117,11 +120,15 @@ export interface ImportRow {
   /** 새 종목 키 */
   newKey: string | null;
   error: string | null;
+  /** 저장은 하지만 알릴 것 (계산 순서상 그 매도 시점 보유 수량이 모자람) */
+  warning?: string | null;
 }
 
 export interface ImportAnalysis {
   rows: ImportRow[];
   newHoldings: NewHolding[];
+  /** 표의 줄을 저장하면 새로 계산되지 않게 되는 기존 매도 기록 */
+  brokenSells?: ShortSell[];
 }
 
 export const saveCount = (a: ImportAnalysis): number => a.rows.filter((r) => r.status === 'OK').length;
@@ -221,23 +228,18 @@ export function analyzeImport(
     return duplicate ? { ...row, status: 'DUPLICATE' as const } : row;
   });
 
-  // 매도 수량: 그날 보유 수량 (기존 기록 + 표의 다른 저장할 줄)
-  const draft = buildImportRecords(withDuplicates, accountId, (key) => `new:${key}`).map(([i, r]) => ({ ...r, id: `draft:${i}` }));
-  const allRecords = [...records, ...draft];
+  // 매도: 계산 순서(기존 기록 다음에 표의 줄 순서)로 그 줄 시점 보유 수량이 모자라면 경고만 (저장은 한다, v2.8)
+  const draft = buildImportRecords(withDuplicates, accountId, (key) => `new:${key}`)
+    .map(([i, r], n) => ({ ...r, id: `draft:${i}`, createdAt: DRAFT_CREATED_AT + n }));
+  const short = shortSells([...records, ...draft]);
+  const shortById = new Map(short.map((s) => [s.record.id, s]));
   const rows = withDuplicates.map((row) => {
-    if (row.status !== 'OK' || row.type !== 'SELL') return row;
-    const holdingId = row.holding?.id ?? `new:${row.newKey}`;
-    const held = quantityAt(
-      { id: holdingId, accountId, name: '', code: '', market: 'KR', assetType: 'STOCK', manualPrice: null, manualPriceDate: null, createdAt: 0 },
-      allRecords,
-      row.date!,
-      `draft:${row.index}`,
-    );
-    return held + 1e-9 < row.quantity
-      ? { ...row, status: 'ERROR' as const, error: `매도 수량이 그날 보유 수량(${decimal(held)})보다 많음` }
-      : row;
+    const s = shortById.get(`draft:${row.index}`);
+    return s ? { ...row, warning: `이 줄 시점 보유 수량(${decimal(s.held)})보다 많아 매도가 다 계산되지 않음 · 같은 날 매수 줄을 위로 옮기세요` } : row;
   });
-  return { rows, newHoldings: [...newHoldings.values()] };
+  const before = new Set(shortSells(records).map((s) => s.record.id));
+  const brokenSells = short.filter((s) => !s.record.id.startsWith('draft:') && !before.has(s.record.id));
+  return { rows, newHoldings: [...newHoldings.values()], brokenSells };
 }
 
 /** 저장할 줄을 기록으로 만든다. holdingIdOf: 새 종목 키 → 저장한 종목 id. 돌려주는 값: [줄 번호, 기록] (기록 id 는 비움). */

@@ -16,11 +16,11 @@ describe('기록 입력 검사 (폰과 같은 규칙)', () => {
     expect(recordProblem({ ...base, type: 'TRANSFER' }, [], [], null)).toBe('받는 계좌를 고르세요.');
   });
 
-  it('매도는 그날 보유 수량까지만 (수정 중인 기록은 빼고)', () => {
+  it('매도는 계산 순서상 그 시점 보유 수량까지만 (수정 중인 기록은 빼고)', () => {
     const buy = record({ id: 'b', accountId: 'a', type: 'BUY', date: '2026-10-01', holdingId: 'h', quantity: 10, price: 1 });
     const sell = record({ id: 's', accountId: 'a', type: 'SELL', date: '2026-10-05', holdingId: 'h', quantity: 4, price: 1 });
     const input: RecordInput = { ...base, type: 'SELL', holdingId: 'h', quantity: 7, price: 1 };
-    expect(recordProblem(input, [h], [buy, sell], null)).toBe('매도 수량이 그날 보유 수량(6)보다 많습니다.');
+    expect(recordProblem(input, [h], [buy, sell], null)).toBe('매도 수량이 이 매도 시점의 보유 수량(6)보다 많습니다.');
     expect(recordProblem(input, [h], [buy, sell], 's')).toBeNull();
     expect(recordProblem({ ...input, holdingId: null }, [], [], null)).toBe('먼저 계좌 화면에서 종목을 추가하세요.');
   });

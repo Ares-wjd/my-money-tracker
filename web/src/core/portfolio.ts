@@ -149,6 +149,63 @@ export function position(holding: Holding, records: readonly Record[]): Position
   return { holding, quantity, averagePrice: average, realizedProfit: realized, dividends, feesAndTaxes: fees, costBasis: quantity * average };
 }
 
+/** 계산 순서상 그 시점 보유 수량(held)이 모자라 (전부 또는 일부) 계산되지 않는 매도 (core ShortSell 과 같은 규칙). */
+export interface ShortSell {
+  record: Record;
+  held: number;
+}
+
+/** 저장 전 기록(createdAt 0)은 같은 날 맨 뒤로 (저장하면 그 날 마지막 기록이 되므로). */
+function compareForCheck(a: Record, b: Record): number {
+  if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+  const ca = a.createdAt > 0 ? a.createdAt : Number.MAX_SAFE_INTEGER;
+  const cb = b.createdAt > 0 ? b.createdAt : Number.MAX_SAFE_INTEGER;
+  if (ca !== cb) return ca - cb;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * 계산 순서(날짜 → 입력 순서)대로 종목마다 보유 수량을 따라가며, 그 시점 보유 수량보다 많이 판 매도를 찾는다 (v2.8).
+ * 같은 날 매도가 먼저여도 그 시점에 잔고가 있으면 해당하지 않는다.
+ */
+export function shortSells(records: readonly Record[]): ShortSell[] {
+  const held = new Map<string, number>();
+  const out: ShortSell[] = [];
+  for (const r of [...records].sort(compareForCheck)) {
+    if (r.holdingId === null) continue;
+    const q = held.get(r.holdingId) ?? 0;
+    if (r.type === 'BUY') held.set(r.holdingId, q + r.quantity);
+    else if (r.type === 'SELL') {
+      if (r.quantity > q + 1e-9) out.push({ record: r, held: q });
+      held.set(r.holdingId, Math.max(0, q - r.quantity));
+    }
+  }
+  return out;
+}
+
+/** target 바로 앞(계산 순서)까지의 보유 수량. target 과 같은 id 의 기록(수정 전 값)은 뺀다. 단건 매도 입력 검사용. */
+export function quantityBefore(holdingId: string, records: readonly Record[], target: Record): number {
+  const ordered = [...records.filter((r) => target.id === '' || r.id !== target.id), target].sort(compareForCheck);
+  let q = 0;
+  for (const r of ordered) {
+    if (r === target) break;
+    if (r.holdingId !== holdingId) continue;
+    if (r.type === 'BUY') q += r.quantity;
+    else if (r.type === 'SELL') q = Math.max(0, q - r.quantity);
+  }
+  return q;
+}
+
+/**
+ * 기록 하나를 저장(after, 새 기록이면 before 는 null)하거나 지우면(after null) 새로 계산되지 않게 되는 다른 매도들.
+ * 저장하는 기록 자신은 빼고 본다 (그 매도는 입력 검사에서 막는다).
+ */
+export function newlyShortSells(records: readonly Record[], before: Record | null, after: Record | null): ShortSell[] {
+  const already = new Set(shortSells(records).map((s) => s.record.id));
+  const next = [...records.filter((r) => before === null || r.id !== before.id), ...(after ? [after] : [])];
+  return shortSells(next).filter((s) => !already.has(s.record.id) && s.record !== after);
+}
+
 /** [date] 시점의 보유 수량. [excludeRecordId] 는 수정 중인 기록을 빼고 계산할 때 사용. */
 export function quantityAt(holding: Holding, records: readonly Record[], date: string, excludeRecordId?: string): number {
   return position(

@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -153,6 +154,8 @@ private fun RecordForm(
     var exchangeEdited by rememberSaveable { mutableStateOf(if (initial?.type == RecordType.EXCHANGE) "KRW,USD" else "") }
     var memo by rememberSaveable { mutableStateOf(initial?.memo.orEmpty()) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    // 저장하면 계산되지 않게 되는 다른 매도가 있을 때 확인 창에 쓰는 (저장할 기록, 그 매도들)
+    var pendingSave by remember { mutableStateOf<Pair<Record, List<PortfolioCalculator.ShortSell>>?>(null) }
 
     val date = LocalDate.ofEpochDay(day)
     val exEdited = exchangeEdited.split(",").mapNotNull { name -> ExchangeField.entries.firstOrNull { it.name == name } }
@@ -194,9 +197,8 @@ private fun RecordForm(
             holding == null -> if (holdings.isEmpty()) "먼저 계좌 화면에서 종목을 추가하세요." else "종목을 고르세요."
             quantity == null || quantity <= 0 -> "수량을 입력하세요."
             price == null || price < 0 -> "단가를 입력하세요."
-            type == RecordType.SELL &&
-                quantity > PortfolioCalculator.quantityAt(holding, data.records, date, initial?.id) + 1e-9 ->
-                "매도 수량이 그날 보유 수량(${MoneyFormat.decimal(PortfolioCalculator.quantityAt(holding, data.records, date, initial?.id))})보다 많습니다."
+            type == RecordType.SELL && quantity > sellHeld(data.records, initial, accountId, holding.id, date, quantity) + 1e-9 ->
+                "매도 수량이 이 매도 시점의 보유 수량(${MoneyFormat.decimal(sellHeld(data.records, initial, accountId, holding.id, date, quantity))})보다 많습니다."
             else -> null
         }
         RecordType.DIVIDEND -> when {
@@ -396,7 +398,9 @@ private fun RecordForm(
                     RecordType.DIVIDEND -> base.copy(holdingId = holdingId, amount = amount ?: 0.0)
                     RecordType.CASH_ADJUST, RecordType.CASH_BALANCE -> base.copy(currency = currency, amount = amount ?: 0.0)
                 }
-                onSave(record)
+                // 이렇게 저장하면 다른 매도가 보유 수량이 모자라 계산되지 않게 되면 한 번 더 묻는다
+                val broken = PortfolioCalculator.newlyShortSells(data.records, initial, record)
+                if (broken.isEmpty()) onSave(record) else pendingSave = record to broken
             },
             enabled = problem == null,
             modifier = Modifier.fillMaxWidth(),
@@ -408,12 +412,26 @@ private fun RecordForm(
     }
 
     if (confirmDelete && onDelete != null) {
+        val broken = initial?.let { PortfolioCalculator.newlyShortSells(data.records, it, null) }.orEmpty()
         ConfirmDialog(
             title = "기록 삭제",
-            text = "이 기록을 삭제할까요? 투자금·평가금·수익률 계산이 다시 이루어집니다.",
+            text = "이 기록을 삭제할까요? 투자금·평가금·수익률 계산이 다시 이루어집니다." +
+                (if (broken.isEmpty()) "" else "\n\n" + brokenSellsText(broken, data)),
             confirmLabel = "삭제",
             onConfirm = onDelete,
             onDismiss = { confirmDelete = false },
+        )
+    }
+    pendingSave?.let { (record, broken) ->
+        ConfirmDialog(
+            title = "계산되지 않는 매도",
+            text = brokenSellsText(broken, data) + "\n\n그래도 저장할까요?",
+            confirmLabel = "그래도 저장",
+            onConfirm = {
+                pendingSave = null
+                onSave(record)
+            },
+            onDismiss = { pendingSave = null },
         )
     }
 }
@@ -445,3 +463,15 @@ private fun ImportedRecordView(
         Button(onClick = { onSave(record.copy(memo = memo.trim())) }, modifier = Modifier.fillMaxWidth()) { Text("메모 저장") }
     }
 }
+
+/** 계산 순서상 이 매도 시점의 보유 수량 (새 기록은 그날 맨 뒤, 수정이면 원래 자리). 웹 recordProblem 과 같은 규칙. */
+private fun sellHeld(records: List<Record>, initial: Record?, accountId: String, holdingId: String, date: java.time.LocalDate, quantity: Double): Double {
+    val target = (initial ?: Record(accountId = accountId, type = RecordType.SELL, date = date))
+        .copy(type = RecordType.SELL, date = date, holdingId = holdingId, quantity = quantity)
+    return PortfolioCalculator.quantityBefore(holdingId, records, target)
+}
+
+/** 확인 창 글: 계산되지 않게 되는 매도 목록 (웹 RecordForm 과 같은 문구). */
+private fun brokenSellsText(broken: List<PortfolioCalculator.ShortSell>, data: PortfolioData): String =
+    "이렇게 하면 아래 매도가 보유 수량이 모자라 계산되지 않습니다.\n" +
+        broken.joinToString("\n") { s -> "· " + shortSellLabel(s, data.holdings.firstOrNull { it.id == s.record.holdingId }) }

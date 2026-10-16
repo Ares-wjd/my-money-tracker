@@ -47,10 +47,12 @@ export async function importTrades(uid: string, newHoldings: ReadonlyMap<string,
     ids.set(key, r.id);
     writes.push([r, holdingDoc(h)]);
   }
-  for (const rec of records) {
+  // 같은 날 기록의 계산 순서가 표의 줄 순서와 같도록 입력 시각을 줄마다 1씩 늘린다
+  const base = Date.now();
+  records.forEach((rec, i) => {
     const holdingId = rec.holdingId !== null ? ids.get(rec.holdingId) ?? rec.holdingId : null;
-    writes.push([ref(uid, 'records', ''), recordDoc({ ...rec, holdingId })]);
-  }
+    writes.push([ref(uid, 'records', ''), recordDoc({ ...rec, holdingId, createdAt: rec.createdAt > 0 ? rec.createdAt : base + i })]);
+  });
   for (let i = 0; i < writes.length; i += 400) {
     const batch = writeBatch(db());
     for (const [r, data] of writes.slice(i, i + 400)) batch.set(r, data);

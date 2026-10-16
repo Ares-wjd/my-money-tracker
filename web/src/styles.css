@@ -464,3 +464,8 @@ a.today-tile:hover { text-decoration: none; filter: brightness(0.95); }
 :root[data-theme="dark"] .today-tile.level-2 { background: #8a2836; color: #ffffff; }
 :root[data-theme="dark"] .today-tile.level-m1 { background: #1c2b4a; color: #c9daff; }
 :root[data-theme="dark"] .today-tile.level-m2 { background: #2d4e95; color: #ffffff; }
+
+.pre-line { white-space: pre-line; }
+.short-sells { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 8px; }
+.short-sell-link { text-align: left; }
+.short-sell-tag { color: var(--error); font-weight: 600; }

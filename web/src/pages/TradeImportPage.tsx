@@ -11,6 +11,7 @@ import {
   analyzeCashFlows, analyzeDividends, analyzeExchanges, buildCashFlowRecords, buildDividendRecords, buildExchangeRecords, parseCheck,
 } from '../core/recordImport';
 import { useAppData, useData } from '../data/DataContext';
+import { shortSellLabel } from './text';
 import { importTrades } from '../data/writes';
 import { ASSET_TYPES, ASSET_TYPE_LABEL, MARKETS, MARKET_LABEL, marketCurrency, quantityUnit, type Holding } from '../model';
 import { amount as formatAmount, decimal, usd, won } from '../core/format';
@@ -95,7 +96,8 @@ export function TradeImportPage() {
       ? analysis.rows.map((row) => {
         // 수량 단위 (금현물은 g)
         const unit = quantityUnit(row.holding?.assetType ?? analysis.newHoldings.find((n) => n.key === row.newKey)?.assetType);
-        return { status: row.status, text: statusText(row, unit), warning: false };
+        const warning = row.status === 'OK' ? row.warning ?? null : null;
+        return { status: row.status, text: statusText(row, unit) + (warning ? `\n${warning}` : ''), warning: warning !== null };
       })
       : kind === 'CASH'
         ? cashRows.map((row) => ({
@@ -319,6 +321,15 @@ export function TradeImportPage() {
           </Warning>
         )}
         {errors.length === 0 && count === 0 && <Warning>저장할 줄이 없습니다. 표에 붙여 넣거나 입력하세요.</Warning>}
+        {kind === 'TRADE' && views.some((v) => v?.warning) && (
+          <Warning>보유 수량이 모자란 매도 줄이 있습니다. 저장은 되지만 그 매도는 계산되지 않습니다 — 같은 날 매수 줄을 위로 옮기세요.</Warning>
+        )}
+        {kind === 'TRADE' && (analysis.brokenSells?.length ?? 0) > 0 && (
+          <Warning>
+            저장하면 아래 기존 매도가 보유 수량이 모자라 계산되지 않습니다:{' '}
+            {analysis.brokenSells!.map((s) => shortSellLabel(s, data.holdings.find((h) => h.id === s.record.holdingId))).join(', ')}
+          </Warning>
+        )}
         {saveError && <Warning>{saveError}</Warning>}
         <div className="button-row">
           <button onClick={leave}>취소</button>

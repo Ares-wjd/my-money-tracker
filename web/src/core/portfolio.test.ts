@@ -1,7 +1,7 @@
 // core PortfolioCalculatorTest · DisplayCurrencyTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
 import type { Record, RecordType } from '../model';
-import { convert, cumulativeInvested, displayConversion, krwHoldingView, noRateReason, position, quantityAt, sortHoldings, summarize } from './portfolio';
+import { convert, cumulativeInvested, displayConversion, krwHoldingView, newlyShortSells, noRateReason, position, quantityAt, quantityBefore, shortSells, sortHoldings, summarize } from './portfolio';
 import { account, holding, record } from './testData';
 
 const day1 = '2026-01-02';
@@ -265,6 +265,34 @@ describe('보유 종목 정렬 (HoldingSortTest)', () => {
     ];
     expect(Object.fromEntries(cumulativeInvested('kr', records))).toEqual({ d1: 1_000_000, t1: 700_000, d2: 750_000, w1: 650_000 });
     expect(Object.fromEntries(cumulativeInvested('us', records))).toEqual({ t1: 300_000 });
+  });
+
+  it('계산 순서상 잔고 없는 매도 (shortSellsInCalculationOrder)', () => {
+    const d = '2026-10-07';
+    const trade = (id: string, type: 'BUY' | 'SELL', quantity: number, createdAt: number, date = d) =>
+      record({ id, accountId: 'a', type, date, holdingId: 's', quantity, price: 100, createdAt });
+    // 같은 날 매도(먼저 입력) → 매수: 매도 시점 보유 0주
+    const sellFirst = [trade('s1', 'SELL', 2, 1), trade('b1', 'BUY', 2, 2)];
+    expect(shortSells(sellFirst).map((x) => [x.record.id, x.held])).toEqual([['s1', 0]]);
+    // 매수 → 매도: 정상
+    expect(shortSells([trade('b1', 'BUY', 2, 1), trade('s1', 'SELL', 2, 2)])).toEqual([]);
+    // 전날 2주 보유 + 같은 날 매도 → 매수: 매도 시점 2주라 정상
+    const held = [trade('b0', 'BUY', 2, 1, '2026-10-06'), ...sellFirst.map((r) => ({ ...r, createdAt: r.createdAt + 1 }))];
+    expect(shortSells(held)).toEqual([]);
+
+    // 단건 입력: 새 매도는 그날 맨 뒤 → 같은 날 매수 뒤에 들어간다
+    const newSell = trade('', 'SELL', 2, 0);
+    expect(quantityBefore('s', [trade('b1', 'BUY', 2, 5)], newSell)).toBe(2);
+    // 수정: 먼저 입력된 매도는 같은 날 뒤 매수 앞 (자기 자신의 수정 전 값은 뺌)
+    expect(quantityBefore('s', sellFirst, { ...sellFirst[0], quantity: 1 })).toBe(0);
+
+    // 매수를 지우거나 매도 뒤로 옮기면 그 매도가 새로 계산되지 않음
+    const ok = [trade('b1', 'BUY', 2, 1), trade('s1', 'SELL', 2, 2, '2026-10-08')];
+    expect(newlyShortSells(ok, ok[0], null).map((x) => x.record.id)).toEqual(['s1']);
+    expect(newlyShortSells(ok, ok[0], { ...ok[0], date: '2026-10-09' }).map((x) => x.record.id)).toEqual(['s1']);
+    // 이미 계산되지 않던 매도는 다시 알리지 않고, 저장하는 기록 자신도 빼고 본다
+    expect(newlyShortSells(sellFirst, sellFirst[1], { ...sellFirst[1], quantity: 1 })).toEqual([]);
+    expect(newlyShortSells(ok, ok[1], { ...ok[1], quantity: 5 })).toEqual([]);
   });
 
   it('수익률을 계산할 수 없는 이유 (noRateReason)', () => {

@@ -109,8 +109,24 @@ describe('표로 일괄 입력 (TradeImportTest)', () => {
     expect(r[2].error).toBe('종목명이나 종목코드 필요');
     expect(r[3].error).toBe('수량 확인 (매수 +, 매도 −)');
     expect(r[4].status).toBe('DUPLICATE');
-    expect(r[5].status).toBe('ERROR');
-    expect(r[6].status).toBe('ERROR');
+    // 매도는 계산 순서로 그 줄 시점 보유 수량이 모자라면 경고만 하고 저장 (v2.8)
+    expect(r[5].status).toBe('OK');
+    expect(r[5].warning).toMatch(/^이 줄 시점 보유 수량\(10\)/); // 10주 보유 → 11주 매도
+    expect(r[6].warning).toMatch(/^이 줄 시점 보유 수량\(0\)/); // 앞 줄이 다 팔아 남은 것이 없음
+  });
+
+  it('매도 경고는 줄 순서를 따른다 (sellWarningFollowsRowOrder)', () => {
+    const sellFirst = analyzeImport(grid('2026-10-07\t매도\t삼성전자\t005930\t80000\t-2\t', '2026-10-07\t매수\t삼성전자\t005930\t80000\t2\t'), 'a', holdings, all, []).rows;
+    expect(sellFirst[0].warning).toBeTruthy();
+    expect(sellFirst[0].status).toBe('OK');
+    expect(sellFirst[1].warning ?? null).toBeNull();
+    const buyFirst = analyzeImport(grid('2026-10-07\t매수\t삼성전자\t005930\t80000\t2\t', '2026-10-07\t매도\t삼성전자\t005930\t80000\t-2\t'), 'a', holdings, all, []).rows;
+    expect(buyFirst.every((r) => (r.warning ?? null) === null)).toBe(true);
+    // 표의 매도 때문에 뒤의 기존 매도가 계산되지 않게 되면 brokenSells
+    const laterSell = { ...buy, id: 's9', type: 'SELL' as const, date: '2026-10-20', quantity: 10, createdAt: 9 };
+    const broken = analyzeImport(grid('2026-10-07\t매도\t삼성전자\t005930\t80000\t-5\t'), 'a', holdings, all, [buy, laterSell]);
+    expect(broken.rows[0].warning ?? null).toBeNull();
+    expect(broken.brokenSells?.map((s) => s.record.id)).toEqual(['s9']);
   });
 
   it('수량 부호로 매수·매도, 매매구분과 맞는지 확인', () => {

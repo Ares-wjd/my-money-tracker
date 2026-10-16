@@ -167,10 +167,13 @@ export function FormActions(props: {
   deleteLabel?: string;
   deleteWarning?: string;
   saveLabel?: string;
+  /** 있으면 저장 전에 이 글로 한 번 더 묻는다 (그래도 저장 / 취소). */
+  saveWarning?: string | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [confirmingSave, setConfirmingSave] = useState(false);
 
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true);
@@ -190,9 +193,20 @@ export function FormActions(props: {
     <div className="form-actions">
       {props.problem && <p className="warning">{props.problem}</p>}
       {error && <p className="error">{error}</p>}
-      <button className="primary" disabled={busy || !!props.problem} onClick={() => run(props.onSave)}>
-        {busy ? '저장 중…' : props.saveLabel ?? '저장'}
-      </button>
+      {!confirmingSave && (
+        <button className="primary" disabled={busy || !!props.problem} onClick={() => (props.saveWarning ? setConfirmingSave(true) : run(props.onSave))}>
+          {busy ? '저장 중…' : props.saveLabel ?? '저장'}
+        </button>
+      )}
+      {confirmingSave && (
+        <div className="confirm">
+          <p className="pre-line">{props.saveWarning}</p>
+          <div className="confirm-buttons">
+            <button onClick={() => setConfirmingSave(false)} disabled={busy}>취소</button>
+            <button className="primary" disabled={busy} onClick={() => run(props.onSave)}>그래도 저장</button>
+          </div>
+        </div>
+      )}
       {props.onDelete && !confirming && (
         <button className="danger-outline" disabled={busy} onClick={() => setConfirming(true)}>
           {props.deleteLabel ?? '삭제'}
@@ -200,7 +214,7 @@ export function FormActions(props: {
       )}
       {props.onDelete && confirming && (
         <div className="confirm">
-          <p>{props.deleteWarning ?? '삭제할까요? 되돌릴 수 없습니다.'}</p>
+          <p className="pre-line">{props.deleteWarning ?? '삭제할까요? 되돌릴 수 없습니다.'}</p>
           <div className="confirm-buttons">
             <button onClick={() => setConfirming(false)} disabled={busy}>취소</button>
             <button className="danger" disabled={busy} onClick={() => run(props.onDelete!)}>삭제</button>

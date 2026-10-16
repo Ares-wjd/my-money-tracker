@@ -1,7 +1,13 @@
 // 기록 입력 검사와 기록 만들기. 폰 RecordEditScreen 과 같은 규칙·문구.
 import { decimal } from './format';
-import { quantityAt } from './portfolio';
+import { quantityBefore } from './portfolio';
 import type { Currency, Holding, Record, RecordType } from '../model';
+
+/** 검사용 새 기록 (id 빈 값, createdAt 0 → 그날 맨 뒤). */
+const EMPTY_TARGET: Record = {
+  id: '', accountId: '', type: 'SELL', date: '', currency: 'KRW', amount: 0, krwAmount: 0, toAccountId: null, holdingId: null,
+  quantity: 0, price: 0, fee: 0, tax: 0, cost: null, initial: false, externalId: null, memo: '', createdAt: 0,
+};
 
 export interface RecordInput {
   type: RecordType;
@@ -70,8 +76,11 @@ export function recordProblem(
       if (quantity === null || quantity <= 0) return '수량을 입력하세요.';
       if (price === null || price < 0) return '단가를 입력하세요.';
       if (type === 'SELL') {
-        const held = quantityAt(holding, allRecords, input.date, editingId ?? undefined);
-        if (quantity > held + 1e-9) return `매도 수량이 그날 보유 수량(${decimal(held)})보다 많습니다.`;
+        // 계산 순서상 이 매도 시점의 보유 수량 (새 기록은 그날 맨 뒤, 수정이면 원래 자리)
+        const original = editingId === null ? null : allRecords.find((r) => r.id === editingId) ?? null;
+        const target = { ...(original ?? EMPTY_TARGET), date: input.date, holdingId: holding.id, type: 'SELL' as const, quantity };
+        const held = quantityBefore(holding.id, allRecords, target);
+        if (quantity > held + 1e-9) return `매도 수량이 이 매도 시점의 보유 수량(${decimal(held)})보다 많습니다.`;
       }
       return null;
     }

@@ -156,8 +156,14 @@ class PortfolioRepository(
      */
     fun importTrades(newHoldings: Map<String, Holding>, records: List<Record>) {
         val ids = newHoldings.mapValues { holdingsCol.document().id }
+        // 같은 날 기록의 계산 순서가 표의 줄 순서와 같도록 입력 시각을 줄마다 1씩 늘린다
+        val base = System.currentTimeMillis()
         val writes = newHoldings.map { (key, h) -> holdingsCol.document(ids.getValue(key)) to holdingData(h) } +
-            records.map { r -> recordsCol.document() to recordData(r.copy(holdingId = ids[r.holdingId] ?: r.holdingId)) }
+            records.mapIndexed { i, r ->
+                recordsCol.document() to recordData(
+                    r.copy(holdingId = ids[r.holdingId] ?: r.holdingId, createdAt = if (r.createdAt > 0) r.createdAt else base + i),
+                )
+            }
         writes.chunked(400).forEach { chunk ->
             val batch = db.batch()
             chunk.forEach { (doc, data) -> batch.set(doc, data) }

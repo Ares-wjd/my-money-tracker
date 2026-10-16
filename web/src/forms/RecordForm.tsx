@@ -9,6 +9,8 @@ import { useAppData, useData } from '../data/DataContext';
 import { deleteRecord, saveRecord } from '../data/writes';
 import { CURRENCIES, CURRENCY_LABEL, RECORD_TYPE_LABEL, marketCurrency, type Currency, type Record, type RecordType } from '../model';
 import { recordAmountText, recordDetailText, recordTitle } from '../records/recordText';
+import { newlyShortSells, type ShortSell } from '../core/portfolio';
+import { shortSellLabel } from '../pages/text';
 
 interface Props {
   accountId: string;
@@ -67,6 +69,11 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
     cost: { total: parseDecimal(costText), fee: parseDecimal(feeText), tax: parseDecimal(taxText) },
   };
   const problem = recordProblem(input, holdings, data.records, existing?.id ?? null);
+  // 이렇게 저장·삭제하면 다른 매도가 보유 수량이 모자라 계산되지 않게 되는지 (확인 창으로 알림)
+  const breakText = (list: ShortSell[]) =>
+    list.length === 0 ? null : `이렇게 하면 아래 매도가 보유 수량이 모자라 계산되지 않습니다.\n${list.map((s) => '· ' + shortSellLabel(s, data.lookup.holding(s.record.holdingId ?? ''))).join('\n')}`;
+  const breakOnSave = problem === null ? breakText(newlyShortSells(data.records, existing, buildRecord(input, accountId, existing))) : null;
+  const breakOnDelete = existing ? breakText(newlyShortSells(data.records, existing, null)) : null;
   const others = data.accounts.filter((a) => a.id !== accountId);
 
   return (
@@ -187,7 +194,8 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
         onDone={onClose}
         onDelete={existing ? () => deleteRecord(uid, existing.id) : undefined}
         deleteLabel="기록 삭제"
-        deleteWarning="이 기록을 삭제할까요? 투자금·평가금·수익률 계산이 다시 이루어집니다."
+        deleteWarning={'이 기록을 삭제할까요? 투자금·평가금·수익률 계산이 다시 이루어집니다.' + (breakOnDelete ? `\n\n${breakOnDelete}` : '')}
+        saveWarning={problem === null ? breakOnSave : null}
       />
     </Modal>
   );
