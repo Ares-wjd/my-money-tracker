@@ -1,17 +1,10 @@
 package com.mymoneytracker.app.ui.accounts
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -20,20 +13,16 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -42,49 +31,31 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.ApiStatus
 import com.mymoneytracker.app.ui.PortfolioData
 import com.mymoneytracker.app.ui.PortfolioViewModel
-import com.mymoneytracker.app.ui.common.AppFilterChip
-import com.mymoneytracker.app.ui.common.LabeledValue
-import com.mymoneytracker.app.ui.common.ListRow
 import com.mymoneytracker.app.ui.common.LoadingBox
-import com.mymoneytracker.app.ui.common.SectionCard
-import com.mymoneytracker.app.ui.common.SegmentedPills
-import com.mymoneytracker.app.ui.common.StatTile
-import com.mymoneytracker.app.ui.common.TickerBadge
 import com.mymoneytracker.app.ui.common.TickerLegend
 import com.mymoneytracker.app.ui.common.TopBarTitle
-import com.mymoneytracker.app.ui.common.WarningText
 import com.mymoneytracker.app.ui.common.accountDescription
 import com.mymoneytracker.app.ui.common.fabContainerColor
 import com.mymoneytracker.app.ui.common.fabContentColor
-import com.mymoneytracker.app.ui.common.formatDate
-import com.mymoneytracker.app.ui.common.profitColor
 import com.mymoneytracker.app.ui.common.tickerGroup
 import com.mymoneytracker.app.ui.home.periodLine
-import com.mymoneytracker.app.ui.records.recordAmountText
-import com.mymoneytracker.app.ui.records.recordDetailText
-import com.mymoneytracker.app.ui.records.recordTitle
-import com.mymoneytracker.app.ui.records.shortSellLabel
-import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.AccountSummary
-import com.mymoneytracker.core.portfolio.CashDetail
-import com.mymoneytracker.core.portfolio.DisplayConversion
 import com.mymoneytracker.core.portfolio.DisplayCurrency
 import com.mymoneytracker.core.portfolio.HoldingSort
 import com.mymoneytracker.core.portfolio.HoldingSorter
 import com.mymoneytracker.core.portfolio.HoldingValuation
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.RecordFilter
+
+// 계좌 상세 화면 틀과 목록 순서. 각 칸은 AccountSummaryViews · AccountHoldingViews · AccountRecordViews.
 
 /** 기록 추가 메뉴에 보여줄 유형 (예수금은 예수금 카드의 "예수금 입력" 으로 따로 넣는다). */
 private val addableTypes = listOf(
@@ -215,7 +186,6 @@ fun AccountDetailScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AccountDetailContent(
     data: PortfolioData,
@@ -255,7 +225,7 @@ private fun AccountDetailContent(
     val filtered = records.size != allRecords.size
     var visibleRecords by rememberSaveable(accountId) { mutableStateOf(30) }
     // 총 수익률은 보기를 따른다 (원화 보기: 매매일 환율이 모두 있으면 환차익 반영 원화 수익률)
-    fun totalRate(v: com.mymoneytracker.core.portfolio.HoldingValuation): Double? =
+    fun totalRate(v: HoldingValuation): Double? =
         (if (displayCurrency == DisplayCurrency.KRW) data.krwView(v)?.returnRate else null) ?: v.returnRate
     val sorted = HoldingSorter.sort(summary.holdings, holdingSort, ::totalRate) { data.todayRate(it) }
     // 0주 종목(다 판 종목)은 맨 아래 "매도 완료 종목" 안에 접어 둔다
@@ -282,54 +252,7 @@ private fun AccountDetailContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        item {
-            SectionCard {
-                // 핵심 3개(투자금·수익금·수익률)를 크게, 나머지는 아래 한 줄로
-                Text("평가금", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(MoneyFormat.won(summary.valueKrw), style = MaterialTheme.typography.headlineMedium)
-                Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatTile("투자금", MoneyFormat.won(summary.investedKrw), Modifier.weight(1f), shortValue = MoneyFormat.shortWon(summary.investedKrw))
-                    StatTile(
-                        "수익금",
-                        MoneyFormat.signedWon(summary.profitKrw),
-                        Modifier.weight(1f),
-                        valueColor = profitColor(summary.profitKrw),
-                        shortValue = (if (summary.profitKrw > 0) "+" else "") + MoneyFormat.shortWon(summary.profitKrw),
-                    )
-                    StatTile("수익률", MoneyFormat.rate(summary.returnRate), Modifier.weight(0.8f), valueColor = profitColor(summary.returnRate))
-                }
-                if (summary.returnRate == null) {
-                    // 투자금이 0원 이하면 수익률을 계산할 수 없다 → 이유 (입금 기록이 없을 때만 바로가기)
-                    val reason = PortfolioCalculator.noRateReason(accountId, summary.investedKrw, allRecords)
-                    Text(
-                        "${noRateText(reason)} · 누적 배당 ${MoneyFormat.won(summary.dividendsKrw)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                    if (reason == PortfolioCalculator.NoRateReason.NO_DEPOSIT) {
-                        TextButton(onClick = { onAddRecord(RecordType.DEPOSIT) }, contentPadding = PaddingValues(0.dp)) { Text("입금 기록하기") }
-                    }
-                } else {
-                    Text(
-                        "배당 미포함 ${MoneyFormat.rate(summary.returnRateExDividends)} · 누적 배당 ${MoneyFormat.won(summary.dividendsKrw)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
-                if (periodText.isNotEmpty()) {
-                    Text(
-                        "$periodText ›",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 4.dp).clickable(onClick = onOpenPeriod),
-                    )
-                }
-                if (summary.missingFx) WarningText("환율이 없어 달러 금액이 원화 합계에서 빠져 있습니다. 설정에서 환율을 입력하세요.")
-                if (summary.missingPrice) WarningText("현재가가 없는 종목이 있습니다. 종목을 눌러 가격을 입력하세요.")
-            }
-        }
+        item { AccountSummaryCard(summary, allRecords, periodText, onOpenPeriod, onAddRecord) }
 
         if (linked) {
             item {
@@ -342,76 +265,21 @@ private fun AccountDetailContent(
             }
         }
 
-        item {
-            SectionCard(title = "예수금") {
-                val cashDate = summary.cashDate
-                LabeledValue(if (linked) "원화 (D+2)" else "원화", MoneyFormat.won(summary.cash.krw))
-                if (summary.cash.usd != 0.0 || summary.holdings.any { it.holding.currency == Currency.USD }) {
-                    LabeledValue("달러", MoneyFormat.usd(summary.cash.usd))
-                }
-                val broker = linked || summary.brokerLinked
-                if (broker) {
-                    Text(
-                        "한투에서 불러온 값 (새로고침할 때마다 갱신, 하루 한 번은 기록)" + (cashDate?.let { " · ${formatDate(it)} 기록" } ?: ""),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    // 혼합 방식: 입력값(기준점) + 이후 기록. 통화마다 근거를 보여준다.
-                    val showUsd = summary.cash.usd != 0.0 || summary.holdings.any { it.holding.currency == Currency.USD }
-                    listOfNotNull(Currency.KRW, Currency.USD.takeIf { showUsd }).forEach { currency ->
-                        Text(
-                            cashBasis(summary.cashDetails[currency], currency, showUsd),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (summary.cash.krw < 0 || summary.cash.usd < 0) {
-                        WarningText("계산상 예수금이 음수입니다. 입금 기록이나 예수금 입력을 확인하세요.")
-                    }
-                }
-                if (!linked) TextButton(onClick = onEnterCash) { Text("예수금 입력") }
-            }
-        }
+        item { CashCard(summary, linked, onEnterCash) }
 
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("보유 종목", style = MaterialTheme.typography.titleMedium)
-                OutlinedButton(onClick = onAddHolding) { Text("종목 추가") }
-            }
-        }
+        item { HoldingsHeader(onAddHolding) }
         if (sorted.isNotEmpty()) {
             // 정렬 + 원화/외화를 한 줄로, 티커 색 범례는 ⓘ 를 눌러 본다
             item {
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    SegmentedPills(
-                        HoldingSort.entries,
-                        holdingSort,
-                        { sortShortLabel(it) },
-                        onSelectHoldingSort,
-                        Modifier.weight(1f),
-                    )
-                    if (hasUsd) {
-                        SegmentedPills(
-                            options = listOf(DisplayCurrency.FOREIGN, DisplayCurrency.KRW),
-                            selected = displayCurrency,
-                            label = { if (it == DisplayCurrency.FOREIGN) "외화" else "원화" },
-                            onSelect = onSelectDisplayCurrency,
-                            modifier = Modifier.width(96.dp),
-                        )
-                    }
-                    IconButton(onClick = { showLegend = !showLegend }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Outlined.Info, contentDescription = if (showLegend) "티커 색 설명 닫기" else "티커 색 설명")
-                    }
-                }
+                HoldingsToolbar(
+                    holdingSort = holdingSort,
+                    onSelectHoldingSort = onSelectHoldingSort,
+                    hasUsd = hasUsd,
+                    displayCurrency = displayCurrency,
+                    onSelectDisplayCurrency = onSelectDisplayCurrency,
+                    showLegend = showLegend,
+                    onToggleLegend = { showLegend = !showLegend },
+                )
             }
             if (hasUsd && displayCurrency == DisplayCurrency.KRW) {
                 item { CurrencyCaption(summary.usdKrw) }
@@ -431,47 +299,22 @@ private fun AccountDetailContent(
         }
         if (sorted.isNotEmpty()) {
             item {
-                SectionCard {
-                    holdings.forEachIndexed { index, valuation ->
-                        if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        HoldingRow(valuation, data, summary, displayCurrency, totalRate(valuation)) { onOpenHolding(valuation.holding.id) }
-                    }
-                    if (soldOut.isNotEmpty()) {
-                        if (holdings.isNotEmpty()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        TextButton(onClick = { showSoldOut = !showSoldOut }) {
-                            Text("매도 완료 종목 (${soldOut.size}) " + if (showSoldOut) "▴" else "▾")
-                        }
-                        if (showSoldOut) {
-                            soldOut.forEach { valuation ->
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                HoldingRow(valuation, data, summary, displayCurrency, totalRate(valuation)) { onOpenHolding(valuation.holding.id) }
-                            }
-                        }
-                    }
-                }
+                HoldingsCard(
+                    holdings = holdings,
+                    soldOut = soldOut,
+                    showSoldOut = showSoldOut,
+                    onToggleSoldOut = { showSoldOut = !showSoldOut },
+                    data = data,
+                    summary = summary,
+                    displayCurrency = displayCurrency,
+                    rate = ::totalRate,
+                    onOpenHolding = onOpenHolding,
+                )
             }
         }
 
         if (shorts.isNotEmpty()) {
-            item {
-                SectionCard(Modifier.padding(top = 12.dp)) {
-                    Text(
-                        "⚠ 계산되지 않는 매도 ${shorts.size}건",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    Text(
-                        "그 매도 시점의 보유 수량이 모자랍니다. 같은 날이면 매수를 먼저 입력하세요. 누르면 그 기록을 엽니다.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    shorts.forEach { s ->
-                        TextButton(onClick = { onOpenRecord(s.record.id) }, contentPadding = PaddingValues(0.dp)) {
-                            Text(shortSellLabel(s, data.holdings.firstOrNull { it.id == s.record.holdingId }))
-                        }
-                    }
-                }
-            }
+            item { ShortSellsCard(shorts, data, onOpenRecord) }
         }
         item {
             Text(
@@ -481,23 +324,7 @@ private fun AccountDetailContent(
             )
         }
         if (presentTypes.size > 1) {
-            item {
-                // 유형 칩: 여러 개 선택, [전체]는 모두 켜져 있으면 전체 해제·아니면 전체 선택
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AppFilterChip(
-                        selected = RecordFilter.allShown(presentTypes, hiddenTypes),
-                        label = "전체",
-                        onClick = { onHiddenTypesChange(RecordFilter.toggleAll(presentTypes, hiddenTypes)) },
-                    )
-                    presentTypes.forEach { type ->
-                        AppFilterChip(
-                            selected = type !in hiddenTypes,
-                            label = RecordFilter.label(type),
-                            onClick = { onHiddenTypesChange(RecordFilter.toggle(type, hiddenTypes)) },
-                        )
-                    }
-                }
-            }
+            item { RecordTypeChips(presentTypes, hiddenTypes, onHiddenTypesChange) }
         }
         if (allRecords.isNotEmpty() && records.isEmpty()) {
             item {
@@ -519,172 +346,17 @@ private fun AccountDetailContent(
         }
         if (records.isNotEmpty()) {
             item {
-                SectionCard {
-                    records.take(visibleRecords).forEachIndexed { index, record ->
-                        if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        ListRow(
-                            title = recordTitle(record, data, accountId),
-                            subtitle = listOfNotNull(formatDate(record.date), recordDetailText(record, data)).joinToString(" · "),
-                            value = recordAmountText(record, data, accountId),
-                            subValue = cumulativeInvested[record.id]?.let { "누적 투자금 ${MoneyFormat.won(it)}" },
-                            subValueColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            onClick = { onOpenRecord(record.id) },
-                        )
-                        if (record.id in shortIds) {
-                            Text(
-                                "⚠ 보유 수량 부족 · 계산 안 됨",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(bottom = 6.dp),
-                            )
-                        }
-                    }
-                    if (records.size > visibleRecords) {
-                        TextButton(onClick = { visibleRecords += 30 }) { Text("기록 더 보기 (${records.size - visibleRecords}건 남음)") }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun sortShortLabel(sort: HoldingSort): String = when (sort) {
-    HoldingSort.VALUE -> "평가금"
-    HoldingSort.TOTAL_RETURN -> "총 수익"
-    HoldingSort.TODAY_RETURN -> "오늘"
-}
-
-/**
- * 보유 종목 한 줄 (2줄 구성): 1줄 종목명(가로 전체)·평가금, 2줄 종류·수량과 "총 ▲x%  오늘 ▼y%"(각자 색).
- */
-@Composable
-private fun HoldingRow(
-    valuation: HoldingValuation,
-    data: PortfolioData,
-    summary: AccountSummary,
-    displayCurrency: DisplayCurrency,
-    rate: Double?,
-    onClick: () -> Unit,
-) {
-    val holding = valuation.holding
-    val conversion = DisplayConversion.of(holding.currency, displayCurrency, summary.usdKrw)
-    val today = data.todayRate(valuation)
-    val value = valuation.marketValue?.let { v ->
-        conversion.convert(v)?.let { MoneyFormat.amount(conversion.currency, it) } ?: "환율 필요"
-    } ?: "가격 입력 필요"
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        TickerBadge(holding.code, holding.name, holding.market, holding.assetType)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    holding.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+                RecordListCard(
+                    records = records,
+                    visible = visibleRecords,
+                    onShowMore = { visibleRecords += 30 },
+                    data = data,
+                    accountId = accountId,
+                    cumulativeInvested = cumulativeInvested,
+                    shortIds = shortIds,
+                    onOpenRecord = onOpenRecord,
                 )
-                Text(value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1, softWrap = false)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "${holding.assetType.label} · ${MoneyFormat.decimal(valuation.position.quantity)}${holding.assetType.unit}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                if (valuation.position.quantity > 0) {
-                    Text("총 ${MoneyFormat.rate(rate)}", style = MaterialTheme.typography.labelLarge, color = profitColor(rate), maxLines = 1, softWrap = false)
-                    if (today != null) {
-                        Text("오늘 ${MoneyFormat.rate(today)}", style = MaterialTheme.typography.labelLarge, color = profitColor(today), maxLines = 1, softWrap = false)
-                    }
-                }
             }
         }
     }
-}
-
-/** 원화 보기일 때만 보이는 환율 설명. */
-@Composable
-fun CurrencyCaption(usdKrw: Double?) {
-    Text(
-        usdKrw?.let { "평가는 오늘 환율(${MoneyFormat.decimal(it, 2)}원), 매입은 매수한 날 환율" } ?: "환율이 없어 환산할 수 없습니다",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-/** 한투 연결 계좌: 매매와 예수금은 불러오고, 입출금(투자금)과 배당은 직접 입력한다. */
-@Composable
-private fun LinkedAccountCard(
-    apiStatus: ApiStatus,
-    syncing: Boolean,
-    onSync: () -> Unit,
-    onOpenSettings: () -> Unit,
-) {
-    SectionCard(title = "한투 연결 계좌") {
-        Text(
-            "매수·매도 체결과 예수금은 한투에서 불러옵니다. 입금·출금(투자금)과 배당은 직접 기록하세요." +
-                (apiStatus.lastSync?.let { "\n마지막 불러오기 ${formatDate(it)}" } ?: ""),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = onSync, enabled = !syncing) { Text("한투에서 불러오기") }
-            if (syncing) CircularProgressIndicator(Modifier.padding(start = 12.dp).size(20.dp), strokeWidth = 2.dp)
-            TextButton(onClick = onOpenSettings) { Text("연결 설정") }
-        }
-    }
-}
-
-/** 해외 종목 금액 보기 전환 (원화 / 외화). 계좌 상세와 종목 상세에서 함께 쓴다. */
-@Composable
-fun HoldingCurrencyToggle(selected: DisplayCurrency, usdKrw: Double?, onSelect: (DisplayCurrency) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SegmentedPills(
-            options = listOf(DisplayCurrency.FOREIGN, DisplayCurrency.KRW),
-            selected = selected,
-            label = { if (it == DisplayCurrency.FOREIGN) "외화" else "원화" },
-            onSelect = onSelect,
-            modifier = Modifier.width(140.dp),
-        )
-        if (selected == DisplayCurrency.KRW) {
-            Text(
-                usdKrw?.let { "평가는 오늘 환율(${MoneyFormat.decimal(it, 2)}원), 매입은 매수한 날 환율" } ?: "환율이 없어 환산할 수 없습니다",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/** 직접 입력 계좌의 예수금 근거: "10/1 입력 1,000,000원 + 이후 기록 −687,600원" 등. */
-private fun cashBasis(detail: CashDetail?, currency: Currency, withLabel: Boolean): String {
-    val label = if (withLabel) (if (currency == Currency.KRW) "원화: " else "달러: ") else ""
-    val amount = { v: Double -> if (currency == Currency.KRW) MoneyFormat.won(v) else MoneyFormat.usd(v) }
-    val signed = { v: Double -> if (currency == Currency.KRW) MoneyFormat.signedWon(v) else MoneyFormat.signedUsd(v) }
-    val anchor = detail?.anchor
-    val date = detail?.anchorDate
-    return label + when {
-        detail == null || (anchor == null && !detail.estimated) -> "아직 입력하지 않았습니다. 증권사 앱의 예수금을 입력하세요."
-        anchor == null || date == null -> "입력한 예수금이 없어 기록(입금·매매 등)으로 계산한 값"
-        !detail.estimated -> "${formatDate(date)} 입력한 값"
-        else -> "${formatDate(date)} 입력 ${amount(anchor)} + 이후 기록 ${signed(detail.change)} (계산)"
-    }
-}
-
-/** 수익률을 계산할 수 없는 이유 안내 (웹 AccountDetailPage 와 같은 문구). */
-private fun noRateText(reason: PortfolioCalculator.NoRateReason?): String = when (reason) {
-    PortfolioCalculator.NoRateReason.BALANCED -> "넣은 돈과 뺀 돈(출금·이체)이 같아 투자금이 0원이라 수익률을 계산할 수 없어요"
-    PortfolioCalculator.NoRateReason.NEGATIVE -> "넣은 돈보다 뺀 돈(출금·이체)이 많아 투자금이 0원 이하라 수익률을 계산할 수 없어요"
-    else -> "입금 기록이 없어 수익률을 계산할 수 없어요"
 }

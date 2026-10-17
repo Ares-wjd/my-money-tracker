@@ -16,6 +16,7 @@
 - [ ] **큰 파일 나누기** (네 파일 모두): PortfolioViewModel · Components · MarketDataRepository · AccountDetailScreen, 파일마다 계획 → 승인
   - [x] (10/17) PortfolioViewModel 806줄 → 389줄 + PortfolioState · DisplayPrefs · ChartSync · ApiSettings (화면 코드는 그대로)
   - [x] (10/17) MarketDataRepository 583줄 → 186줄 + FxSync · PriceHistorySync · MarketDocs
+  - [x] (10/17) AccountDetailScreen 690줄 → 364줄 + AccountSummaryViews · AccountHoldingViews · AccountRecordViews
 - 웹 첫 화면 크기(약 800KB): 증권사 앱도 처음 열 때 시간이 걸리므로 그대로 둔다
 
 ## 기능 추가
