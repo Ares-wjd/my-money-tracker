@@ -7,6 +7,8 @@
 ## 진행 방식
 - 기능·코드 작업은 **계획을 먼저 보여주고, 승인받은 뒤** 진행한다.
 - 기능을 바꿀 때는 명세서 `docs/FEATURES.md` 를 먼저 고친 뒤 구현한다.
+- 폰 코드를 바꾸면 push 전에 `./gradlew :app:compileDebugKotlin :core:test` 로 컴파일과 core 테스트를 확인한다
+  (작업 환경에 안드로이드 SDK 가 없으면 `/opt/android-sdk` 에 설치하고 `local.properties` 에 sdk.dir 을 적은 뒤 실행).
 - push 후에는 GitHub Actions 결과를 확인하고, 실패하면 고쳐서 다시 push 한다.
 
 ## 보안
