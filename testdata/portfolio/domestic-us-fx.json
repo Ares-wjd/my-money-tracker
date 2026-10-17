@@ -1,0 +1,43 @@
+{
+  "name": "국내 주식 + 미국 ETF · 달러 입금·배당 · 오늘 환율 효과",
+  "today": "2026-10-14",
+  "manualUsdKrw": null,
+  "accounts": {
+    "a": { "name": "국내", "kind": "GENERAL", "createdAt": 1 },
+    "b": { "name": "해외", "kind": "GENERAL", "createdAt": 2 }
+  },
+  "holdings": {
+    "s": { "accountId": "a", "name": "삼성전자", "code": "005930", "market": "KR", "assetType": "STOCK", "createdAt": 1 },
+    "v": { "accountId": "b", "name": "VOO", "code": "VOO", "market": "NYSE", "assetType": "ETF", "createdAt": 2 }
+  },
+  "records": {
+    "d1": { "accountId": "a", "type": "DEPOSIT", "date": "2026-10-01", "currency": "KRW", "amount": 1000000, "krwAmount": 1000000, "createdAt": 1 },
+    "b1": { "accountId": "a", "type": "BUY", "date": "2026-10-01", "holdingId": "s", "quantity": 10, "price": 60000, "createdAt": 2 },
+    "d2": { "accountId": "b", "type": "DEPOSIT", "date": "2026-10-01", "currency": "USD", "amount": 1000, "krwAmount": 1380000, "createdAt": 3 },
+    "b2": { "accountId": "b", "type": "BUY", "date": "2026-10-02", "holdingId": "v", "quantity": 2, "price": 450, "currency": "USD", "createdAt": 4 },
+    "dv": { "accountId": "b", "type": "DIVIDEND", "date": "2026-10-10", "holdingId": "v", "amount": 5, "currency": "USD", "createdAt": 5 }
+  },
+  "market": {
+    "price_KR_005930": { "latest": 75000, "latestDate": "2026-10-14", "prevClose": 70000, "closes": {} },
+    "price_US_VOO": { "latest": 520, "latestDate": "2026-10-14", "prevClose": 500, "closes": {} },
+    "fx_USD": { "rates": { "2026-10-13": 1390 } },
+    "fx_USD_checked": { "rates": {}, "latest": 1400, "latestDate": "2026-10-14", "latestSource": "KIS" }
+  },
+  "expect": {
+    "summary": { "investedKrw": 2380000, "valueKrw": 2753000, "profitKrw": 373000, "returnRate": 0.15672268907563025, "returnRateExDividends": 0.15378151260504203, "dividendsKrw": 7000 },
+    "accounts": {
+      "a": { "investedKrw": 1000000, "valueKrw": 1150000, "profitKrw": 150000, "returnRate": 0.15, "cashKrw": 400000, "cashUsd": 0, "noRateReason": null },
+      "b": { "investedKrw": 1380000, "valueKrw": 1603000, "profitKrw": 223000, "returnRate": 0.16159420289855073, "cashKrw": 0, "cashUsd": 105, "noRateReason": null }
+    },
+    "positions": {
+      "s": { "quantity": 10, "averagePrice": 60000, "realizedProfit": 0, "dividends": 0 },
+      "v": { "quantity": 2, "averagePrice": 450, "realizedProfit": 0, "dividends": 5 }
+    },
+    "shortSells": [],
+    "todayChange": {
+      "totalKrw": 117050, "rate": 0.05234911335226637,
+      "domesticKrw": 50000, "foreignKrw": 56000, "fxKrw": 11050, "fxFrom": 1390, "fxTo": 1400,
+      "accounts": { "a": 50000, "b": 56000 }
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "다 판 뒤 다른 계좌로 이체해 투자금이 음수가 된 계좌 · 출금",
+  "today": "2026-10-14",
+  "manualUsdKrw": null,
+  "accounts": {
+    "a": { "name": "보내는 계좌", "kind": "GENERAL", "createdAt": 1 },
+    "b": { "name": "받는 계좌", "kind": "ISA", "createdAt": 2 }
+  },
+  "holdings": {
+    "s": { "accountId": "a", "name": "삼성전자", "code": "005930", "market": "KR", "assetType": "STOCK", "createdAt": 1 }
+  },
+  "records": {
+    "d1": { "accountId": "a", "type": "DEPOSIT", "date": "2026-10-01", "currency": "KRW", "amount": 1000000, "krwAmount": 1000000, "createdAt": 1 },
+    "b1": { "accountId": "a", "type": "BUY", "date": "2026-10-02", "holdingId": "s", "quantity": 5, "price": 60000, "createdAt": 2 },
+    "s1": { "accountId": "a", "type": "SELL", "date": "2026-10-05", "holdingId": "s", "quantity": 5, "price": 70000, "createdAt": 3 },
+    "t1": { "accountId": "a", "type": "TRANSFER", "date": "2026-10-06", "toAccountId": "b", "currency": "KRW", "amount": 1050000, "krwAmount": 1050000, "createdAt": 4 },
+    "w1": { "accountId": "b", "type": "WITHDRAW", "date": "2026-10-07", "currency": "KRW", "amount": 50000, "krwAmount": 50000, "createdAt": 5 }
+  },
+  "market": {
+    "price_KR_005930": { "latest": 80000, "latestDate": "2026-10-14", "prevClose": 79000, "closes": {} }
+  },
+  "expect": {
+    "summary": { "investedKrw": 950000, "valueKrw": 1000000, "profitKrw": 50000, "returnRate": 0.05263157894736842, "returnRateExDividends": 0.05263157894736842, "dividendsKrw": 0 },
+    "accounts": {
+      "a": { "investedKrw": -50000, "valueKrw": 0, "profitKrw": 50000, "returnRate": null, "cashKrw": 0, "cashUsd": 0, "noRateReason": "NEGATIVE" },
+      "b": { "investedKrw": 1000000, "valueKrw": 1000000, "profitKrw": 0, "returnRate": 0, "cashKrw": 1000000, "cashUsd": 0, "noRateReason": null }
+    },
+    "positions": {
+      "s": { "quantity": 0, "averagePrice": 0, "realizedProfit": 50000, "dividends": 0 }
+    },
+    "cumulativeInvested": {
+      "a": { "d1": 1000000, "t1": -50000 },
+      "b": { "t1": 1050000, "w1": 1000000 }
+    },
+    "shortSells": [],
+    "todayChange": null
+  }
+}

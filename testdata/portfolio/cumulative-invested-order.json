@@ -1,0 +1,26 @@
+{
+  "name": "기록마다 누적 투자금: 입금 → 이체 보냄 → 같은 날 입금(먼저 입력)·출금 → 매수는 제외 · 받은 계좌는 이체가 +",
+  "today": "2026-03-02",
+  "manualUsdKrw": null,
+  "accounts": {
+    "kr": { "name": "국내", "kind": "GENERAL", "createdAt": 1 },
+    "us": { "name": "해외", "kind": "GENERAL", "createdAt": 2 }
+  },
+  "holdings": {
+    "s": { "accountId": "kr", "name": "삼성전자", "code": "005930", "market": "KR", "assetType": "STOCK", "createdAt": 1 }
+  },
+  "records": {
+    "d1": { "accountId": "kr", "type": "DEPOSIT", "date": "2026-01-02", "currency": "KRW", "amount": 1000000, "krwAmount": 1000000, "createdAt": 1 },
+    "t1": { "accountId": "kr", "type": "TRANSFER", "date": "2026-02-02", "toAccountId": "us", "currency": "KRW", "amount": 300000, "krwAmount": 300000, "createdAt": 2 },
+    "w1": { "accountId": "kr", "type": "WITHDRAW", "date": "2026-03-02", "currency": "KRW", "amount": 100000, "krwAmount": 100000, "createdAt": 4 },
+    "d2": { "accountId": "kr", "type": "DEPOSIT", "date": "2026-03-02", "currency": "KRW", "amount": 50000, "krwAmount": 50000, "createdAt": 3 },
+    "b1": { "accountId": "kr", "type": "BUY", "date": "2026-03-02", "holdingId": "s", "quantity": 1, "price": 80000, "createdAt": 5 }
+  },
+  "market": {},
+  "expect": {
+    "cumulativeInvested": {
+      "kr": { "d1": 1000000, "t1": 700000, "d2": 750000, "w1": 650000 },
+      "us": { "t1": 300000 }
+    }
+  }
+}

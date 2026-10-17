@@ -1,7 +1,7 @@
 // core PortfolioCalculatorTest · DisplayCurrencyTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
 import type { Record, RecordType } from '../model';
-import { convert, cumulativeInvested, displayConversion, krwHoldingView, newlyShortSells, noRateReason, position, quantityAt, quantityBefore, shortSells, sortHoldings, summarize } from './portfolio';
+import { convert, displayConversion, krwHoldingView, newlyShortSells, noRateReason, position, quantityAt, quantityBefore, shortSells, sortHoldings, summarize } from './portfolio';
 import { account, holding, record } from './testData';
 
 const day1 = '2026-01-02';
@@ -253,18 +253,6 @@ describe('보유 종목 정렬 (HoldingSortTest)', () => {
     expect(ids('VALUE')).toEqual(['big', 'small', 'none']);
     expect(ids('TOTAL_RETURN')).toEqual(['small', 'big', 'none']);
     expect(ids('TODAY_RETURN')).toEqual(['small', 'big', 'none']);
-  });
-
-  it('기록마다 누적 투자금 (cumulativeInvestedPerRecord)', () => {
-    const records = [
-      record({ id: 'd1', accountId: 'kr', type: 'DEPOSIT', date: '2026-01-02', amount: 1_000_000, krwAmount: 1_000_000, createdAt: 1 }),
-      record({ id: 't1', accountId: 'kr', type: 'TRANSFER', date: '2026-02-02', toAccountId: 'us', amount: 300_000, krwAmount: 300_000, createdAt: 2 }),
-      record({ id: 'w1', accountId: 'kr', type: 'WITHDRAW', date: '2026-03-02', amount: 100_000, krwAmount: 100_000, createdAt: 4 }),
-      record({ id: 'd2', accountId: 'kr', type: 'DEPOSIT', date: '2026-03-02', amount: 50_000, krwAmount: 50_000, createdAt: 3 }),
-      record({ id: 'b1', accountId: 'kr', type: 'BUY', date: '2026-03-02', holdingId: 's', quantity: 1, price: 80_000, createdAt: 5 }),
-    ];
-    expect(Object.fromEntries(cumulativeInvested('kr', records))).toEqual({ d1: 1_000_000, t1: 700_000, d2: 750_000, w1: 650_000 });
-    expect(Object.fromEntries(cumulativeInvested('us', records))).toEqual({ t1: 300_000 });
   });
 
   it('계산 순서상 잔고 없는 매도 (shortSellsInCalculationOrder)', () => {

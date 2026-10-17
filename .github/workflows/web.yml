@@ -3,9 +3,9 @@ name: Web
 on:
   push:
     branches: [ "**" ]
-    paths: [ "web/**", ".github/workflows/web.yml" ]
+    paths: [ "web/**", "testdata/**", ".github/workflows/web.yml" ]
   pull_request:
-    paths: [ "web/**", ".github/workflows/web.yml" ]
+    paths: [ "web/**", "testdata/**", ".github/workflows/web.yml" ]
   # GitHub Actions 화면에서 "Run workflow" 로 직접 다시 배포할 수 있게 한다.
   workflow_dispatch:
 

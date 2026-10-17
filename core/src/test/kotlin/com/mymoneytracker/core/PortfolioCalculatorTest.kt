@@ -47,22 +47,6 @@ class PortfolioCalculatorTest {
     )
 
     @Test
-    fun cumulativeInvestedPerRecord() {
-        // 웹 portfolio.test.ts 와 같은 케이스: 입금 100만 → 이체 30만 보냄 → 출금 10만 (같은 날 입금 5만이 먼저 입력됨) → 매수는 제외
-        val records = listOf(
-            Record(id = "d1", accountId = "kr", type = RecordType.DEPOSIT, date = day1, amount = 1_000_000.0, krwAmount = 1_000_000.0, createdAt = 1),
-            Record(id = "t1", accountId = "kr", type = RecordType.TRANSFER, date = day2, toAccountId = "us", amount = 300_000.0, krwAmount = 300_000.0, createdAt = 2),
-            Record(id = "w1", accountId = "kr", type = RecordType.WITHDRAW, date = day3, amount = 100_000.0, krwAmount = 100_000.0, createdAt = 4),
-            Record(id = "d2", accountId = "kr", type = RecordType.DEPOSIT, date = day3, amount = 50_000.0, krwAmount = 50_000.0, createdAt = 3),
-            Record(id = "b1", accountId = "kr", type = RecordType.BUY, date = day3, holdingId = "s", quantity = 1.0, price = 80_000.0, createdAt = 5),
-        )
-        val kr = PortfolioCalculator.cumulativeInvested("kr", records)
-        assertEquals(mapOf("d1" to 1_000_000.0, "t1" to 700_000.0, "d2" to 750_000.0, "w1" to 650_000.0), kr)
-        // 받은 계좌는 이체가 +
-        assertEquals(mapOf("t1" to 300_000.0), PortfolioCalculator.cumulativeInvested("us", records))
-    }
-
-    @Test
     fun shortSellsInCalculationOrder() {
         // 웹 portfolio.test.ts 와 같은 케이스
         val d = LocalDate.of(2026, 10, 7)

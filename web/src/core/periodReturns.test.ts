@@ -1,44 +1,14 @@
-// core PeriodReturnsTest 와 같은 케이스.
+// core PeriodReturnsTest 와 같은 케이스. 올해·연평균·월별·연도별 숫자는 공통 케이스 파일(testdata/period)에서 검사한다.
 import { describe, expect, it } from 'vitest';
 import type { StoredChart } from './chartStore';
-import { flowSeries, longTermReturn, monthlyReturns, periodSummaryText, yearToDate, yearlyReturns, type FlowPoint } from './periodReturns';
+import { flowSeries, longTermReturn, periodSummaryText, type FlowPoint } from './periodReturns';
 
 const p = (date: string, valueKrw: number, investedKrw: number): FlowPoint => ({ date, valueKrw, investedKrw });
 
 describe('기간 수익률 (PeriodReturnsTest)', () => {
-  it('올해 수익률은 연중 입금을 남은 기간만큼 (yearToDateWeightsMidYearDeposit)', () => {
-    const s = [p('2025-12-31', 1000, 1000), p('2026-07-02', 2000, 2000), p('2026-12-31', 2200, 2000)];
-    const ytd = yearToDate(s, '2026-12-31')!;
-    expect(ytd.profitKrw).toBeCloseTo(200, 9);
-    expect(ytd.netFlowKrw).toBeCloseTo(1000, 9);
-    expect(ytd.rate!).toBeCloseTo(200 / (1000 + (1000 * 183) / 365), 12);
-  });
-
-  it('1년 이상이면 연평균, 미만이면 기간 수익률 (annualAfterOneYearElsePeriod)', () => {
-    const long = longTermReturn([p('2025-01-01', 1000, 1000), p('2026-01-01', 1100, 1000)], '2026-01-01')!;
-    expect(long.annual!).toBeCloseTo(0.1, 6);
-    expect(long.period).toBeNull();
-
-    const short = [p('2026-08-01', 1000, 1000), p('2026-10-01', 1050, 1000)];
-    const s = longTermReturn(short, '2026-10-01')!;
-    expect(s.annual).toBeNull();
-    expect(s.period!).toBeCloseTo(0.05, 12);
-    expect(s.days).toBe(61);
+  it('올해 값 없이 장기만 (summaryTextWithoutYearToDate)', () => {
+    const s = longTermReturn([p('2026-08-01', 1000, 1000), p('2026-10-01', 1050, 1000)], '2026-10-01');
     expect(periodSummaryText(null, s)).toBe('기간 ▲5.00% (2개월)');
-    expect(periodSummaryText(yearToDate(short, '2026-10-01'), s)).toBe('올해 ▲5.00% (+50원) · 기간 ▲5.00% (2개월)');
-  });
-
-  it('월별·연도별 (monthsAndYears)', () => {
-    const s = [p('2026-07-31', 1000, 1000), p('2026-08-31', 1100, 1000), p('2026-09-30', 1210, 1000)];
-    const m = monthlyReturns(s, '2026-09-30', 3);
-    expect(m.map((r) => r.from)).toEqual(['2026-07-31', '2026-08-01', '2026-09-01']);
-    expect(m[0].rate!).toBeCloseTo(0, 12);
-    expect(m[1].profitKrw).toBeCloseTo(100, 9);
-    expect(m[1].rate!).toBeCloseTo(0.1, 12);
-    expect(m[2].rate!).toBeCloseTo(0.1, 12);
-    const y = yearlyReturns(s, '2026-09-30');
-    expect(y.length).toBe(1);
-    expect(y[0].profitKrw).toBeCloseTo(210, 9);
   });
 
   it('계좌 합치기와 계산 중 (seriesSumsAccountsAndWaitsForStored)', () => {
