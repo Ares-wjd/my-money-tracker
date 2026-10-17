@@ -15,6 +15,7 @@
 - [x] (10/17) **작업 환경에서 폰 앱 빌드** (폰 테스트 대책 b): push 전에 폰 앱을 직접 컴파일. dl.google.com 접근 허용 필요 (환경 네트워크 설정)
 - [ ] **큰 파일 나누기** (네 파일 모두): PortfolioViewModel · Components · MarketDataRepository · AccountDetailScreen, 파일마다 계획 → 승인
   - [x] (10/17) PortfolioViewModel 806줄 → 389줄 + PortfolioState · DisplayPrefs · ChartSync · ApiSettings (화면 코드는 그대로)
+  - [x] (10/17) MarketDataRepository 583줄 → 186줄 + FxSync · PriceHistorySync · MarketDocs
 - 웹 첫 화면 크기(약 800KB): 증권사 앱도 처음 열 때 시간이 걸리므로 그대로 둔다
 
 ## 기능 추가
