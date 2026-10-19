@@ -3,6 +3,7 @@ package com.mymoneytracker.app.data
 import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
@@ -25,6 +26,8 @@ import java.time.LocalDate
 data class AppSettings(
     /** 환율 API 연결 전까지 쓰는, 직접 입력한 원/달러 환율. */
     val manualUsdKrw: Double? = null,
+    /** 데이터 점검에서 무시한 항목 키 (폰·PC 공유, v2.9). */
+    val ignoredChecks: Set<String> = emptySet(),
 )
 
 /**
@@ -90,7 +93,12 @@ class PortfolioRepository(
                 report("설정 불러오기", error)
                 return@addSnapshotListener
             }
-            trySend(AppSettings(manualUsdKrw = snapshot?.getDouble("manualUsdKrw")))
+            trySend(
+                AppSettings(
+                    manualUsdKrw = snapshot?.getDouble("manualUsdKrw"),
+                    ignoredChecks = (snapshot?.get("ignoredChecks") as? List<*>).orEmpty().filterIsInstance<String>().toSet(),
+                ),
+            )
         }
         awaitClose { registration.remove() }
     }
@@ -197,6 +205,12 @@ class PortfolioRepository(
 
     fun saveManualUsdKrw(rate: Double?) {
         settingsDoc.set(mapOf("manualUsdKrw" to rate), SetOptions.merge()).logFailure("환율 저장")
+    }
+
+    /** 데이터 점검 항목을 무시하거나([ignored]) 다시 본다. */
+    fun setCheckIgnored(key: String, ignored: Boolean) {
+        val change = if (ignored) FieldValue.arrayUnion(key) else FieldValue.arrayRemove(key)
+        settingsDoc.set(mapOf("ignoredChecks" to change), SetOptions.merge()).logFailure("점검 무시 저장")
     }
 
     private fun <T> Query.listen(mapper: (DocumentSnapshot) -> T?): Flow<List<T>> = callbackFlow {

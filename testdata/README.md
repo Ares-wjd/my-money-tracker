@@ -27,6 +27,7 @@ core 테스트(`core/src/test/.../SharedCasesTest.kt`)와 웹 테스트(`web/src
 | `cumulativeInvested` | 계좌 id → { 기록 id → 그 기록까지 누적 투자금 } |
 | `shortSells` | 계산되지 않는 매도 `[{ "id", "held" }]` (계산 순서대로) |
 | `todayChange` | 오늘 변동 (`null` 이면 없음) `totalKrw` · `rate` · `domesticKrw` · `foreignKrw` · `fxKrw` · `fxFrom` · `fxTo` · `accounts`(계좌 id → 가격 변동, 시세 없음은 null) |
+| `dataCheck` | 데이터 점검 `issues`(`[{ key, kind, detail }]`, 화면 순서대로) · `ignored`(무시한 키) · `alertCount`(홈 알림 개수) |
 
 ## period/*.json — 기간 수익률
 

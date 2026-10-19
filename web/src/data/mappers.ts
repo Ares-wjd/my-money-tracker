@@ -147,7 +147,8 @@ export function toSavingsGoalGroup(id: string, d: Data): SavingsGoalGroup | null
 }
 
 export function toSettings(d: Data | undefined): AppSettings {
-  return { manualUsdKrw: num(d?.manualUsdKrw) };
+  const ignored = Array.isArray(d?.ignoredChecks) ? d.ignoredChecks.filter((k): k is string => typeof k === 'string') : [];
+  return { manualUsdKrw: num(d?.manualUsdKrw), ignoredChecks: ignored };
 }
 
 function dateMap(v: unknown): Map<string, number> {

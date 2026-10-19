@@ -62,7 +62,9 @@ import com.mymoneytracker.app.ui.home.TodayChangeScreen
 import com.mymoneytracker.app.ui.records.CashBalanceScreen
 import com.mymoneytracker.app.ui.records.RecordEditScreen
 import com.mymoneytracker.app.ui.records.TradeImportScreen
+import com.mymoneytracker.app.ui.settings.DataCheckScreen
 import com.mymoneytracker.app.ui.settings.SettingsScreen
+import com.mymoneytracker.core.portfolio.DataCheck
 import com.mymoneytracker.app.ui.update.AppUpdateViewModel
 import com.mymoneytracker.app.ui.update.UpdateDialog
 import com.mymoneytracker.app.ui.update.UpdateState
@@ -88,6 +90,7 @@ private object Routes {
     const val ALLOCATION_EDIT = "allocation-edit?targetId={targetId}"
     const val TODAY = "today"
     const val PERIOD = "period"
+    const val DATA_CHECK = "data-check"
 
     fun accountDetail(id: String) = "account/$id"
     fun accountEdit(id: String? = null) = if (id == null) "account-edit" else "account-edit?accountId=$id"
@@ -214,6 +217,24 @@ fun MainScreen(
                     onOpenSettings = { navController.navigateToTab(Routes.SETTINGS) },
                     onOpenToday = { navController.navigate(Routes.TODAY) },
                     onOpenPeriod = { navController.navigate(Routes.PERIOD) },
+                    onOpenDataCheck = { navController.navigate(Routes.DATA_CHECK) },
+                )
+            }
+            composable(Routes.DATA_CHECK) {
+                val data by portfolioViewModel.data.collectAsStateWithLifecycle()
+                DataCheckScreen(
+                    viewModel = portfolioViewModel,
+                    onBack = { navController.popBackStack() },
+                    onOpen = { issue, recordId ->
+                        when (issue.kind.target) {
+                            DataCheck.Target.RECORD -> (recordId ?: issue.recordIds.firstOrNull())?.let { data?.record(it) }?.let { r ->
+                                navController.navigate(Routes.recordEdit(r.accountId, r.type, recordId = r.id))
+                            }
+                            DataCheck.Target.ACCOUNT -> issue.accountId?.let { navController.navigate(Routes.accountDetail(it)) }
+                            DataCheck.Target.HOLDING -> issue.holdingId?.let { navController.navigate(Routes.holdingDetail(it)) }
+                            DataCheck.Target.SETTINGS -> navController.navigateToTab(Routes.SETTINGS)
+                        }
+                    },
                 )
             }
             composable(Routes.PERIOD) {
@@ -299,6 +320,7 @@ fun MainScreen(
                     updateViewModel = updateViewModel,
                     onSignOut = onSignOut,
                     onDeleteAccount = onDeleteAccount,
+                    onOpenDataCheck = { navController.navigate(Routes.DATA_CHECK) },
                 )
             }
 

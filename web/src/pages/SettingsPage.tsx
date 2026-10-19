@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { FormActions, NumberField } from '../components/form';
 import { Card, Row } from '../components/ui';
 import { formatDate } from '../core/dates';
@@ -27,6 +28,13 @@ export function SettingsPage() {
         <NumberField label="직접 입력 환율 (원/달러)" value={rateText} onChange={(v) => { setRateText(v); setSaved(false); }} preview={(n) => `1달러 = ${decimal(n, 2)}원`} />
         <FormActions problem={problem} onSave={() => saveManualUsdKrw(uid, rateText.trim() === '' ? null : rate)} onDone={() => setSaved(true)} />
         {saved && <p className="muted small">저장했습니다.</p>}
+      </Card>
+      <Card title="데이터 점검">
+        <p className="muted small">계산되지 않는 매도·음수 예수금·현재가 없음·중복 의심 등 숫자가 틀어질 수 있는 곳을 모아 봅니다.</p>
+        <Row label="지금" value={data.checks.length === 0 ? '점검할 것 없음' : `${data.checks.length}건 (홈 알림 ${data.checkAlerts}건)`} />
+        <div className="button-row">
+          <Link to="/check" className="button-link">데이터 점검 열기</Link>
+        </div>
       </Card>
       <Card title="자산 추이 그래프">
         <p className="muted small">

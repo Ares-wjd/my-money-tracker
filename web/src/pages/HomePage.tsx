@@ -52,6 +52,10 @@ export function HomePage() {
         </span>
       </section>
 
+      {data.checkAlerts > 0 && (
+        <Link to="/check" className="card check-alert">⚠ 데이터 점검 {data.checkAlerts}건 ›</Link>
+      )}
+
       {(summary.missingFx || summary.missingPrice) && (
         <Card>
           {summary.missingFx && <Warning>달러 자산이 있지만 환율이 없어 원화 합계에서 빠져 있습니다.</Warning>}

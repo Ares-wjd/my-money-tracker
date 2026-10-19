@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Holding, InvestmentAccount, Record } from '../model';
 import { toAccount, toHolding, toMarketSnapshot, toRecord } from '../data/mappers';
+import { checkAlertCount, dataCheck } from './dataCheck';
 import { currentPrice, latestUsdKrw } from './market';
 import { cumulativeInvested, noRateReason, shortSells, summarize } from './portfolio';
 import { longTermReturn, monthlyReturns, periodSummaryText, yearToDate, yearlyReturns, type FlowPoint } from './periodReturns';
@@ -108,6 +109,18 @@ function checkPortfolio(file: string, c: Data): string[] {
         for (const [id, value] of Object.entries(e.accounts)) check.num(`todayChange.accounts.${id}`, value, t.accounts.find((a) => a.account.id === id)?.changeKrw);
       }
     }
+  }
+  if (ex.dataCheck) {
+    const issues = dataCheck(accounts, holdings, records, summary, snapshot, today);
+    const expected = ex.dataCheck.issues as { key: string; kind: string; detail: string }[];
+    check.text('dataCheck 항목', expected.map((x) => x.key).join(', '), issues.map((i) => i.key).join(', '));
+    issues.forEach((i, n) => {
+      const x = expected[n];
+      if (!x) return;
+      check.text(`dataCheck.${i.key}.kind`, x.kind, i.kind);
+      check.text(`dataCheck.${i.key}.detail`, x.detail, i.detail);
+    });
+    if ('alertCount' in ex.dataCheck) check.num('dataCheck.alertCount', ex.dataCheck.alertCount, checkAlertCount(issues, new Set(ex.dataCheck.ignored ?? [])));
   }
   return check.problems;
 }

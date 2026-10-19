@@ -1,0 +1,68 @@
+{
+  "name": "데이터 점검: 계산되지 않는 매도 · 음수 예수금(원화·달러) · 원화 금액 빠진 달러 입금 · 주인 없는 기록 3종 · 현재가 없음 · 오래된 현재가(직접 입력 74일·자동 13일) · 매매일 환율 없음 · 중복 출금 · 기록 없는 종목. 연결 계좌의 체결번호가 다른 같은 매수 2건은 분할 체결이라 중복 아님",
+  "today": "2026-10-14",
+  "manualUsdKrw": null,
+  "accounts": {
+    "a": { "name": "국내", "kind": "GENERAL", "createdAt": 1 },
+    "b": { "name": "해외", "kind": "GENERAL", "createdAt": 2 },
+    "c": { "name": "연결", "kind": "GENERAL", "createdAt": 3 }
+  },
+  "holdings": {
+    "s": { "accountId": "a", "name": "삼성전자", "code": "005930", "market": "KR", "assetType": "STOCK", "createdAt": 1 },
+    "n": { "accountId": "a", "name": "신규종목", "code": "000660", "market": "KR", "assetType": "STOCK", "createdAt": 2 },
+    "f": { "accountId": "a", "name": "펀드A", "code": "", "market": "KR", "assetType": "FUND", "manualPrice": 10000, "manualPriceDate": "2026-08-01", "createdAt": 3 },
+    "e": { "accountId": "a", "name": "빈종목", "code": "035420", "market": "KR", "assetType": "STOCK", "createdAt": 4 },
+    "v": { "accountId": "b", "name": "VOO", "code": "VOO", "market": "NYSE", "assetType": "ETF", "createdAt": 5 },
+    "t": { "accountId": "c", "name": "카카오", "code": "035720", "market": "KR", "assetType": "STOCK", "createdAt": 6 }
+  },
+  "records": {
+    "d1": { "accountId": "a", "type": "DEPOSIT", "date": "2026-10-01", "currency": "KRW", "amount": 100000, "krwAmount": 100000, "createdAt": 1 },
+    "b1": { "accountId": "a", "type": "BUY", "date": "2026-10-02", "holdingId": "s", "quantity": 1, "price": 60000, "createdAt": 2 },
+    "bn": { "accountId": "a", "type": "BUY", "date": "2026-10-02", "holdingId": "n", "quantity": 1, "price": 50000, "createdAt": 3 },
+    "bf": { "accountId": "a", "type": "BUY", "date": "2026-10-02", "holdingId": "f", "quantity": 1, "price": 10000, "createdAt": 4 },
+    "s1": { "accountId": "a", "type": "SELL", "date": "2026-10-03", "holdingId": "s", "quantity": 2, "price": 5000, "createdAt": 5 },
+    "w1": { "accountId": "a", "type": "WITHDRAW", "date": "2026-10-05", "currency": "KRW", "amount": 30000, "krwAmount": 30000, "createdAt": 6 },
+    "w2": { "accountId": "a", "type": "WITHDRAW", "date": "2026-10-05", "currency": "KRW", "amount": 30000, "krwAmount": 30000, "createdAt": 7 },
+    "d4": { "accountId": "b", "type": "DEPOSIT", "date": "2026-10-01", "currency": "USD", "amount": 1000, "krwAmount": 0, "createdAt": 8 },
+    "b2": { "accountId": "b", "type": "BUY", "date": "2026-10-02", "holdingId": "v", "quantity": 2, "price": 450, "currency": "USD", "createdAt": 9 },
+    "b3": { "accountId": "b", "type": "BUY", "date": "2026-10-06", "holdingId": "v", "quantity": 1, "price": 450, "currency": "USD", "createdAt": 10 },
+    "k1": { "accountId": "c", "type": "BUY", "date": "2026-10-07", "holdingId": "t", "quantity": 1, "price": 40000, "externalId": "KIS:1", "createdAt": 11 },
+    "k2": { "accountId": "c", "type": "BUY", "date": "2026-10-07", "holdingId": "t", "quantity": 1, "price": 40000, "externalId": "KIS:2", "createdAt": 12 },
+    "o1": { "accountId": "c", "type": "DIVIDEND", "date": "2026-10-08", "holdingId": "gone", "currency": "KRW", "amount": 1000, "createdAt": 13 },
+    "o2": { "accountId": "zz", "type": "DEPOSIT", "date": "2026-10-08", "currency": "KRW", "amount": 5000, "krwAmount": 5000, "createdAt": 14 },
+    "o3": { "accountId": "c", "type": "TRANSFER", "date": "2026-10-09", "toAccountId": "yy", "currency": "KRW", "amount": 1000, "krwAmount": 1000, "createdAt": 15 }
+  },
+  "market": {
+    "price_KR_005930": { "latest": 75000, "latestDate": "2026-10-14", "prevClose": 74000, "closes": {} },
+    "price_KR_035720": { "latest": 41000, "latestDate": "2026-10-14", "prevClose": 40000, "closes": {} },
+    "price_US_VOO": { "latest": 520, "latestDate": "2026-10-01", "prevClose": 515, "closes": {} },
+    "fx_USD": { "rates": { "2026-10-13": 1390 } },
+    "fx_USD_checked": { "rates": {}, "latest": 1400, "latestDate": "2026-10-14", "latestSource": "KIS" }
+  },
+  "expect": {
+    "accounts": {
+      "a": { "cashKrw": -70000 },
+      "b": { "cashUsd": -350 }
+    },
+    "shortSells": [{ "id": "s1", "held": 1 }],
+    "dataCheck": {
+      "ignored": ["SHORT_SELL:s1", "DUPLICATE:w1,w2"],
+      "alertCount": 10,
+      "issues": [
+        { "key": "SHORT_SELL:s1", "kind": "SHORT_SELL", "detail": "국내 · 삼성전자 · 2026.10.3 매도 2주 (그때 보유 1주)" },
+        { "key": "NEGATIVE_CASH:a:KRW", "kind": "NEGATIVE_CASH", "detail": "국내 · 원화 -70,000원" },
+        { "key": "NEGATIVE_CASH:b:USD", "kind": "NEGATIVE_CASH", "detail": "해외 · 달러 -$350.00" },
+        { "key": "USD_FLOW_NO_KRW:d4", "kind": "USD_FLOW_NO_KRW", "detail": "해외 · 2026.10.1 입금 $1,000.00" },
+        { "key": "ORPHAN_RECORD:o1", "kind": "ORPHAN_RECORD", "detail": "연결 · 2026.10.8 배당 · 종목이 없음" },
+        { "key": "ORPHAN_RECORD:o3", "kind": "ORPHAN_RECORD", "detail": "연결 · 2026.10.9 계좌 간 이체 · 받는 계좌가 없음" },
+        { "key": "ORPHAN_RECORD:o2", "kind": "ORPHAN_RECORD", "detail": "지운 계좌 · 2026.10.8 입금 · 계좌가 없음" },
+        { "key": "NO_PRICE:n", "kind": "NO_PRICE", "detail": "국내 · 신규종목" },
+        { "key": "STALE_PRICE:f:2026-08-01", "kind": "STALE_PRICE", "detail": "국내 · 펀드A · 2026.8.1 가격 (74일 전)" },
+        { "key": "STALE_PRICE:v:2026-10-01", "kind": "STALE_PRICE", "detail": "해외 · VOO · 2026.10.1 가격 (13일 전)" },
+        { "key": "NO_TRADE_FX:v", "kind": "NO_TRADE_FX", "detail": "해외 · VOO" },
+        { "key": "DUPLICATE:w1,w2", "kind": "DUPLICATE", "detail": "국내 · 2026.10.5 출금 · 30,000원 · 2건" },
+        { "key": "EMPTY_HOLDING:e", "kind": "EMPTY_HOLDING", "detail": "국내 · 빈종목" }
+      ]
+    }
+  }
+}

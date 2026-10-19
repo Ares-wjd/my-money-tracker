@@ -1,0 +1,27 @@
+{
+  "name": "데이터 점검: 달러 입금이 있는데 환율이 하나도 없음 → 환율 없음 한 줄 (매매일 환율 없음은 따로 내지 않음). 무시하면 알림 0건",
+  "today": "2026-10-14",
+  "manualUsdKrw": null,
+  "accounts": {
+    "b": { "name": "해외", "kind": "GENERAL", "createdAt": 1 }
+  },
+  "holdings": {
+    "v": { "accountId": "b", "name": "VOO", "code": "VOO", "market": "NYSE", "assetType": "ETF", "createdAt": 1 }
+  },
+  "records": {
+    "d1": { "accountId": "b", "type": "DEPOSIT", "date": "2026-10-01", "currency": "USD", "amount": 1000, "krwAmount": 1380000, "createdAt": 1 },
+    "b1": { "accountId": "b", "type": "BUY", "date": "2026-10-02", "holdingId": "v", "quantity": 1, "price": 450, "currency": "USD", "createdAt": 2 }
+  },
+  "market": {
+    "price_US_VOO": { "latest": 520, "latestDate": "2026-10-14", "prevClose": 515, "closes": {} }
+  },
+  "expect": {
+    "dataCheck": {
+      "ignored": ["NO_FX"],
+      "alertCount": 0,
+      "issues": [
+        { "key": "NO_FX", "kind": "NO_FX", "detail": "달러 금액이 있는데 쓸 환율이 없습니다" }
+      ]
+    }
+  }
+}

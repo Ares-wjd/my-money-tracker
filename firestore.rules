@@ -94,13 +94,14 @@ service cloud.firestore {
           && num(data().createdAt);
       }
 
-      // 설정
+      // 설정 (ignoredChecks: 데이터 점검에서 무시한 항목 키 목록)
       match /settings/{id} {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid)
           && id == 'app'
-          && onlyKeys(['manualUsdKrw'])
-          && optNum(data().get('manualUsdKrw', null));
+          && onlyKeys(['manualUsdKrw', 'ignoredChecks'])
+          && optNum(data().get('manualUsdKrw', null))
+          && (!('ignoredChecks' in data()) || (data().ignoredChecks is list && data().ignoredChecks.size() <= 1000));
       }
 
       // 시세·환율 캐시

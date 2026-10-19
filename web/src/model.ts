@@ -130,6 +130,8 @@ export const isCompleted = (g: SavingsGoal): boolean => g.type === 'ONE_TIME' &&
 
 export interface AppSettings {
   manualUsdKrw: number | null;
+  /** 데이터 점검에서 무시한 항목 키 (폰·PC 공유, v2.9). */
+  ignoredChecks: string[];
 }
 
 export interface PricePoint {

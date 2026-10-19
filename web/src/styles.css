@@ -487,3 +487,17 @@ a.today-tile:hover { text-decoration: none; filter: brightness(0.95); }
 @media (max-width: 520px) { .period-bar-label { font-size: 9px; } .period-table td, .period-table th { padding: 4px; } }
 .period-pick { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .period-table td.num, .period-table th.num { text-align: right; }
+
+/* 데이터 점검 (v2.9) */
+.check-alert { display: block; padding: 12px 16px; color: var(--error); font-weight: 600; }
+.check-alert:hover { text-decoration: underline; }
+.dc-item + .dc-item { border-top: 1px solid var(--line); }
+.dc-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; }
+.dc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; background: none; border: none; padding: 0; text-align: left; color: inherit; }
+.dc-main:hover .list-title { text-decoration: underline; }
+.dc-ignore { flex-shrink: 0; padding: 6px 12px; font-size: 13px; }
+.dc-links { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 0 12px; }
+.dc-link { background: none; border: none; padding: 0; color: var(--green); font-size: 13px; font-weight: 600; }
+.dc-tag { margin-left: 8px; padding: 1px 6px; border-radius: 6px; background: var(--soft); color: var(--muted); font-size: 11px; font-weight: 600; }
+.dc-item.ignored .dc-main, .dc-item.ignored .dc-links { opacity: 0.45; }
+.dc-item.ignored .list-title { color: var(--muted); }

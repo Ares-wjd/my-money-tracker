@@ -12,6 +12,7 @@ import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.PricePoint
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.DataCheck
 import com.mymoneytracker.core.portfolio.FlowPoint
 import com.mymoneytracker.core.portfolio.PeriodReturns
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
@@ -242,6 +243,20 @@ class SharedCasesTest {
                         for (id in ea.keys()) c.num("todayChange.accounts.$id", ea.get(id), t.accounts.firstOrNull { it.account.id == id }?.changeKrw)
                     }
                 }
+            }
+        }
+        expect.optJSONObject("dataCheck")?.let { e ->
+            val issues = DataCheck.check(accounts, holdings, records, summary, snapshot, today)
+            val items = e.getJSONArray("issues")
+            val expected = (0 until items.length()).map { items.getJSONObject(it) }
+            c.text("dataCheck 항목", expected.map { it.getString("key") }.toString(), issues.map { it.key }.toString())
+            issues.zip(expected).forEach { (i, x) ->
+                c.text("dataCheck.${i.key}.kind", x.getString("kind"), i.kind.name)
+                c.text("dataCheck.${i.key}.detail", x.getString("detail"), i.detail)
+            }
+            if (e.has("alertCount")) {
+                val ignored = e.optJSONArray("ignored")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty().toSet()
+                c.num("dataCheck.alertCount", e.get("alertCount"), DataCheck.alertCount(issues, ignored).toDouble())
             }
         }
         return c.problems

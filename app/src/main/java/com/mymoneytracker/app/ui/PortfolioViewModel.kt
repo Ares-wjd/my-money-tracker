@@ -27,6 +27,7 @@ import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.AllocationTarget
+import com.mymoneytracker.core.portfolio.DataCheck
 import com.mymoneytracker.core.portfolio.DisplayCurrency
 import com.mymoneytracker.core.portfolio.HoldingSort
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
@@ -80,16 +81,18 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         marketRepository.snapshot(),
     ) { (accounts, holdings, records), settings, market ->
         val fx = market.latestUsdKrw()?.second ?: settings.manualUsdKrw
+        val summary = PortfolioCalculator.summarize(
+            accounts, holdings, records, fx,
+            priceOf = { PriceLookup.current(it, market) },
+        )
         PortfolioData(
             accounts = accounts,
             holdings = holdings,
             records = records,
             settings = settings,
             market = market,
-            summary = PortfolioCalculator.summarize(
-                accounts, holdings, records, fx,
-                priceOf = { PriceLookup.current(it, market) },
-            ),
+            summary = summary,
+            checks = DataCheck.check(accounts, holdings, records, summary, market, LocalDate.now()),
         )
     }
         .flowOn(Dispatchers.Default)
@@ -227,6 +230,9 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     fun deleteRecord(recordId: String) = repository.deleteRecord(recordId)
 
     fun saveManualUsdKrw(rate: Double?) = repository.saveManualUsdKrw(rate)
+
+    /** 데이터 점검 항목 무시 / 다시 보기 (폰·PC 공유). */
+    fun setCheckIgnored(key: String, ignored: Boolean) = repository.setCheckIgnored(key, ignored)
 
     /** 직접 입력한 예수금을 기록한다. 같은 날 다시 입력하면 그날 값을 덮어쓴다. */
     fun saveCashBalance(accountId: String, date: LocalDate, krw: Double?, usd: Double?, memo: String) {

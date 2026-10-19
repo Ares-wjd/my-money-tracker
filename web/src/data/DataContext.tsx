@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { checkAlertCount, dataCheck, type CheckIssue } from '../core/dataCheck';
 import { today } from '../core/dates';
 import { summarizeSavings, type SavingsSummary } from '../core/goals';
 import { currentPrice, dailyChangeRate, latestUsdKrw, latestUsdKrwSourceLabel, tradeUsdKrw } from '../core/market';
@@ -27,6 +28,10 @@ export interface AppData extends UserData {
   krwView: (valuation: HoldingValuation) => KrwHoldingView | null;
   /** 오늘 수익률 (전일 종가 대비). 자동 시세를 쓰지 않거나 전일 종가가 없으면 null. */
   todayRate: (valuation: HoldingValuation) => number | null;
+  /** 데이터 점검 결과 (무시한 것 포함) · 무시한 키 · 홈 알림 개수 (무시하지 않은 🔴·🟠). */
+  checks: CheckIssue[];
+  ignoredChecks: Set<string>;
+  checkAlerts: number;
 }
 
 interface DataState {
@@ -78,9 +83,12 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     const holdingById = new Map<string, Holding>(raw.holdings.map((h) => [h.id, h]));
     const accountById = new Map<string, InvestmentAccount>(raw.accounts.map((a) => [a.id, a]));
     const newestFirst = (a: Record, b: Record) => compareRecords(b, a);
+    const summary = summarize(raw.accounts, raw.holdings, raw.records, usdKrw, (h) => currentPrice(h, raw.market));
+    const checks = dataCheck(raw.accounts, raw.holdings, raw.records, summary, raw.market, day);
+    const ignoredChecks = new Set(raw.settings.ignoredChecks);
     return {
       ...raw,
-      summary: summarize(raw.accounts, raw.holdings, raw.records, usdKrw, (h) => currentPrice(h, raw.market)),
+      summary,
       savings: raw.savingsAccounts.map((account) =>
         summarizeSavings(
           account,
@@ -100,6 +108,9 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       recordsOfHolding: (holdingId) => raw.records.filter((r) => r.holdingId === holdingId).sort(newestFirst),
       krwView: (valuation) => krwHoldingView(valuation, raw.records, usdKrw, (d) => tradeUsdKrw(raw.market, d, day)),
       todayRate: (valuation) => dailyChangeRate(valuation.holding, raw.market),
+      checks,
+      ignoredChecks,
+      checkAlerts: checkAlertCount(checks, ignoredChecks),
     };
   }, [raw]);
 

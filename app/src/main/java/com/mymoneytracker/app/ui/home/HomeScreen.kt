@@ -61,6 +61,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenToday: () -> Unit,
     onOpenPeriod: () -> Unit,
+    onOpenDataCheck: () -> Unit = {},
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     val todayChange by viewModel.todayChange.collectAsStateWithLifecycle()
@@ -106,6 +107,7 @@ fun HomeScreen(
                 todayChange = todayChange,
                 onOpenToday = onOpenToday,
                 onOpenPeriod = onOpenPeriod,
+                onOpenDataCheck = onOpenDataCheck,
             )
         }
     }
@@ -125,6 +127,7 @@ private fun HomeContent(
     todayChange: TodayChange?,
     onOpenToday: () -> Unit,
     onOpenPeriod: () -> Unit,
+    onOpenDataCheck: () -> Unit,
 ) {
     val summary = current.summary
     // 올해·연평균 수익률 (그래프 일별 값으로 계산, 계산 중이면 숨김)
@@ -201,6 +204,19 @@ private fun HomeContent(
                         style = MaterialTheme.typography.labelMedium,
                         color = LocalContentColor.current.copy(alpha = 0.9f),
                         modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+        }
+
+        // 데이터 점검: 무시하지 않은 🔴·🟠 가 있을 때만
+        if (current.checkAlerts > 0) {
+            item {
+                SectionCard(Modifier.clickable(onClick = onOpenDataCheck)) {
+                    Text(
+                        "⚠ 데이터 점검 ${current.checkAlerts}건 ›",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
             }

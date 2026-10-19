@@ -1,5 +1,5 @@
 // Firestore 쓰기. 삭제는 폰과 같이 딸린 문서(종목·기록·목표)를 한 번에 지운다.
-import { collection, deleteDoc, doc, setDoc, writeBatch, type DocumentReference } from 'firebase/firestore';
+import { arrayRemove, arrayUnion, collection, deleteDoc, doc, setDoc, writeBatch, type DocumentReference } from 'firebase/firestore';
 import { firebase } from '../firebase';
 import type { Holding, InvestmentAccount, Record, SavingsAccount, SavingsGoal, SavingsGoalGroup } from '../model';
 import type { AllocationTarget } from '../core/allocation';
@@ -97,6 +97,11 @@ export function completeGoals(uid: string, goals: readonly SavingsGoal[], comple
 
 export function saveManualUsdKrw(uid: string, rate: number | null) {
   return setDoc(doc(db(), 'users', uid, 'settings', 'app'), { manualUsdKrw: rate }, { merge: true });
+}
+
+/** 데이터 점검 항목을 무시하거나(ignored) 다시 본다 (폰과 같은 settings/app 의 ignoredChecks). */
+export function setCheckIgnored(uid: string, key: string, ignored: boolean) {
+  return setDoc(doc(db(), 'users', uid, 'settings', 'app'), { ignoredChecks: ignored ? arrayUnion(key) : arrayRemove(key) }, { merge: true });
 }
 
 /** 계좌와 그 계좌의 종목·기록(이 계좌가 받는 이체 포함)을 함께 삭제한다. */

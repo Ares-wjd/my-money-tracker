@@ -62,6 +62,7 @@ fun SettingsScreen(
     updateViewModel: AppUpdateViewModel,
     onSignOut: () -> Unit,
     onDeleteAccount: suspend (Context) -> Unit,
+    onOpenDataCheck: () -> Unit = {},
 ) {
     val data by portfolioViewModel.data.collectAsStateWithLifecycle()
     val apiStatus by portfolioViewModel.apiStatus.collectAsStateWithLifecycle()
@@ -95,6 +96,18 @@ fun SettingsScreen(
                     savedRate = current.settings.manualUsdKrw,
                     onSave = { portfolioViewModel.saveManualUsdKrw(it) },
                 )
+            }
+
+            SectionCard(title = "데이터 점검") {
+                Text(
+                    "계산되지 않는 매도·음수 예수금·현재가 없음·중복 의심 등 숫자가 틀어질 수 있는 곳을 모아 봅니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                data?.let { d ->
+                    LabeledValue("지금", if (d.checks.isEmpty()) "점검할 것 없음" else "${d.checks.size}건 (홈 알림 ${d.checkAlerts}건)")
+                }
+                OutlinedButton(onClick = onOpenDataCheck) { Text("데이터 점검 열기") }
             }
 
             SectionCard(title = "자산 추이 그래프") {

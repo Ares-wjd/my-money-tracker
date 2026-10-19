@@ -33,6 +33,7 @@
       "b": { "t1": 1050000, "w1": 1000000 }
     },
     "shortSells": [],
-    "todayChange": null
+    "todayChange": null,
+    "dataCheck": { "ignored": [], "alertCount": 0, "issues": [] }
   }
 }

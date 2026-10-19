@@ -8,6 +8,7 @@ import com.mymoneytracker.core.market.PriceLookup
 import com.mymoneytracker.core.model.Holding
 import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Record
+import com.mymoneytracker.core.portfolio.DataCheck
 import com.mymoneytracker.core.portfolio.HoldingValuation
 import com.mymoneytracker.core.portfolio.KrwHoldingCalculator
 import com.mymoneytracker.core.portfolio.KrwHoldingView
@@ -23,7 +24,15 @@ data class PortfolioData(
     val settings: AppSettings,
     val market: MarketSnapshot,
     val summary: PortfolioSummary,
+    /** 데이터 점검 결과 (무시한 것 포함, v2.9). */
+    val checks: List<DataCheck.Issue> = emptyList(),
 ) {
+    /** 데이터 점검에서 무시한 항목 키 (폰·PC 공유). */
+    val ignoredChecks: Set<String> get() = settings.ignoredChecks
+
+    /** 홈 알림 개수: 무시하지 않은 🔴·🟠. */
+    val checkAlerts: Int get() = DataCheck.alertCount(checks, settings.ignoredChecks)
+
     /** 계산에 쓰는 환율: 자동으로 받은 최신 환율, 없으면 직접 입력한 환율. */
     val usdKrw: Double? get() = market.latestUsdKrw()?.second ?: settings.manualUsdKrw
     val usdKrwDate: LocalDate? get() = market.latestUsdKrw()?.first
