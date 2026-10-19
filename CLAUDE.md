@@ -18,4 +18,6 @@
 ## 구성
 - 안드로이드 앱: `app/` (UI·데이터), `core/` (순수 Kotlin 계산 로직 + 테스트)
 - PC 웹: `web/` (React + TypeScript + Vite, GitHub Pages 배포)
-- Firestore 보안 규칙: `firestore.rules` (게시는 사용자가 Firebase 콘솔에서 직접)
+- Firestore 보안 규칙: `firestore.rules` (저장소에 그대로 둔다. 게시는 사용자가 Firebase 콘솔에서 직접)
+  - 규칙을 바꿀 일이 있으면 이 파일을 고쳐 push 한 뒤, 복사용 링크를 알려 준다:
+    `https://raw.githubusercontent.com/Ares-wjd/my-money-tracker/<브랜치>/firestore.rules` (GitHub 화면 링크도 같이)
