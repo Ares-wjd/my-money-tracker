@@ -105,10 +105,10 @@ class MarketDataRepository(
             doc.set(mapOf("latest" to price, "latestDate" to today.toString(), "prevClose" to prevClose), SetOptions.merge())
             // 일봉은 따로 쓴다: 보안 규칙을 새로 게시하기 전에는 이 쓰기만 거절되고 현재가 저장은 그대로 된다
             candle?.let {
-                doc.set(
-                    mapOf("candle" to mapOf("date" to it.date.toString(), "base" to it.base, "last" to it.last, "regular" to it.regular, "at" to it.at)),
-                    SetOptions.merge(),
-                )
+                val fields = mutableMapOf<String, Any?>("candle" to it.toMap())
+                // 일봉이 바뀌면 끝난 일봉을 prevCandle 에 남긴다 (장 마감 정리, v2.11)
+                storedPrices[key]?.candle?.takeIf { old -> old.date != it.date }?.let { old -> fields["prevCandle"] = old.toMap() }
+                doc.set(fields, SetOptions.merge())
             }
         }
     }
@@ -132,7 +132,7 @@ class MarketDataRepository(
                     val latest = doc.getDouble("latest")?.let { price ->
                         PricePoint(price, doc.getString("latestDate")?.let(::parseDate))
                     }
-                    prices[key] = PriceHistory(readDateMap(doc, "closes"), latest, doc.getDouble("prevClose"), readCandle(doc))
+                    prices[key] = PriceHistory(readDateMap(doc, "closes"), latest, doc.getDouble("prevClose"), readCandle(doc), readCandle(doc, "prevCandle"))
                     history.read(key, doc)
                 }
             }

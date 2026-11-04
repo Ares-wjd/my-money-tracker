@@ -63,6 +63,8 @@ fun HomeScreen(
     onOpenToday: () -> Unit,
     onOpenPeriod: () -> Unit,
     onOpenDataCheck: () -> Unit = {},
+    alertsBlocked: Boolean = false,
+    onOpenAlerts: () -> Unit = {},
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     val todayChange by viewModel.todayChange.collectAsStateWithLifecycle()
@@ -109,6 +111,8 @@ fun HomeScreen(
                 onOpenToday = onOpenToday,
                 onOpenPeriod = onOpenPeriod,
                 onOpenDataCheck = onOpenDataCheck,
+                alertsBlocked = alertsBlocked,
+                onOpenAlerts = onOpenAlerts,
             )
         }
     }
@@ -129,6 +133,8 @@ private fun HomeContent(
     onOpenToday: () -> Unit,
     onOpenPeriod: () -> Unit,
     onOpenDataCheck: () -> Unit,
+    alertsBlocked: Boolean = false,
+    onOpenAlerts: () -> Unit = {},
 ) {
     val summary = current.summary
     // 올해·연평균 수익률 (그래프 일별 값으로 계산, 계산 중이면 숨김)
@@ -206,6 +212,15 @@ private fun HomeContent(
                         color = LocalContentColor.current.copy(alpha = 0.9f),
                         modifier = Modifier.padding(top = 8.dp),
                     )
+                }
+            }
+        }
+
+        // 알림을 켰는데 필수 설정(알림 권한·배터리 최적화 제외)이 꺼졌으면 (v2.11)
+        if (alertsBlocked) {
+            item {
+                SectionCard(Modifier.clickable(onClick = onOpenAlerts)) {
+                    Text("⚠ 알림이 멈췄어요 · 설정 필요 ›", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
                 }
             }
         }

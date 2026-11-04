@@ -63,6 +63,7 @@ fun SettingsScreen(
     onSignOut: () -> Unit,
     onDeleteAccount: suspend (Context) -> Unit,
     onOpenDataCheck: () -> Unit = {},
+    onOpenAlerts: () -> Unit = {},
 ) {
     val data by portfolioViewModel.data.collectAsStateWithLifecycle()
     val apiStatus by portfolioViewModel.apiStatus.collectAsStateWithLifecycle()
@@ -96,6 +97,15 @@ fun SettingsScreen(
                     savedRate = current.settings.manualUsdKrw,
                     onSave = { portfolioViewModel.saveManualUsdKrw(it) },
                 )
+            }
+
+            SectionCard(title = "알림") {
+                Text(
+                    "큰 등락 · 장 마감 정리 · 비중 허용 범위 이탈 · 목표 마감 임박을 앱을 닫아 두어도 알려 줍니다 (이 폰에서).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = onOpenAlerts) { Text("알림 설정") }
             }
 
             SectionCard(title = "데이터 점검") {

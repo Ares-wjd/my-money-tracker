@@ -33,6 +33,18 @@ service cloud.firestore {
     function onlyKeys(keys) {
       return data().keys().hasOnly(keys);
     }
+    function optBool(v) {
+      return v == null || v is bool;
+    }
+    function optPercent(v) {
+      return v == null || (v is number && v >= 0 && v <= 100);
+    }
+    function optBasis(v) {
+      return v == null || v == 'REGULAR' || v == 'EXTENDED';
+    }
+    function optTime(v) {
+      return v == null || (v is string && v.size() == 5);
+    }
 
     match /users/{uid} {
       allow read, delete: if isOwner(uid);
@@ -94,23 +106,39 @@ service cloud.firestore {
           && num(data().createdAt);
       }
 
-      // 설정 (ignoredChecks: 데이터 점검에서 무시한 항목 키 목록)
+      // 설정: app (ignoredChecks: 데이터 점검에서 무시한 항목 키 목록), alerts (폰 알림 설정, v2.11)
       match /settings/{id} {
         allow read, delete: if isOwner(uid);
-        allow create, update: if isOwner(uid)
-          && id == 'app'
-          && onlyKeys(['manualUsdKrw', 'ignoredChecks'])
-          && optNum(data().get('manualUsdKrw', null))
-          && (!('ignoredChecks' in data()) || (data().ignoredChecks is list && data().ignoredChecks.size() <= 1000));
+        allow create, update: if isOwner(uid) && (
+          (id == 'app'
+            && onlyKeys(['manualUsdKrw', 'ignoredChecks'])
+            && optNum(data().get('manualUsdKrw', null))
+            && (!('ignoredChecks' in data()) || (data().ignoredChecks is list && data().ignoredChecks.size() <= 1000)))
+          || (id == 'alerts'
+            && onlyKeys(['enabled', 'moveOn', 'moveMarket', 'moveItem', 'allocOn', 'allocOff', 'goalOn', 'goalDays', 'goalOverdue',
+                         'krCloseOn', 'krCloseBasis', 'krCloseTime', 'usCloseOn', 'usCloseBasis', 'usCloseTime',
+                         'quietOn', 'quietFrom', 'quietTo', 'updatedAt'])
+            && optBool(data().get('enabled', null)) && optBool(data().get('moveOn', null)) && optBool(data().get('allocOn', null))
+            && optBool(data().get('goalOn', null)) && optBool(data().get('goalOverdue', null)) && optBool(data().get('krCloseOn', null))
+            && optBool(data().get('usCloseOn', null)) && optBool(data().get('quietOn', null))
+            && optPercent(data().get('moveMarket', null)) && optPercent(data().get('moveItem', null))
+            && (!('allocOff' in data()) || (data().allocOff is list && data().allocOff.size() <= 200))
+            && (!('goalDays' in data()) || (data().goalDays is list && data().goalDays.size() <= 10))
+            && optBasis(data().get('krCloseBasis', null)) && optBasis(data().get('usCloseBasis', null))
+            && optTime(data().get('krCloseTime', null)) && optTime(data().get('usCloseTime', null))
+            && optTime(data().get('quietFrom', null)) && optTime(data().get('quietTo', null))
+            && optNum(data().get('updatedAt', null)))
+        );
       }
 
-      // 시세·환율 캐시 (candle: 시장별 변동의 일봉 {date, base, last, regular, at}, calendar 문서: 국내 개장일 krClosed·krFrom·krTo)
+      // 시세·환율 캐시 (candle: 시장별 변동의 일봉 {date, base, last, regular, at}, prevCandle: 그 전 일봉 (장 마감 정리), calendar 문서: 국내 개장일 krClosed·krFrom·krTo)
       match /marketData/{id} {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid)
           && id.size() <= 120
-          && onlyKeys(['latest', 'latestDate', 'prevClose', 'closes', 'historyFrom', 'historyTo', 'rates', 'candle', 'krClosed', 'krFrom', 'krTo'])
+          && onlyKeys(['latest', 'latestDate', 'prevClose', 'closes', 'historyFrom', 'historyTo', 'rates', 'candle', 'prevCandle', 'krClosed', 'krFrom', 'krTo'])
           && (!('candle' in data()) || (data().candle is map && data().candle.keys().hasOnly(['date', 'base', 'last', 'regular', 'at'])))
+          && (!('prevCandle' in data()) || (data().prevCandle is map && data().prevCandle.keys().hasOnly(['date', 'base', 'last', 'regular', 'at'])))
           && (!('krClosed' in data()) || (data().krClosed is list && data().krClosed.size() <= 400))
           && optDate(data().get('krFrom', null))
           && optDate(data().get('krTo', null))

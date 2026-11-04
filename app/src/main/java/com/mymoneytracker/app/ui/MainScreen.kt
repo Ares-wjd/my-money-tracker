@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
@@ -62,6 +63,8 @@ import com.mymoneytracker.app.ui.home.TodayChangeScreen
 import com.mymoneytracker.app.ui.records.CashBalanceScreen
 import com.mymoneytracker.app.ui.records.RecordEditScreen
 import com.mymoneytracker.app.ui.records.TradeImportScreen
+import com.mymoneytracker.app.ui.settings.AlertSettingsScreen
+import com.mymoneytracker.app.ui.settings.AlertSettingsViewModel
 import com.mymoneytracker.app.ui.settings.DataCheckScreen
 import com.mymoneytracker.app.ui.settings.SettingsScreen
 import com.mymoneytracker.core.portfolio.DataCheck
@@ -91,6 +94,7 @@ private object Routes {
     const val TODAY = "today"
     const val PERIOD = "period"
     const val DATA_CHECK = "data-check"
+    const val ALERTS = "alerts"
 
     fun accountDetail(id: String) = "account/$id"
     fun accountEdit(id: String? = null) = if (id == null) "account-edit" else "account-edit?accountId=$id"
@@ -135,6 +139,8 @@ fun MainScreen(
 ) {
     val portfolioViewModel: PortfolioViewModel = viewModel(key = user.uid, factory = PortfolioViewModel.factory(user.uid))
     val goalsViewModel: GoalsViewModel = viewModel(key = "goals-" + user.uid, factory = GoalsViewModel.factory(user.uid))
+    // 알림 설정: 앱을 열 때마다 예약(30분 확인·시각 알람)을 다시 건다 (v2.11)
+    val alertViewModel: AlertSettingsViewModel = viewModel(key = "alerts-" + user.uid, factory = AlertSettingsViewModel.factory(user.uid))
     val updateViewModel: AppUpdateViewModel = viewModel()
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
@@ -167,6 +173,28 @@ fun MainScreen(
                 portfolioViewModel.refreshQuotes(silent = true)
             }
         }
+    }
+
+    val alertSettings by alertViewModel.settings.collectAsStateWithLifecycle()
+    val alertReadiness by alertViewModel.readiness.collectAsStateWithLifecycle()
+    // 앱으로 돌아올 때마다 필수 설정을 다시 확인 (꺼졌으면 홈에 안내)
+    LifecycleResumeEffect(Unit) {
+        alertViewModel.refresh()
+        onPauseOrDispose { }
+    }
+    // 알림을 눌러 열었으면 그 화면으로
+    val alertLink by AlertLinks.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(alertLink) {
+        val target = alertLink ?: return@LaunchedEffect
+        when (target.screen) {
+            "today" -> navController.navigate(Routes.TODAY)
+            "allocation" -> {
+                target.id?.let { portfolioViewModel.selectAllocation(it) }
+                navController.navigateToTab(Routes.ALLOCATION)
+            }
+            "goals" -> navController.navigateToTab(Routes.GOALS)
+        }
+        AlertLinks.consumed()
     }
 
     LaunchedEffect(goalsMessage) {
@@ -218,6 +246,8 @@ fun MainScreen(
                     onOpenToday = { navController.navigate(Routes.TODAY) },
                     onOpenPeriod = { navController.navigate(Routes.PERIOD) },
                     onOpenDataCheck = { navController.navigate(Routes.DATA_CHECK) },
+                    alertsBlocked = alertSettings?.enabled == true && !alertReadiness.ready,
+                    onOpenAlerts = { navController.navigate(Routes.ALERTS) },
                 )
             }
             composable(Routes.DATA_CHECK) {
@@ -321,6 +351,15 @@ fun MainScreen(
                     onSignOut = onSignOut,
                     onDeleteAccount = onDeleteAccount,
                     onOpenDataCheck = { navController.navigate(Routes.DATA_CHECK) },
+                    onOpenAlerts = { navController.navigate(Routes.ALERTS) },
+                )
+            }
+            composable(Routes.ALERTS) {
+                val targets by portfolioViewModel.allocationTargets.collectAsStateWithLifecycle()
+                AlertSettingsScreen(
+                    viewModel = alertViewModel,
+                    allocationTargets = targets.orEmpty(),
+                    onBack = { navController.popBackStack() },
                 )
             }
 

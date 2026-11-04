@@ -91,6 +91,8 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
     implementation(libs.kotlinx.coroutines.play.services)
+    // 알림: 앱을 닫아도 30분마다 확인 (v2.11)
+    implementation(libs.androidx.work.runtime.ktx)
 
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)

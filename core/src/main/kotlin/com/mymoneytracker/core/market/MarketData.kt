@@ -16,6 +16,8 @@ data class PriceHistory(
     val prevClose: Double? = null,
     /** 가장 최근에 받은 일봉 (시장별 변동·오늘 수익률, v2.10). */
     val candle: Candle? = null,
+    /** 그 전 일봉 (일봉이 바뀔 때 남김, 장 마감 정리용 v2.11). */
+    val prevCandle: Candle? = null,
 )
 
 /**

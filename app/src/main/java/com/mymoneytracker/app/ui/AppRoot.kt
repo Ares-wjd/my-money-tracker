@@ -19,6 +19,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.firebase.firestore.FirebaseFirestore
 import com.mymoneytracker.app.data.AuthRepository
 import com.mymoneytracker.app.data.UserDataDeleter
+import com.mymoneytracker.app.data.alerts.AlertScheduler
 import com.mymoneytracker.app.ui.login.LoginScreen
 import kotlinx.coroutines.launch
 
@@ -34,11 +35,16 @@ fun AppRoot() {
         null -> LoginScreen(onSignIn = { activityContext -> authRepository.signInWithGoogle(activityContext) })
         else -> MainScreen(
             user = signedIn,
-            onSignOut = { scope.launch { authRepository.signOut() } },
+            onSignOut = {
+                // 알림 예약·기기에 둔 알림 상태도 지운다 (v2.11)
+                AlertScheduler.stopAll(context.applicationContext)
+                scope.launch { authRepository.signOut() }
+            },
             onDeleteAccount = { activityContext ->
                 authRepository.deleteAccount(activityContext) { uid ->
                     UserDataDeleter(FirebaseFirestore.getInstance()).deleteAll(uid)
                 }
+                AlertScheduler.stopAll(context.applicationContext)
             },
         )
     }

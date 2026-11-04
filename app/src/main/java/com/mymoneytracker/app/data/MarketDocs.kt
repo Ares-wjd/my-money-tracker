@@ -29,9 +29,9 @@ internal object MarketDocs {
 
     fun parseDate(text: String): LocalDate? = runCatching { LocalDate.parse(text) }.getOrNull()
 
-    /** 시세 문서의 candle 맵 → 일봉 (날짜·기준가·현재가가 모두 있어야). */
-    fun readCandle(doc: DocumentSnapshot): Candle? {
-        val m = doc.get("candle") as? Map<*, *> ?: return null
+    /** 시세 문서의 candle(또는 prevCandle) 맵 → 일봉 (날짜·기준가·현재가가 모두 있어야). */
+    fun readCandle(doc: DocumentSnapshot, field: String = "candle"): Candle? {
+        val m = doc.get(field) as? Map<*, *> ?: return null
         val date = (m["date"] as? String)?.let(::parseDate) ?: return null
         val base = (m["base"] as? Number)?.toDouble() ?: return null
         val last = (m["last"] as? Number)?.toDouble() ?: return null
@@ -44,3 +44,7 @@ internal object MarketDocs {
         return MarketCalendar(closed, doc.getString("krFrom")?.let(::parseDate), doc.getString("krTo")?.let(::parseDate))
     }
 }
+
+/** 일봉 → Firestore 맵. */
+internal fun Candle.toMap(): Map<String, Any?> =
+    mapOf("date" to date.toString(), "base" to base, "last" to last, "regular" to regular, "at" to at)
