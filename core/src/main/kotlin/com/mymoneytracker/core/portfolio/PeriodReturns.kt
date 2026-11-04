@@ -21,6 +21,8 @@ data class PeriodResult(
     val rate: Double?,
     /** 기간 동안 넣은 돈 − 뺀 돈 */
     val netFlowKrw: Double,
+    /** 수익률의 분모 (시작 평가금 + 넣은 돈 × 머문 기간 비율). 지수 비교의 "같은 수익률이었다면 수익금"에 쓴다. */
+    val baseKrw: Double = 0.0,
 )
 
 /** 장기 수익률: 1년 이상이면 연평균(XIRR), 1년 미만이면 기간 수익률 ([days] 일). */
@@ -107,7 +109,7 @@ object PeriodReturns {
         val v1 = points.last().valueKrw
         val profit = v1 - v0 - flows
         val base = v0 + weighted
-        return PeriodResult(from, end, profit, if (base > 1e-9) profit / base else null, flows)
+        return PeriodResult(from, end, profit, if (base > 1e-9) profit / base else null, flows, base)
     }
 
     /** 올해 (1월 1일 ~ 오늘). */

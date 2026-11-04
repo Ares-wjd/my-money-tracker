@@ -17,6 +17,8 @@ import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.PricePoint
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.Benchmark
+import com.mymoneytracker.core.portfolio.BenchmarkIndex
 import com.mymoneytracker.core.portfolio.DataCheck
 import com.mymoneytracker.core.portfolio.FlowPoint
 import com.mymoneytracker.core.portfolio.PeriodReturns
@@ -48,6 +50,7 @@ class SharedCasesTest {
     fun casesExist() {
         assertTrue("testdata/portfolio 가 비었음", files("portfolio").isNotEmpty())
         assertTrue("testdata/period 가 비었음", files("period").isNotEmpty())
+        assertTrue("testdata/benchmark 가 비었음", files("benchmark").isNotEmpty())
     }
 
     @Test
@@ -68,6 +71,13 @@ class SharedCasesTest {
     fun periodCases() {
         val problems = mutableListOf<String>()
         for (file in files("period")) problems += checkPeriod(file.name, JSONObject(file.readText()))
+        if (problems.isNotEmpty()) fail(problems.joinToString("\n"))
+    }
+
+    @Test
+    fun benchmarkCases() {
+        val problems = mutableListOf<String>()
+        for (file in files("benchmark")) problems += checkBenchmark(file.name, JSONObject(file.readText()))
         if (problems.isNotEmpty()) fail(problems.joinToString("\n"))
     }
 
@@ -341,14 +351,52 @@ class SharedCasesTest {
         return c.problems
     }
 
+    private fun flowPoints(arr: JSONArray): List<FlowPoint> = (0 until arr.length()).map { i ->
+        val p = arr.getJSONArray(i)
+        FlowPoint(LocalDate.parse(p.getString(0)), p.getDouble(1), p.getDouble(2))
+    }
+
+    private fun checkBenchmark(file: String, case: JSONObject): List<String> {
+        val c = Checker(file)
+        val today = LocalDate.parse(case.getString("today"))
+        val series = flowPoints(case.getJSONArray("series"))
+        val snapshot = market(case.optJSONObject("market"))
+        val expect = case.getJSONObject("expect")
+        val mine = PeriodReturns.yearToDate(series, today)
+        if (expect.has("mineYtd")) c.num("mineYtd", expect.get("mineYtd"), mine?.rate)
+        val rates = mutableListOf<Pair<BenchmarkIndex, Double?>>()
+        val indices = expect.getJSONObject("indices")
+        for (index in BenchmarkIndex.entries) {
+            val sim = Benchmark.simulate(series, index, snapshot, today)
+            val ytd = sim?.let { PeriodReturns.yearToDate(it, today) }
+            rates += index to ytd?.rate
+            if (!indices.has(index.name)) continue
+            val e = indices.opt2(index.name)
+            if (e == null || e == JSONObject.NULL) {
+                if (sim != null) c.problems += "$file · ${index.name}: 기대 null, 실제 ${sim.map { it.valueKrw }}"
+                continue
+            }
+            e as JSONObject
+            if (sim == null) {
+                c.problems += "$file · ${index.name}: 계산 결과 없음"
+                continue
+            }
+            e.optJSONArray("values")?.let { v ->
+                if (v.length() != sim.size) c.problems += "$file · ${index.name}.values 개수: 기대 ${v.length()}, 실제 ${sim.size}"
+                sim.zip((0 until v.length()).map { v.getDouble(it) }).forEach { (p, x) -> c.num("${index.name}.values.${p.date}", x, p.valueKrw) }
+            }
+            if (e.has("ytd")) c.num("${index.name}.ytd", e.get("ytd"), ytd?.rate)
+            if (e.has("todayDiff")) c.num("${index.name}.todayDiff", e.get("todayDiff"), Benchmark.today(series, sim, index)?.diffKrw)
+            if (e.has("covers")) c.text("${index.name}.covers", e.get("covers"), Benchmark.covers(index, snapshot, mine?.from ?: today).toString())
+        }
+        if (expect.has("compareText")) c.text("compareText", expect.get("compareText"), Benchmark.compareText(mine?.rate, rates))
+        return c.problems
+    }
+
     private fun checkPeriod(file: String, case: JSONObject): List<String> {
         val c = Checker(file)
         val today = LocalDate.parse(case.getString("today"))
-        val arr: JSONArray = case.getJSONArray("series")
-        val series = (0 until arr.length()).map { i ->
-            val p = arr.getJSONArray(i)
-            FlowPoint(LocalDate.parse(p.getString(0)), p.getDouble(1), p.getDouble(2))
-        }
+        val series = flowPoints(case.getJSONArray("series"))
         val expect = case.getJSONObject("expect")
         val ytd = PeriodReturns.yearToDate(series, today)
         val long = PeriodReturns.longTerm(series, today)

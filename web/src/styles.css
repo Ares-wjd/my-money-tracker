@@ -25,6 +25,7 @@
   --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948; --series-other: #9aa5a0;
   --short-row: #eaf1fd; --over-row: #fdecee; --short-tag: #1f5fd1; --over-tag: #c62436; --short-tag-ink: #ffffff; --over-tag-ink: #ffffff;
   --chart-invested: #b5770a;
+  --bench-SPX: #d9822b; --bench-COMP: #c2417a; --bench-KOSPI: #6a5acd;
   --fx-part: #856a00;
   color-scheme: light;
 }
@@ -53,6 +54,7 @@
   --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767; --series-other: #5e6b65;
   --short-row: #1d2b45; --over-row: #3b1f24; --short-tag: #8fb4ff; --over-tag: #ff8a96; --short-tag-ink: #16201c; --over-tag-ink: #16201c;
   --chart-invested: #c4851c;
+  --bench-SPX: #e8a15a; --bench-COMP: #e07aa6; --bench-KOSPI: #9a8ef0;
   --fx-part: #8c7000;
   color-scheme: dark;
   }
@@ -80,6 +82,7 @@
   --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767; --series-other: #5e6b65;
   --short-row: #1d2b45; --over-row: #3b1f24; --short-tag: #8fb4ff; --over-tag: #ff8a96; --short-tag-ink: #16201c; --over-tag-ink: #16201c;
   --chart-invested: #c4851c;
+  --bench-SPX: #e8a15a; --bench-COMP: #e07aa6; --bench-KOSPI: #9a8ef0;
   --fx-part: #8c7000;
   color-scheme: dark;
 }
@@ -290,6 +293,25 @@ button.primary.small-button { padding: 8px 14px; }
 .crosshair { stroke: var(--muted); stroke-width: 1; opacity: 0.5; }
 .dot-value { fill: var(--chart-value); stroke: var(--card); stroke-width: 2; }
 .dot-invested { fill: var(--chart-invested); stroke: var(--card); stroke-width: 2; }
+/* 지수 비교 (v2.11): 지수마다 색과 선 모양이 다르다 */
+.line-SPX { stroke: var(--bench-SPX); stroke-width: 2; stroke-dasharray: 1.5 3.5; stroke-linecap: round; }
+.line-COMP { stroke: var(--bench-COMP); stroke-width: 2; stroke-dasharray: 6 2; }
+.line-KOSPI { stroke: var(--bench-KOSPI); stroke-width: 2; stroke-dasharray: 8 3 2 3; }
+.dot-SPX { fill: var(--bench-SPX); stroke: var(--card); stroke-width: 2; }
+.dot-COMP { fill: var(--bench-COMP); stroke: var(--card); stroke-width: 2; }
+.dot-KOSPI { fill: var(--bench-KOSPI); stroke: var(--card); stroke-width: 2; }
+.text-SPX { color: var(--bench-SPX); } .text-COMP { color: var(--bench-COMP); } .text-KOSPI { color: var(--bench-KOSPI); }
+.bg-SPX { background: var(--bench-SPX); } .bg-COMP { background: var(--bench-COMP); } .bg-KOSPI { background: var(--bench-KOSPI); } .bg-mine { background: var(--chart-value); }
+.bench { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 8px; }
+.bench-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.bench-row .strong { font-weight: 700; }
+.choice .dash { vertical-align: middle; margin-right: 6px; }
+.compare-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) 76px; align-items: center; gap: 8px; font-size: 14px; }
+.compare-track { height: 14px; border-radius: 4px; background: var(--soft); overflow: hidden; }
+.compare-fill { display: block; height: 100%; border-radius: 4px; }
+.compare-list { display: flex; flex-direction: column; gap: 10px; margin: 6px 0; }
+.period-dot { position: absolute; left: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; border: 2px solid var(--card); box-sizing: content-box; }
+.year-index { font-size: 12px; color: var(--muted); padding-top: 0 !important; border-top: none !important; }
 .chart-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
 .chart-table { max-height: 320px; overflow-y: auto; }
 /* 반 폭 카드 안의 정보 칸은 좁아지지 않게 */

@@ -228,6 +228,9 @@ class MarketDataRepository(
      */
     suspend fun ensureHistory(ranges: List<HistoryRanges.Range>): List<String> = history.ensureHistory(ranges)
 
+    /** 지수 비교용 지수 시세 (S&P500·나스닥·KOSPI, [from] ~ 어제 종가와 현재 지수, v2.11). */
+    suspend fun ensureIndices(from: LocalDate): List<String> = history.ensureIndices(from)
+
     /** 수출입은행으로 [from] ~ 8일 전 과거 환율을 고정한다 (호출 최대 [budget] 회). 돌려주는 값: (쓴 호출 수, 오류). */
     suspend fun backfillFx(from: LocalDate, budget: Int): Pair<Int, List<String>> = fx.backfillFx(from, budget)
 

@@ -1,6 +1,7 @@
 package com.mymoneytracker.app.ui.home
 
 import androidx.compose.foundation.clickable
+import java.time.LocalDate
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -246,11 +247,19 @@ private fun HomeContent(
         }
 
         item {
+            val chosen by viewModel.chartBenchmarks.collectAsStateWithLifecycle()
+            val chartToday = LocalDate.now()
+            val series = remember(current, stored, chart.selection.accountId) { flowSeries(current, stored, chart.selection.accountId, chartToday) }
+            val lines = remember(current, series, chart.points, chosen) { benchmarkLines(current, series, chart.points, chosen, chartToday) }
             AssetChartCard(
                 state = chart,
                 accounts = current.accounts,
                 onSelectInterval = viewModel::selectChartInterval,
                 onSelectAccount = viewModel::selectChartAccount,
+                benchmarks = lines,
+                chosenBenchmarks = chosen,
+                benchmarkComputing = series == null,
+                onToggleBenchmark = { index -> viewModel.setChartBenchmarks(if (index in chosen) chosen - index else chosen + index) },
             )
         }
 

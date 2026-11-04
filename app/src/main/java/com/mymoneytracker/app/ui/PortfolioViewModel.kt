@@ -27,6 +27,7 @@ import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.BenchmarkIndex
 import com.mymoneytracker.core.portfolio.AllocationTarget
 import com.mymoneytracker.core.portfolio.DataCheck
 import com.mymoneytracker.core.portfolio.DisplayCurrency
@@ -141,6 +142,12 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     fun setAllocationRing(ring: String) = prefs.setAllocationRing(ring)
     val allocationUseCash: StateFlow<Boolean> = prefs.allocationUseCash
     fun setAllocationUseCash(use: Boolean) = prefs.setAllocationUseCash(use)
+
+    /** 지수 비교 (v2.11): 홈 그래프에 겹쳐 볼 지수, 기간별 수익 월별 막대의 지수. */
+    val chartBenchmarks: StateFlow<Set<BenchmarkIndex>> = prefs.chartBenchmarks
+    fun setChartBenchmarks(indices: Set<BenchmarkIndex>) = prefs.setChartBenchmarks(indices)
+    val periodBenchmark: StateFlow<BenchmarkIndex?> = prefs.periodBenchmark
+    fun setPeriodBenchmark(index: BenchmarkIndex?) = prefs.setPeriodBenchmark(index)
 
     /** 계좌별 기록 유형 필터 (뺀 유형). */
     val recordHidden: StateFlow<Map<String, Set<RecordType>>> = prefs.recordHidden

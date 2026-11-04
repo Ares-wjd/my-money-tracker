@@ -4,6 +4,7 @@ import com.mymoneytracker.app.data.HttpJson.num
 import com.mymoneytracker.app.data.HttpJson.objects
 import com.mymoneytracker.app.data.HttpJson.str
 import com.mymoneytracker.core.model.Market
+import com.mymoneytracker.core.portfolio.BenchmarkIndex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -301,7 +302,7 @@ class KisClient(private val store: SecureStore) {
         }
     }
 
-    /** 원/달러 일별 시세 결과: 현재가·전일 종가와 [from] ~ [until] 일별 종가 (최대 100개). */
+    /** 원/달러·지수 일별 시세 결과: 현재가·전일 종가와 [from] ~ [until] 일별 종가 (최대 100개). */
     data class FxDaily(val current: Double?, val prevClose: Double?, val closes: List<DailyClose>)
 
     /** 원/달러 일별 시세 (해외 지수·환율 기간별 시세, 조회 전용). 환율 소스 확인용. */
@@ -312,6 +313,54 @@ class KisClient(private val store: SecureStore) {
             mapOf(
                 "FID_COND_MRKT_DIV_CODE" to "X",
                 "FID_INPUT_ISCD" to "FX@KRW",
+                "FID_INPUT_DATE_1" to from.format(YMD),
+                "FID_INPUT_DATE_2" to until.format(YMD),
+                "FID_PERIOD_DIV_CODE" to "D",
+            ),
+        )
+        val output = r.json.optJSONObject("output1")
+        val closes = r.json.optJSONArray("output2")?.objects().orEmpty().mapNotNull { row ->
+            val date = parseYmd(row.str("stck_bsop_date")) ?: return@mapNotNull null
+            val close = row.num("ovrs_nmix_prpr")?.takeIf { it > 0 } ?: return@mapNotNull null
+            DailyClose(date, close)
+        }
+        return FxDaily(output?.num("ovrs_nmix_prpr")?.takeIf { it > 0 }, output?.num("ovrs_nmix_prdy_clpr")?.takeIf { it > 0 }, closes)
+    }
+
+    /**
+     * 지수 일별 시세 (지수 비교 v2.11, 조회 전용): 현재 지수·전일 지수와 [from] ~ [until] 일별 종가 (최대 100개).
+     * S&P500·나스닥 종합은 해외 지수·환율 기간별 시세 (시장 구분 N, SPX·COMP), KOSPI 는 국내 업종 기간별 시세 (시장 구분 U, 0001).
+     */
+    suspend fun indexDaily(index: BenchmarkIndex, from: LocalDate, until: LocalDate): FxDaily {
+        if (index == BenchmarkIndex.KOSPI) {
+            val r = call(
+                "/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice",
+                "FHKUP03500100",
+                mapOf(
+                    "FID_COND_MRKT_DIV_CODE" to "U",
+                    "FID_INPUT_ISCD" to "0001",
+                    "FID_INPUT_DATE_1" to from.format(YMD),
+                    "FID_INPUT_DATE_2" to until.format(YMD),
+                    "FID_PERIOD_DIV_CODE" to "D",
+                ),
+            )
+            val output = r.json.optJSONObject("output1")
+            val current = output?.num("bstp_nmix_prpr")?.takeIf { it > 0 }
+            val prev = output?.num("prdy_nmix")?.takeIf { it > 0 }
+                ?: current?.let { c -> output.num("bstp_nmix_prdy_vrss")?.let { c - it } }?.takeIf { it > 0 }
+            val closes = r.json.optJSONArray("output2")?.objects().orEmpty().mapNotNull { row ->
+                val date = parseYmd(row.str("stck_bsop_date")) ?: return@mapNotNull null
+                val close = row.num("bstp_nmix_prpr")?.takeIf { it > 0 } ?: return@mapNotNull null
+                DailyClose(date, close)
+            }
+            return FxDaily(current, prev, closes)
+        }
+        val r = call(
+            "/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
+            "FHKST03030100",
+            mapOf(
+                "FID_COND_MRKT_DIV_CODE" to "N",
+                "FID_INPUT_ISCD" to if (index == BenchmarkIndex.SPX) "SPX" else "COMP",
                 "FID_INPUT_DATE_1" to from.format(YMD),
                 "FID_INPUT_DATE_2" to until.format(YMD),
                 "FID_PERIOD_DIV_CODE" to "D",

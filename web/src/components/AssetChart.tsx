@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState, type KeyboardEvent, type PointerEvent } f
 import { CHART_INTERVALS, CHART_INTERVAL_LABEL, pointDates, series, type ChartInterval, type ChartPoint } from '../core/chart';
 import { assembleChart, firstDates } from '../core/chartStore';
 import { formatDate, formatShortDate, today as todayOf } from '../core/dates';
-import { signedWon, won } from '../core/format';
+import { shortWon, signedWon, won } from '../core/format';
 import { useData, type AppData } from '../data/DataContext';
 import { profitClass, Warning } from './ui';
+import { BENCHMARK_LABEL } from '../core/benchmark';
+import { usePeriodSeries } from '../pages/periodData';
+import { BenchmarkSection, benchmarkLines, signedShort, useChartBenchmarks } from './Benchmark';
 
 /** 축 눈금용 짧은 금액: 1.2억, 1,278만, 5,000 */
 export function compactWon(value: number): string {
@@ -67,12 +70,20 @@ export function AssetChart({ data }: { data: AppData }) {
     return assembleChart(interval, today, firsts, data.charts, todayPoint);
   }, [data, interval, accountId, today]);
   const computing = chartComputing || pending;
+  // 지수 비교 (v2.11): 고른 계좌의 일별 평가금·투자금으로 가상 투자
+  const [chosen, toggleBenchmark] = useChartBenchmarks();
+  const accountIds = useMemo(() => (accountId === null ? null : new Set([accountId])), [accountId]);
+  const flow = usePeriodSeries(data, accountIds);
+  const lines = useMemo(
+    () => benchmarkLines(flow, points.map((p) => p.date), chosen, data.market, today),
+    [flow, points, chosen, data.market, today],
+  );
 
   useEffect(() => setSelected(null), [interval, accountId]);
 
   const index = selected ?? points.length - 1;
   const point = points[index];
-  const values = points.flatMap((p) => [p.valueKrw, p.investedKrw]);
+  const values = [...points.flatMap((p) => [p.valueKrw, p.investedKrw]), ...lines.flatMap((l) => l.values.filter((v): v is number => v !== null))];
   const ticks = values.length ? niceTicks(Math.min(...values), Math.max(...values)) : [0, 1];
   const lo = ticks[0];
   const hi = ticks[ticks.length - 1];
@@ -81,6 +92,17 @@ export function AssetChart({ data }: { data: AppData }) {
   const x = (i: number) => PAD.left + (points.length <= 1 ? plotW : (i / (points.length - 1)) * plotW);
   const y = (v: number) => PAD.top + plotH - ((v - lo) / (hi - lo || 1)) * plotH;
   const path = (pick: (p: ChartPoint) => number) => points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(pick(p)).toFixed(1)}`).join(' ');
+  const benchPath = (vals: readonly (number | null)[]) => {
+    let started = false;
+    return vals
+      .map((v, i) => {
+        if (v === null) return '';
+        const cmd = `${started ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`;
+        started = true;
+        return cmd;
+      })
+      .join(' ');
+  };
 
   const onPointer = (e: PointerEvent<SVGSVGElement>) => {
     if (points.length === 0) return;
@@ -133,6 +155,14 @@ export function AssetChart({ data }: { data: AppData }) {
               <span className={`readout-sub ${profitClass(point.valueKrw - point.investedKrw)}`}>{signedWon(point.valueKrw - point.investedKrw)}</span>
             </span>
             <span className="muted small">투자금 {won(point.investedKrw)} · 누적 배당 {won(point.dividendsKrw)}</span>
+            {lines.map((l) => {
+              const v = l.values[index];
+              return v === null || v === undefined ? null : (
+                <span key={l.index} className={`small text-${l.index}`}>
+                  {BENCHMARK_LABEL[l.index]}이면 {shortWon(v)} ({signedShort(point.valueKrw - v)})
+                </span>
+              );
+            })}
           </div>
           <div className="legend">
             <span className="legend-item"><svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" className="line-value" /></svg>평가금</span>
@@ -142,18 +172,22 @@ export function AssetChart({ data }: { data: AppData }) {
             <div className="table-wrap chart-table">
               <table className="table">
                 <thead>
-                  <tr><th>날짜</th><th className="num">평가금</th><th className="num">투자금</th><th className="num">수익</th><th className="num">누적 배당</th></tr>
+                  <tr>
+                    <th>날짜</th><th className="num">평가금</th><th className="num">투자금</th><th className="num">수익</th><th className="num">누적 배당</th>
+                    {lines.map((l) => <th key={l.index} className="num">{BENCHMARK_LABEL[l.index]}이면</th>)}
+                  </tr>
                 </thead>
                 <tbody>
-                  {[...points].reverse().map((p) => (
+                  {points.map((p, i) => (
                     <tr key={p.date}>
                       <td>{formatDate(p.date)}</td>
                       <td className="num">{won(p.valueKrw)}</td>
                       <td className="num">{won(p.investedKrw)}</td>
                       <td className={`num ${profitClass(p.valueKrw - p.investedKrw)}`}>{signedWon(p.valueKrw - p.investedKrw)}</td>
                       <td className="num">{won(p.dividendsKrw)}</td>
+                      {lines.map((l) => <td key={l.index} className="num">{l.values[i] === null ? '-' : won(l.values[i]!)}</td>)}
                     </tr>
-                  ))}
+                  )).reverse()}
                 </tbody>
               </table>
             </div>
@@ -183,9 +217,11 @@ export function AssetChart({ data }: { data: AppData }) {
                   </text>
                 ))}
                 {points.length > 1 && <path d={path((p) => p.investedKrw)} className="line-invested" fill="none" />}
+                {points.length > 1 && lines.map((l) => <path key={l.index} d={benchPath(l.values)} className={`line-${l.index}`} fill="none" />)}
                 {points.length > 1 && <path d={path((p) => p.valueKrw)} className="line-value" fill="none" />}
                 <line x1={x(index)} x2={x(index)} y1={PAD.top} y2={PAD.top + plotH} className="crosshair" />
                 <circle cx={x(index)} cy={y(point.investedKrw)} r={4} className="dot-invested" />
+                {lines.map((l) => (l.values[index] === null ? null : <circle key={l.index} cx={x(index)} cy={y(l.values[index]!)} r={4} className={`dot-${l.index}`} />))}
                 <circle cx={x(index)} cy={y(point.valueKrw)} r={5} className="dot-value" />
               </svg>
             </div>
@@ -195,6 +231,7 @@ export function AssetChart({ data }: { data: AppData }) {
               {points.filter((p) => p.missingPrice).length}개 날짜는 아직 과거 종가가 없어 평가금이 낮게 나옵니다. 폰 앱을 열면 보유 기간의 과거 시세를 받아 저장합니다 (처음 한 번은 시간이 걸림).
             </Warning>
           )}
+          <BenchmarkSection chosen={chosen} lines={lines} computing={flow === null} onToggle={toggleBenchmark} />
           <div className="chart-foot">
             <span className="muted small">과거 종가·환율은 폰 앱이 받아 둔 값을 씁니다 (휴일은 그 전 거래일 값).</span>
             {computing && <span className="muted small" role="status">그래프 계산 중…</span>}

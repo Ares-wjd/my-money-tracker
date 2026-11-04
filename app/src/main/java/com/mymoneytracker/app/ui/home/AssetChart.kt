@@ -48,6 +48,7 @@ import com.mymoneytracker.core.chart.ChartCalculator
 import com.mymoneytracker.core.chart.ChartInterval
 import com.mymoneytracker.core.chart.ChartPoint
 import com.mymoneytracker.core.model.InvestmentAccount
+import com.mymoneytracker.core.portfolio.BenchmarkIndex
 
 /** 자산 추이 그래프: 평가금(진녹색 실선)과 투자금(황색 점선). 그래프를 누르거나 끌면 그 날짜의 값을 보여준다. */
 @Composable
@@ -56,6 +57,10 @@ fun AssetChartCard(
     accounts: List<InvestmentAccount>,
     onSelectInterval: (ChartInterval) -> Unit,
     onSelectAccount: (String?) -> Unit,
+    benchmarks: List<BenchmarkLine> = emptyList(),
+    chosenBenchmarks: Set<BenchmarkIndex> = emptySet(),
+    benchmarkComputing: Boolean = false,
+    onToggleBenchmark: ((BenchmarkIndex) -> Unit)? = null,
 ) {
     SectionCard(title = "자산 추이") {
         SegmentedPills(ChartInterval.entries, state.selection.interval, { it.label }, onSelectInterval)
@@ -79,7 +84,7 @@ fun AssetChartCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
-            LineChart(state.points)
+            LineChart(state.points, benchmarks)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Legend(chartValueColor(), dashed = false, label = "평가금")
@@ -94,6 +99,9 @@ fun AssetChartCard(
             }
         }
         state.errors.take(3).forEach { WarningText(it) }
+        if (onToggleBenchmark != null && state.points.size >= 2) {
+            BenchmarkSection(chosenBenchmarks, benchmarks, benchmarkComputing, onToggleBenchmark)
+        }
     }
 }
 
@@ -124,15 +132,17 @@ private fun Legend(color: Color, dashed: Boolean, label: String) {
 }
 
 @Composable
-private fun LineChart(points: List<ChartPoint>) {
+private fun LineChart(points: List<ChartPoint>, benchmarks: List<BenchmarkLine> = emptyList()) {
     var selected by remember(points) { mutableStateOf(points.lastIndex) }
     val valueColor = chartValueColor()
     val investedColor = chartInvestedColor()
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val markerColor = MaterialTheme.colorScheme.onSurface
 
-    val maxValue = points.maxOf { maxOf(it.valueKrw, it.investedKrw) }
-    val minValue = points.minOf { minOf(it.valueKrw, it.investedKrw) }
+    val benchValues = benchmarks.flatMap { b -> b.values.filterNotNull() }
+    val maxValue = maxOf(points.maxOf { maxOf(it.valueKrw, it.investedKrw) }, benchValues.maxOrNull() ?: Double.NEGATIVE_INFINITY)
+    val minValue = minOf(points.minOf { minOf(it.valueKrw, it.investedKrw) }, benchValues.minOrNull() ?: Double.POSITIVE_INFINITY)
+    val benchColors = benchmarks.map { benchmarkColor(it.index) }
     // 금액 보조선 (웹과 같은 규칙): 위아래 끝 = 첫·마지막 보조선
     val ticks = remember(minValue, maxValue) { ChartCalculator.niceTicks(minValue, maxValue) }
     val top = ticks.last()
@@ -156,6 +166,15 @@ private fun LineChart(points: List<ChartPoint>) {
                 (if (point.investedKrw > 0) " · ${MoneyFormat.rate(point.profitKrw / point.investedKrw)}" else ""),
             valueColor = profitColor(point.profitKrw),
         )
+        val pointIndex = selected.coerceIn(0, points.lastIndex)
+        benchmarks.forEachIndexed { k, b ->
+            val v = b.values.getOrNull(pointIndex) ?: return@forEachIndexed
+            LabeledValue(
+                "${b.index.label}이면",
+                MoneyFormat.shortWon(v) + " (" + signedShortWon(point.valueKrw - v) + ")",
+                valueColor = benchColors[k],
+            )
+        }
         Spacer(Modifier.height(8.dp))
         Canvas(
             Modifier
@@ -191,6 +210,25 @@ private fun LineChart(points: List<ChartPoint>) {
                 investedColor,
                 style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))),
             )
+            benchmarks.forEachIndexed { k, b ->
+                val path = Path()
+                var started = false
+                b.values.forEachIndexed { i, v ->
+                    if (v == null) return@forEachIndexed
+                    if (!started) path.moveTo(x(i), y(v)) else path.lineTo(x(i), y(v))
+                    started = true
+                }
+                drawPath(
+                    path,
+                    benchColors[k],
+                    style = Stroke(
+                        width = 2.dp.toPx(),
+                        cap = if (b.index == BenchmarkIndex.SPX) StrokeCap.Round else StrokeCap.Butt,
+                        join = StrokeJoin.Round,
+                        pathEffect = benchmarkDash(b.index, this),
+                    ),
+                )
+            }
             val valuePath = Path().apply {
                 points.forEachIndexed { i, p -> if (i == 0) moveTo(x(i), y(p.valueKrw)) else lineTo(x(i), y(p.valueKrw)) }
             }

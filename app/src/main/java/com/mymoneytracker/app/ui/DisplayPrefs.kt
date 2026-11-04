@@ -2,6 +2,7 @@ package com.mymoneytracker.app.ui
 
 import android.content.Context
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.BenchmarkIndex
 import com.mymoneytracker.core.portfolio.DisplayCurrency
 import com.mymoneytracker.core.portfolio.HoldingSort
 import com.mymoneytracker.core.portfolio.TodayFilter
@@ -96,6 +97,28 @@ class DisplayPrefs(context: Context) {
             .apply()
     }
 
+    /** 홈 그래프에 겹쳐 볼 지수 (v2.11, 기본 없음). */
+    private val _chartBenchmarks = MutableStateFlow(
+        prefs.getString(KEY_CHART_BENCHMARKS, null).orEmpty().split(",").mapNotNull { n -> BenchmarkIndex.entries.firstOrNull { it.name == n } }.toSet(),
+    )
+    val chartBenchmarks: StateFlow<Set<BenchmarkIndex>> = _chartBenchmarks.asStateFlow()
+
+    fun setChartBenchmarks(indices: Set<BenchmarkIndex>) {
+        _chartBenchmarks.value = indices
+        prefs.edit().putString(KEY_CHART_BENCHMARKS, indices.joinToString(",") { it.name }).apply()
+    }
+
+    /** 기간별 수익 월별 막대 위에 보일 지수 (기본 S&P500, null = 끄기). */
+    private val _periodBenchmark = MutableStateFlow(
+        prefs.getString(KEY_PERIOD_BENCHMARK, BenchmarkIndex.SPX.name).let { n -> BenchmarkIndex.entries.firstOrNull { it.name == n } },
+    )
+    val periodBenchmark: StateFlow<BenchmarkIndex?> = _periodBenchmark.asStateFlow()
+
+    fun setPeriodBenchmark(index: BenchmarkIndex?) {
+        _periodBenchmark.value = index
+        prefs.edit().putString(KEY_PERIOD_BENCHMARK, index?.name ?: "").apply()
+    }
+
     /** 오늘 과거 환율 채우기에 더 쓸 수 있는 수출입은행 호출 수 (하루 1,000회 한도 중 [FX_DAILY_BUDGET]). */
     fun fxBudgetLeft(): Int = (FX_DAILY_BUDGET - fxCallsToday()).coerceAtLeast(0)
 
@@ -116,6 +139,8 @@ class DisplayPrefs(context: Context) {
         const val KEY_RECORD_HIDDEN = "record_hidden_"
         const val KEY_TODAY_HIDDEN_ACCOUNTS = "today_hidden_accounts"
         const val KEY_TODAY_HIDDEN_KINDS = "today_hidden_kinds"
+        const val KEY_CHART_BENCHMARKS = "chart_benchmarks"
+        const val KEY_PERIOD_BENCHMARK = "period_benchmark"
         const val KEY_FX_DAY = "fx_backfill_day"
         const val KEY_FX_CALLS = "fx_backfill_calls"
         /** 과거 환율 채우기에 하루에 쓸 수 있는 수출입은행 호출 수 (한도 1,000회 중 나머지는 최신·매매일 환율용). */

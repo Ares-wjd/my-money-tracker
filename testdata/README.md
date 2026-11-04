@@ -41,8 +41,19 @@ core 테스트(`core/src/test/.../SharedCasesTest.kt`)와 웹 테스트(`web/src
 | `expect.years` | `[{ from, profitKrw }]` |
 | `expect.summaryText` | 홈 한 줄 글 |
 
+## benchmark/*.json — 지수 비교 (v2.11)
+
+| 키 | 내용 |
+|---|---|
+| `series` | 일별 `[날짜, 평가금, 투자금]` (period 와 같음) |
+| `today` | 오늘 |
+| `market` | `marketData` 문서 (`price_IDX_SPX` · `price_IDX_COMP` · `price_IDX_KOSPI`, `fx_USD`, `fx_USD_checked`) |
+| `expect.indices` | 지수(`SPX`/`COMP`/`KOSPI`) → `values`(날짜마다 가상 평가금) · `ytd`(올해 수익률) · `todayDiff`(내 평가금 − 가상 평가금) · `covers`, 시세가 없으면 `null` |
+| `expect.mineYtd` | 내 올해 수익률 |
+| `expect.compareText` | 수익률 비교 한 줄 (SPX · COMP · KOSPI 순서로 비교) |
+
 ## 케이스 추가하기
 
-1. `portfolio/` 또는 `period/` 에 json 파일을 하나 더 만든다 (파일 이름 = 시나리오, 테스트가 폴더의 파일을 모두 읽는다).
+1. `portfolio/` · `period/` · `benchmark/` 등에 json 파일을 하나 더 만든다 (파일 이름 = 시나리오, 테스트가 폴더의 파일을 모두 읽는다).
 2. 기대 결과는 손으로 계산해 적고, 계산 근거는 `name` 에 짧게 남긴다.
 3. 폰 `./gradlew :core:test` 와 웹 `npm test` 둘 다 통과해야 한다. 한쪽만 틀리면 그쪽 계산이 다른 것이다.

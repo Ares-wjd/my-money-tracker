@@ -178,6 +178,10 @@ class ChartSync(
             runCatching {
                 if (status.hasKis) {
                     found += marketRepository.ensureHistory(HistoryRanges.prices(current.holdings, current.records, today))
+                    // 지수 비교 (v2.11): 첫 기록일 − 7일부터
+                    current.records.minOfOrNull { it.date }?.let { first ->
+                        found += marketRepository.ensureIndices(first.minusDays(HistoryRanges.LEAD_DAYS))
+                    }
                 }
                 HistoryRanges.fx(current.holdings, current.records, today)?.let { (from, _) ->
                     // 한투 원/달러 종가가 기본, 수출입은행은 한투 구간 이전 날짜만 (v2.8)

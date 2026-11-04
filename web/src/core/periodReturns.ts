@@ -21,6 +21,8 @@ export interface PeriodResult {
   rate: number | null;
   /** 기간 동안 넣은 돈 − 뺀 돈 */
   netFlowKrw: number;
+  /** 수익률의 분모 (시작 평가금 + 넣은 돈 × 머문 기간 비율). 지수 비교의 "같은 수익률이었다면 수익금"에 쓴다. */
+  baseKrw: number;
 }
 
 /** 장기 수익률: 1년 이상이면 연평균(XIRR), 1년 미만이면 기간 수익률 (days 일). */
@@ -137,7 +139,7 @@ export function periodReturn(series: readonly FlowPoint[], fromDate: string, to:
   }
   const profit = points[points.length - 1].valueKrw - v0 - flows;
   const base = v0 + weighted;
-  return { from, to: end, profitKrw: profit, rate: base > 1e-9 ? profit / base : null, netFlowKrw: flows };
+  return { from, to: end, profitKrw: profit, rate: base > 1e-9 ? profit / base : null, netFlowKrw: flows, baseKrw: base };
 }
 
 /** 올해 (1월 1일 ~ 오늘). */

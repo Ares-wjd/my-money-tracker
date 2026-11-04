@@ -8,6 +8,7 @@ import com.mymoneytracker.app.data.MarketDocs.parseDate
 import com.mymoneytracker.core.market.HistoryRanges
 import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Market
+import com.mymoneytracker.core.portfolio.BenchmarkIndex
 import kotlinx.coroutines.delay
 import java.time.LocalDate
 
@@ -103,6 +104,61 @@ class PriceHistorySync(
                 errors += if (e.message == KisClient.RATE_LIMIT_MESSAGE) KisClient.RATE_LIMIT_MESSAGE else "${holding.name}: ${e.message}"
             } catch (e: Exception) {
                 errors += "${holding.name}: 네트워크 오류"
+            }
+        }
+        return errors
+    }
+
+    /**
+     * 지수 비교용 지수 시세 (v2.11): S&P500·나스닥·KOSPI 의 [from] ~ 어제 일별 종가 (아직 받지 않은 앞·뒤 기간만)와
+     * 현재 지수. 최근 10일은 늘 다시 받아 현재가(latest)와 함께 저장한다 (장중에 받은 어제 값도 바로잡힘).
+     */
+    suspend fun ensureIndices(from: LocalDate): List<String> {
+        if (!kis.hasCredentials) return emptyList()
+        awaitLoaded()
+        val errors = mutableListOf<String>()
+        val today = LocalDate.now()
+        val yesterday = today.minusDays(1)
+        for (index in BenchmarkIndex.entries) {
+            val key = index.key
+            val (coveredFrom, coveredTo) = docMeta[key] ?: (null to null)
+            val missing = mutableListOf<Pair<LocalDate, LocalDate>>()
+            if (coveredFrom == null || coveredTo == null) {
+                if (!yesterday.isBefore(from)) missing += from to yesterday
+            } else {
+                if (from.isBefore(coveredFrom)) missing += from to coveredFrom.minusDays(1)
+                if (yesterday.isAfter(coveredTo)) missing += coveredTo to yesterday
+            }
+            delay(HISTORY_GAP_MS)
+            try {
+                val closes = mutableMapOf<String, Double>()
+                for ((rangeFrom, rangeTo) in missing) {
+                    var chunkEnd = rangeTo
+                    while (!chunkEnd.isBefore(rangeFrom)) {
+                        val chunkStart = maxOf(rangeFrom, chunkEnd.minusDays(130)) // 한 번에 최대 100 영업일
+                        kis.indexDaily(index, chunkStart, chunkEnd).closes
+                            .filter { !it.date.isAfter(yesterday) }
+                            .forEach { closes[it.date.toString()] = it.close }
+                        chunkEnd = chunkStart.minusDays(1)
+                        delay(HISTORY_GAP_MS)
+                    }
+                }
+                val recent = kis.indexDaily(index, today.minusDays(10), today)
+                recent.closes.filter { !it.date.isAfter(yesterday) && !it.date.isBefore(from) }.forEach { closes[it.date.toString()] = it.close }
+                val newFrom = listOfNotNull(coveredFrom, from).min()
+                val newTo = listOfNotNull(coveredTo, yesterday).max()
+                val fields = mutableMapOf<String, Any?>("closes" to closes, "historyFrom" to newFrom.toString(), "historyTo" to newTo.toString())
+                recent.current?.let {
+                    fields["latest"] = it
+                    fields["latestDate"] = today.toString()
+                    fields["prevClose"] = recent.prevClose
+                }
+                col.document(PRICE_PREFIX + key).set(fields, SetOptions.merge())
+                docMeta[key] = newFrom to newTo
+            } catch (e: ApiException) {
+                errors += if (e.message == KisClient.RATE_LIMIT_MESSAGE) KisClient.RATE_LIMIT_MESSAGE else "${index.label} 지수: ${e.message}"
+            } catch (e: Exception) {
+                errors += "${index.label} 지수: 네트워크 오류"
             }
         }
         return errors

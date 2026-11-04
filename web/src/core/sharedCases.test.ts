@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Holding, InvestmentAccount, Record } from '../model';
 import { toAccount, toCalendar, toHolding, toMarketSnapshot, toRecord } from '../data/mappers';
 import { MARKET_GROUPS, marketStates, nextText, stateChip, timeline, usHoliday, usOpen, type MarketGroup } from './marketClock';
+import { BENCHMARK_INDICES, compareText, covers, simulate, todayDiff, type BenchmarkIndex } from './benchmark';
 import { checkAlertCount, dataCheck } from './dataCheck';
 import { currentPrice, latestUsdKrw } from './market';
 import { cumulativeInvested, noRateReason, shortSells, summarize } from './portfolio';
@@ -197,10 +198,46 @@ function checkPeriod(file: string, c: Data): string[] {
   return check.problems;
 }
 
+function checkBenchmark(file: string, c: Data): string[] {
+  const check = new Checker(file);
+  const today = c.today as string;
+  const series: FlowPoint[] = (c.series as [string, number, number][]).map(([date, valueKrw, investedKrw]) => ({ date, valueKrw, investedKrw }));
+  const snapshot = toMarketSnapshot(docs(c.market).map(([id, data]) => ({ id, data })));
+  const ex = c.expect as Expect;
+  const mine = yearToDate(series, today);
+  if ('mineYtd' in ex) check.num('mineYtd', ex.mineYtd, mine?.rate);
+  const rates: [BenchmarkIndex, number | null][] = [];
+  for (const index of BENCHMARK_INDICES) {
+    const sim = simulate(series, index, snapshot, today);
+    const ytd = sim ? yearToDate(sim, today) : null;
+    rates.push([index, ytd?.rate ?? null]);
+    if (!(index in ex.indices)) continue;
+    const e = ex.indices[index];
+    if (e === null) {
+      if (sim !== null) check.problems.push(`${file} · ${index}: 기대 null, 실제 ${sim.map((p) => p.valueKrw)}`);
+      continue;
+    }
+    if (sim === null) {
+      check.problems.push(`${file} · ${index}: 계산 결과 없음`);
+      continue;
+    }
+    if (e.values) {
+      if (e.values.length !== sim.length) check.problems.push(`${file} · ${index}.values 개수: 기대 ${e.values.length}, 실제 ${sim.length}`);
+      sim.forEach((p, i) => check.num(`${index}.values.${p.date}`, e.values[i], p.valueKrw));
+    }
+    if ('ytd' in e) check.num(`${index}.ytd`, e.ytd, ytd?.rate);
+    if ('todayDiff' in e) check.num(`${index}.todayDiff`, e.todayDiff, todayDiff(series, sim)?.diffKrw);
+    if ('covers' in e) check.text(`${index}.covers`, e.covers, String(covers(index, snapshot, mine?.from ?? today)));
+  }
+  if ('compareText' in ex) check.text('compareText', ex.compareText, compareText(mine?.rate ?? null, rates));
+  return check.problems;
+}
+
 describe('공통 테스트 케이스 (testdata)', () => {
   it('케이스 파일이 있다', () => {
     expect(casesIn('portfolio').length).toBeGreaterThan(0);
     expect(casesIn('period').length).toBeGreaterThan(0);
+    expect(casesIn('benchmark').length).toBeGreaterThan(0);
   });
 
   it.each(casesIn('portfolio'))('계좌 계산 %s', (file, c) => {
@@ -213,5 +250,9 @@ describe('공통 테스트 케이스 (testdata)', () => {
 
   it.each(casesIn('period'))('기간 수익률 %s', (file, c) => {
     expect(checkPeriod(file, c)).toEqual([]);
+  });
+
+  it.each(casesIn('benchmark'))('지수 비교 %s', (file, c) => {
+    expect(checkBenchmark(file, c)).toEqual([]);
   });
 });
