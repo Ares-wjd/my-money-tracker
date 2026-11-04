@@ -376,9 +376,10 @@ class KisClient(private val store: SecureStore) {
                     averagePrice = if (total > 0) rows.sumOf { it.quantity * it.averagePrice } / total else 0.0,
                 )
             }
-        val usdCash = r.json.optJSONArray("output2")?.objects().orEmpty()
-            .firstOrNull { it.str("crcy_cd") == "USD" }
-            ?.num("frcr_dncl_amt_2")
+        // 달러가 $0 이면 통화별 줄에서 USD 가 빠져 온다: 정상 응답(통화별 목록이 있음)이면 $0 으로 본다
+        val usdCash = r.json.optJSONArray("output2")?.let { rows ->
+            rows.objects().firstOrNull { it.str("crcy_cd") == "USD" }?.num("frcr_dncl_amt_2") ?: 0.0
+        }
         return KisOverseasBalance(holdings, usdCash)
     }
 

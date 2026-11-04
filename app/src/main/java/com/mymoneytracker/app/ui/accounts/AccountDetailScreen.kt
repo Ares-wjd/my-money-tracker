@@ -220,7 +220,12 @@ private fun AccountDetailContent(
     val shorts = remember(allRecords, accountId) { PortfolioCalculator.shortSells(allRecords).filter { it.record.accountId == accountId } }
     val shortIds = shorts.map { it.record.id }.toSet()
     // 기록 유형 필터 (기본은 전부 보임)
-    val presentTypes = remember(allRecords) { RecordFilter.present(allRecords) }
+    // 예수금 기록 숨기기 토글 = 뺀 유형에 예수금 (켜면 칩에서도 뺀다)
+    val cashCount = remember(allRecords) { allRecords.count { it.type == RecordType.CASH_BALANCE } }
+    val cashHidden = RecordType.CASH_BALANCE in hiddenTypes
+    val presentTypes = remember(allRecords, cashHidden) {
+        RecordFilter.present(allRecords).filter { !(cashHidden && it == RecordType.CASH_BALANCE) }
+    }
     val records = RecordFilter.apply(allRecords, hiddenTypes)
     val filtered = records.size != allRecords.size
     var visibleRecords by rememberSaveable(accountId) { mutableStateOf(30) }
@@ -318,10 +323,18 @@ private fun AccountDetailContent(
         }
         item {
             Text(
-                if (filtered) "기록 ${records.size}건 / 전체 ${allRecords.size}건" else "기록",
+                (if (filtered) "기록 ${records.size}건 / 전체 ${allRecords.size}건" else "기록") +
+                    if (cashHidden && cashCount > 0) " (예수금 ${cashCount}건 숨김)" else "",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(top = 16.dp),
             )
+        }
+        if (cashCount > 0) {
+            item {
+                CashRecordToggle(cashHidden) { on ->
+                    onHiddenTypesChange(if (on) hiddenTypes + RecordType.CASH_BALANCE else hiddenTypes - RecordType.CASH_BALANCE)
+                }
+            }
         }
         if (presentTypes.size > 1) {
             item { RecordTypeChips(presentTypes, hiddenTypes, onHiddenTypesChange) }

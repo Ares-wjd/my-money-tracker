@@ -3,13 +3,19 @@ package com.mymoneytracker.app.ui.accounts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.mymoneytracker.app.ui.PortfolioData
 import com.mymoneytracker.app.ui.common.AppFilterChip
@@ -24,7 +30,19 @@ import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.RecordFilter
 
-// 계좌 상세의 기록: 유형 칩 · 기록 목록.
+// 계좌 상세의 기록: 예수금 숨기기 · 유형 칩 · 기록 목록.
+
+/** [예수금 기록 숨기기] 스위치 (은행 앱의 "이자 숨기기"처럼). 목록에서만 숨기고 계산에는 그대로 쓴다. */
+@Composable
+internal fun CashRecordToggle(hidden: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().toggleable(value = hidden, role = Role.Switch, onValueChange = onChange).padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("예수금 기록 숨기기", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Switch(checked = hidden, onCheckedChange = null)
+    }
+}
 
 /** 유형 칩: 여러 개 선택, [전체]는 모두 켜져 있으면 전체 해제·아니면 전체 선택. */
 @OptIn(ExperimentalLayoutApi::class)

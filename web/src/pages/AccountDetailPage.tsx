@@ -69,8 +69,17 @@ export function AccountDetailPage() {
       // 저장할 수 없는 환경이면 이번 화면에서만 적용한다.
     }
   };
-  const types = presentTypes(allRecords);
+  // 예수금 기록 숨기기 토글 = 뺀 유형에 예수금 (켜면 칩에서도 뺀다)
+  const cashCount = allRecords.filter((r) => r.type === 'CASH_BALANCE').length;
+  const cashHidden = hidden.has('CASH_BALANCE');
+  const types = presentTypes(allRecords).filter((t) => !(cashHidden && t === 'CASH_BALANCE'));
   const records = applyRecordFilter(allRecords, hidden);
+  const setCashHidden = (on: boolean) => {
+    const next = new Set(hidden);
+    if (on) next.add('CASH_BALANCE');
+    else next.delete('CASH_BALANCE');
+    setHidden(next);
+  };
   // 총 수익률은 보기를 따른다 (원화 보기: 매매일 환율이 모두 있으면 환차익 반영 원화 수익률)
   const totalRate = (v: HoldingValuation) => (displayCurrency === 'KRW' ? data.krwView(v)?.returnRate : null) ?? v.returnRate;
   const sorted = sortHoldings(summary.holdings, holdingSort, totalRate, data.todayRate);
@@ -233,7 +242,10 @@ export function AccountDetailPage() {
       </Card>
 
       <Card
-        title={records.length === allRecords.length ? `기록 ${records.length}건` : `기록 ${records.length}건 / 전체 ${allRecords.length}건`}
+        title={
+          (records.length === allRecords.length ? `기록 ${records.length}건` : `기록 ${records.length}건 / 전체 ${allRecords.length}건`) +
+          (cashHidden && cashCount > 0 ? ` (예수금 ${cashCount}건 숨김)` : '')
+        }
         action={
           <div className="head-actions">
             {/* 표로 일괄 입력 (입출금·매매·배당 — 연결 계좌는 매매 표를 빼고 보여준다) */}
@@ -256,6 +268,12 @@ export function AccountDetailPage() {
               </button>
             ))}
           </div>
+        )}
+        {cashCount > 0 && (
+          <label className="check small cash-toggle">
+            <input type="checkbox" checked={cashHidden} onChange={(e) => setCashHidden(e.target.checked)} />
+            예수금 기록 숨기기
+          </label>
         )}
         {types.length > 1 && (
           <div className="choices record-filter" role="group" aria-label="기록 유형">
