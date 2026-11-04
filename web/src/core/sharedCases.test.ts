@@ -2,7 +2,8 @@
 // 입력은 Firestore 문서 모양 그대로, 기대 결과는 있는 항목만 검사한다. 형식은 testdata/README.md.
 import { describe, expect, it } from 'vitest';
 import type { Holding, InvestmentAccount, Record } from '../model';
-import { toAccount, toHolding, toMarketSnapshot, toRecord } from '../data/mappers';
+import { toAccount, toCalendar, toHolding, toMarketSnapshot, toRecord } from '../data/mappers';
+import { MARKET_GROUPS, marketStates, nextText, stateChip, timeline, usHoliday, usOpen, type MarketGroup } from './marketClock';
 import { checkAlertCount, dataCheck } from './dataCheck';
 import { currentPrice, latestUsdKrw } from './market';
 import { cumulativeInvested, noRateReason, shortSells, summarize } from './portfolio';
@@ -93,7 +94,7 @@ function checkPortfolio(file: string, c: Data): string[] {
     actual.forEach((s, i) => e[i] && check.num(`shortSells.${s.record.id}.held`, e[i].held, s.held));
   }
   if ('todayChange' in ex) {
-    const t = todayChange(summary, snapshot, today);
+    const t = todayChange(summary, snapshot, Date.parse(ex.todayChange?.now ?? `${today}T12:00:00+09:00`));
     const e = ex.todayChange;
     if (e === null) {
       if (t !== null) check.problems.push(`${file} · todayChange: 기대 null, 실제 ${t.totalKrw}`);
@@ -101,12 +102,19 @@ function checkPortfolio(file: string, c: Data): string[] {
       check.problems.push(`${file} · todayChange: 기대 값, 실제 null`);
     } else {
       check.num('todayChange.totalKrw', e.totalKrw, t.totalKrw);
-      for (const key of ['rate', 'domesticKrw', 'foreignKrw', 'fxKrw', 'fxFrom', 'fxTo'] as const) {
-        if (key in e) check.num(`todayChange.${key}`, e[key], t[key]);
-      }
-      if (e.accounts) {
-        check.text('todayChange.accounts 계좌', sortedKeys(Object.keys(e.accounts)), sortedKeys(t.accounts.map((a) => a.account.id)));
-        for (const [id, value] of Object.entries(e.accounts)) check.num(`todayChange.accounts.${id}`, value, t.accounts.find((a) => a.account.id === id)?.changeKrw);
+      if ('rate' in e) check.num('todayChange.rate', e.rate, t.rate);
+      if (e.markets) {
+        check.text('todayChange.markets', MARKET_GROUPS.filter((g) => g in e.markets).join(', '), t.markets.map((m) => m.state.group).join(', '));
+        for (const m of t.markets) {
+          const x = e.markets[m.state.group];
+          if (!x) continue;
+          const p = `todayChange.markets.${m.state.group}`;
+          if ('phase' in x) check.text(`${p}.phase`, x.phase, m.state.phase);
+          if ('live' in x) check.text(`${p}.live`, String(x.live), String(m.live));
+          for (const key of ['changeKrw', 'rate', 'regularKrw', 'extendedKrw', 'fxFrom', 'fxTo'] as const) {
+            if (key in x) check.num(`${p}.${key}`, x[key], m[key]);
+          }
+        }
       }
     }
   }
@@ -122,6 +130,32 @@ function checkPortfolio(file: string, c: Data): string[] {
     });
     if ('alertCount' in ex.dataCheck) check.num('dataCheck.alertCount', ex.dataCheck.alertCount, checkAlertCount(issues, new Set(ex.dataCheck.ignored ?? [])));
   }
+  return check.problems;
+}
+
+function checkClock(file: string, c: Data): string[] {
+  const check = new Checker(file);
+  const cal = toCalendar(c.calendar as Data | undefined);
+  for (const one of (c.cases ?? []) as { now: string; expect: Expect }[]) {
+    const nowMs = Date.parse(one.now);
+    const states = marketStates(nowMs, cal);
+    for (const [group, e] of Object.entries(one.expect)) {
+      const s = states[group as MarketGroup];
+      const p = `${one.now} ${group}`;
+      if ('phase' in e) check.text(`${p}.phase`, e.phase, s.phase);
+      if ('candleDate' in e) check.text(`${p}.candleDate`, e.candleDate, s.candleDate);
+      if ('chip' in e) check.text(`${p}.chip`, e.chip, stateChip(s));
+      if ('next' in e) check.text(`${p}.next`, e.next, nextText(s, nowMs));
+    }
+  }
+  const tl = c.timeline as { date: string; expect: [string, string, number, number][] } | undefined;
+  if (tl) {
+    check.text('timeline', tl.expect.map((x) => `${x[0]}/${x[1]}/${x[2]}-${x[3]}`).join(', '), timeline(tl.date, cal).map((x) => `${x.group}/${x.phase}/${x.start}-${x.end}`).join(', '));
+  }
+  for (const [, list] of Object.entries((c.usHolidays ?? {}) as { [y: string]: [string, string][] })) {
+    for (const [d, name] of list) check.text(`usHoliday ${d}`, name, usHoliday(d));
+  }
+  for (const d of (c.usOpenDays ?? []) as string[]) check.text(`usOpen ${d}`, 'true', String(usOpen(d)));
   return check.problems;
 }
 
@@ -171,6 +205,10 @@ describe('공통 테스트 케이스 (testdata)', () => {
 
   it.each(casesIn('portfolio'))('계좌 계산 %s', (file, c) => {
     expect(checkPortfolio(file, c)).toEqual([]);
+  });
+
+  it.each(casesIn('clock'))('시장 상태 %s', (file, c) => {
+    expect(checkClock(file, c)).toEqual([]);
   });
 
   it.each(casesIn('period'))('기간 수익률 %s', (file, c) => {

@@ -1,12 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { rate, signedWon } from '../core/format';
+import { EMPTY_CALENDAR } from '../core/marketClock';
 import {
   TODAY_KINDS,
   TODAY_KIND_LABEL,
   allChipsShown,
-  excludedItems,
-  includedItems,
   isNoFilter,
   presentKinds,
   toggleAllChips,
@@ -15,11 +13,9 @@ import {
   type TodayKind,
 } from '../core/todayChange';
 import { useAppData } from '../data/DataContext';
-import { ContributionRows, TodayTiles, TodayTotal } from '../components/TodayChange';
-import { Card, TickerBadge, profitClass } from '../components/ui';
-import { accountOrderOf, todayBasis, useTodayChange } from './todayData';
-
-type TodaySort = 'AMOUNT' | 'RATE';
+import { MarketSection, SessionTimeline, ShareBar, TodayTotal, nowText } from '../components/TodayChange';
+import { Card } from '../components/ui';
+import { useNow, useTodayChange } from './todayData';
 
 // 필터는 뺀 것을 이 브라우저에 기억한다 (처음엔 전부 = 전체, 새 계좌·종류도 보임).
 const ACCOUNTS_KEY = 'today_hidden_accounts';
@@ -67,13 +63,13 @@ function ChipRow<T extends string>(props: { label: string; items: readonly T[]; 
   );
 }
 
-/** 오늘 변동 상세: 요약 · 종목별 타일 · 종목 목록. */
+/** 시장별 변동 상세: 필터 · 요약 · 지금 열린 장 · 시장별 카드. */
 export function TodayPage() {
   const data = useAppData();
   const [filter, setFilterState] = useState<TodayFilter>(readFilter);
-  const change = useTodayChange(data, filter);
-  const [sort, setSort] = useState<TodaySort>('AMOUNT');
-  const accountOrder = accountOrderOf(data);
+  const nowMs = useNow();
+  const change = useTodayChange(data, nowMs, filter);
+  const accountOrder = data.summary.accounts.map((a) => a.account.id);
   const kinds = useMemo(() => presentKinds(data.summary), [data]);
   const accountName = (id: string) => data.summary.accounts.find((a) => a.account.id === id)?.account.name ?? '';
 
@@ -100,7 +96,7 @@ export function TodayPage() {
     return (
       <div className="stack">
         {filterCard}
-        <Card title="오늘 변동">
+        <Card title="시장별 변동">
           <p className="muted">{isNoFilter(filter) ? '보유 종목이 없습니다.' : '고른 범위에 보유 종목이 없습니다. 위에서 계좌나 종류를 고르세요.'}</p>
           <Link to="/">홈으로</Link>
         </Card>
@@ -108,60 +104,25 @@ export function TodayPage() {
     );
   }
 
-  const key = (v: number | null) => v ?? -Infinity;
-  const sorted = [
-    ...includedItems(change).sort((a, b) => (sort === 'AMOUNT' ? key(b.changeKrw) - key(a.changeKrw) : key(b.rate) - key(a.rate))),
-    ...excludedItems(change),
-  ];
-
   return (
     <div className="stack">
       {filterCard}
 
-      <Card title="오늘 변동">
+      <Card title="시장별 변동">
         {hiddenNames.length > 0 && <span className="small today-filter-note">필터 적용 중 · {hiddenNames.join(' · ')} 제외</span>}
-        <span className="muted small">{[todayBasis(data.quoteDate), '해외는 미국 시장 기준'].filter(Boolean).join(' · ')}</span>
+        <span className="muted small">{nowText(nowMs)}</span>
         <TodayTotal change={change} />
-        <ContributionRows change={change} accountOrder={accountOrder} />
+        <ShareBar change={change} />
       </Card>
 
-      <Card title="종목별">
-        <p className="muted small">칸 크기 = 평가금 비중 · 색 = 오늘 등락 (빨강 상승, 파랑 하락, 진할수록 큼) · 누르면 종목 화면</p>
-        {change.items.length > 0 ? <TodayTiles change={change} /> : <p className="muted">고른 범위에 종목이 없습니다.</p>}
+      <Card title="지금 열린 장" action={<span className="muted small">한국 시간 · 미국은 서머타임 자동 반영</span>}>
+        <SessionTimeline change={change} nowMs={nowMs} calendar={data.market.calendar ?? EMPTY_CALENDAR} />
       </Card>
 
-      <Card
-        title={sort === 'AMOUNT' ? '변동 금액 순' : '등락률 순'}
-        action={
-          <div className="segmented" role="radiogroup" aria-label="정렬">
-            {(['AMOUNT', 'RATE'] as const).map((s) => (
-              <button key={s} role="radio" aria-checked={sort === s} className={sort === s ? 'on' : ''} onClick={() => setSort(s)}>
-                {s === 'AMOUNT' ? '금액' : '등락률'}
-              </button>
-            ))}
-          </div>
-        }
-      >
-        {sorted.map((i) => (
-          <Link key={i.key} to={`/holdings/${i.holding.id}`} className="list-row">
-            <TickerBadge code={i.holding.code} name={i.holding.name} market={i.holding.market} assetType={i.holding.assetType} />
-            <span className="list-main">
-              <span className="list-title">{i.holding.name}</span>
-            </span>
-            <span className="list-end">
-              {i.changeKrw === null ? (
-                <span className="list-sub">시세 없음</span>
-              ) : (
-                <>
-                  <span className={`list-value ${profitClass(i.changeKrw)}`}>{signedWon(i.changeKrw)}</span>
-                  <span className={`list-sub ${profitClass(i.rate)}`}>{rate(i.rate)}</span>
-                </>
-              )}
-            </span>
-          </Link>
-        ))}
-        <p className="muted small">해외 종목 금액은 오늘 환율 기준 (환율 효과는 위에 따로) · 직접 입력 가격(펀드 등)은 시세 없음</p>
-      </Card>
+      {change.markets.map((m) => (
+        <MarketSection key={m.state.group} move={m} nowMs={nowMs} />
+      ))}
+      <p className="muted small">직접 입력 가격(펀드 등)은 시세 없음 · 한투가 주지 않는 장외 시세는 마지막으로 받은 가격 기준</p>
     </div>
   );
 }

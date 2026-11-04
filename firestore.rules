@@ -104,12 +104,16 @@ service cloud.firestore {
           && (!('ignoredChecks' in data()) || (data().ignoredChecks is list && data().ignoredChecks.size() <= 1000));
       }
 
-      // 시세·환율 캐시
+      // 시세·환율 캐시 (candle: 시장별 변동의 일봉 {date, base, last, regular, at}, calendar 문서: 국내 개장일 krClosed·krFrom·krTo)
       match /marketData/{id} {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid)
           && id.size() <= 120
-          && onlyKeys(['latest', 'latestDate', 'prevClose', 'closes', 'historyFrom', 'historyTo', 'rates'])
+          && onlyKeys(['latest', 'latestDate', 'prevClose', 'closes', 'historyFrom', 'historyTo', 'rates', 'candle', 'krClosed', 'krFrom', 'krTo'])
+          && (!('candle' in data()) || (data().candle is map && data().candle.keys().hasOnly(['date', 'base', 'last', 'regular', 'at'])))
+          && (!('krClosed' in data()) || (data().krClosed is list && data().krClosed.size() <= 400))
+          && optDate(data().get('krFrom', null))
+          && optDate(data().get('krTo', null))
           && optNum(data().get('latest', null))
           && optNum(data().get('prevClose', null))
           && optDate(data().get('latestDate', null))

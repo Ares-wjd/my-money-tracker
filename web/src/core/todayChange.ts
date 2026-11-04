@@ -1,19 +1,24 @@
-// core 의 TodayChangeCalculator 와 같은 규칙: 오늘 변동 (국내 · 해외 · 환율), 종목별 타일.
-import { marketCurrency, type Holding, type InvestmentAccount, type MarketSnapshot } from '../model';
-import { dailyChangeRate, keyOf, latestUsdKrw, usdKrwAt } from './market';
-import { plusDays } from './dates';
+// core 의 TodayChangeCalculator 와 같은 규칙 (v2.10): 시장별 변동 — 국내 · 미국 · 환율마다 지금(또는 마지막) 일봉 하나.
+import { marketCurrency, type Holding, type MarketSnapshot } from '../model';
+import { candleRate, keyOf, latestUsdKrw, usdKrwAt, usesLatest } from './market';
+import { EMPTY_CALENDAR, isActivePhase, marketGroupOf, marketStates, prevKrOpen, type MarketGroup, type MarketState } from './marketClock';
 import type { PortfolioSummary } from './portfolio';
 
-/** 오늘 변동의 종목 하나 (같은 시세 키는 계좌가 달라도 합침). rate·changeKrw 가 null 이면 시세 없음. changeKrw 는 가격 변동만. */
+/**
+ * 시장별 변동의 종목 하나 (같은 시세 키는 계좌가 달라도 합침). changeKrw·rate 가 null 이면 일봉 없음 (직접 입력 가격·아직 못 받음).
+ * changeKrw 는 가격 변동만 (해외는 지금 환율로 원화, 환율 효과는 따로). live 면 그 시장이 진행 중이고 받은 일봉이 지금 일봉.
+ */
 export interface TodayItem {
   key: string;
   holding: Holding;
   valueKrw: number;
   changeKrw: number | null;
   rate: number | null;
+  group: MarketGroup;
+  live: boolean;
 }
 
-/** 오늘 변동을 거르는 종류 (칩). 종목은 티커 색 구분과 같고, 달러 예수금은 환율 효과에만 들어간다. */
+/** 필터 칩의 종류. 종목은 티커 색 구분과 같고, 달러 예수금은 환율 효과에만 들어간다. */
 export type TodayKind = 'KR_STOCK' | 'US_STOCK' | 'ETF' | 'GOLD' | 'OTHER' | 'USD_CASH';
 export const TODAY_KINDS: readonly TodayKind[] = ['KR_STOCK', 'US_STOCK', 'ETF', 'GOLD', 'OTHER', 'USD_CASH'];
 export const TODAY_KIND_LABEL: { [K in TodayKind]: string } = {
@@ -27,7 +32,7 @@ export function todayKindOf(h: Holding): TodayKind {
   return 'OTHER';
 }
 
-/** 오늘 변동 필터: 뺀 계좌·종류를 기억하므로 기본은 전부 (= 전체), 새로 생긴 계좌·종류도 보인다. */
+/** 필터: 뺀 계좌·종류를 기억하므로 기본은 전부 (= 전체), 새로 생긴 계좌·종류도 보인다. */
 export interface TodayFilter {
   hiddenAccounts: ReadonlySet<string>;
   hiddenKinds: ReadonlySet<TodayKind>;
@@ -55,49 +60,6 @@ export function toggleChip<T>(item: T, hidden: ReadonlySet<T>): Set<T> {
   return next;
 }
 
-/** 계좌 한 줄: 그 계좌 종목의 가격 변동 (환율 효과는 따로). changeKrw 가 null 이면 종목은 있지만 시세가 하나도 없음. */
-export interface TodayAccount {
-  account: InvestmentAccount;
-  changeKrw: number | null;
-}
-
-export interface TodayChange {
-  totalKrw: number;
-  /** 오늘 변동 ÷ 전일 기준 평가금 (대상 종목 + 달러 예수금). 기준이 없으면 null. */
-  rate: number | null;
-  domesticKrw: number;
-  foreignKrw: number;
-  fxKrw: number;
-  /** 환율 효과에 쓴 전 영업일·오늘 환율 (오늘 환율이 없으면 null). */
-  fxFrom: number | null;
-  fxTo: number | null;
-  /** 종목별 (평가금 큰 순). */
-  items: TodayItem[];
-  /** 계좌별 (계좌 순서). 종목이 있는 계좌만 (예수금만 있는 계좌는 없음). 계좌 합 + fxKrw = totalKrw. */
-  accounts: TodayAccount[];
-}
-
-export interface TileRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-/** 타일이 이보다 많으면 작은 것부터 "기타"로 묶는다. */
-export const MAX_TILES = 16;
-
-/** 타일·목록에 쓰는 이름: 금현물, 종목명, 이름이 없으면 종목코드. */
-export const todayLabel = (item: TodayItem): string =>
-  item.holding.assetType === 'GOLD' ? '금현물' : item.holding.name.trim() !== '' ? item.holding.name.trim() : item.holding.code.toUpperCase();
-
-export const includedItems = (c: TodayChange) => c.items.filter((i) => i.rate !== null);
-export const excludedItems = (c: TodayChange) => c.items.filter((i) => i.rate === null);
-/** 많이 오른 종목 (등락률 큰 순, 상승만). */
-export const topGainers = (c: TodayChange, count = 3) => includedItems(c).filter((i) => i.rate! > 0).sort((a, b) => b.rate! - a.rate!).slice(0, count);
-/** 많이 내린 종목 (등락률 작은 순, 하락만). */
-export const topLosers = (c: TodayChange, count = 3) => includedItems(c).filter((i) => i.rate! < 0).sort((a, b) => a.rate! - b.rate!).slice(0, count);
-
 /** 칩으로 보여줄 종류: 보유 종목에 있는 종류 + 달러 예수금이 있으면 달러 예수금, 정해진 순서로. */
 export function presentKinds(summary: PortfolioSummary): TodayKind[] {
   const kinds = new Set<TodayKind>();
@@ -108,144 +70,164 @@ export function presentKinds(summary: PortfolioSummary): TodayKind[] {
   return TODAY_KINDS.filter((k) => kinds.has(k));
 }
 
+
 /**
- * 오늘 변동. today 는 오늘 날짜 (오늘 환율이 오늘 것인지 판단). filter 로 뺀 계좌·종류는 계산하지 않는다.
+ * 한 시장의 일봉 변동 (core MarketMove). changeKrw 가 null 이면 종목은 있지만 받은 일봉이 하나도 없음.
+ * live 면 시장이 진행 중이고 받은 일봉이 지금 일봉 (아니면 화면에서 회색). candleDate 는 받은 일봉 날짜 (종목 중 가장 최근).
+ * 국내는 regularKrw (정규장) + extendedKrw (장외) = changeKrw. 환율 줄은 fxFrom → fxTo.
+ */
+export interface MarketMove {
+  state: MarketState;
+  changeKrw: number | null;
+  rate: number | null;
+  live: boolean;
+  candleDate: string | null;
+  items: TodayItem[];
+  regularKrw: number | null;
+  extendedKrw: number | null;
+  fxFrom: number | null;
+  fxTo: number | null;
+}
+
+/** 시장은 진행 중인데 받은 일봉이 아직 예전 것 (폰이 아직 못 받음). */
+export const isStale = (m: MarketMove): boolean => isActivePhase(m.state.phase) && !m.live;
+
+/** 시장별 변동: 합계 = 각 시장 최근 일봉 변동의 합. */
+export interface TodayChange {
+  totalKrw: number;
+  /** 합계 ÷ 기준 평가금 (대상 종목 기준가 + 달러 예수금). 기준이 없으면 null. */
+  rate: number | null;
+  /** 국내 · 미국 · 환율 (있는 것만, 이 순서). */
+  markets: MarketMove[];
+  /** 종목별 (평가금 큰 순). */
+  items: TodayItem[];
+}
+
+/** 지금 움직이는 시장이 하나라도 있는지 (없으면 합계도 회색). */
+export const isLiveChange = (c: TodayChange): boolean => c.markets.some((m) => m.live);
+export const marketOf = (c: TodayChange, group: MarketGroup): MarketMove | undefined => c.markets.find((m) => m.state.group === group);
+
+/** 목록에 쓰는 이름: 금현물, 종목명, 이름이 없으면 종목코드. */
+export const todayLabel = (item: TodayItem): string =>
+  item.holding.assetType === 'GOLD' ? '금현물' : item.holding.name.trim() !== '' ? item.holding.name.trim() : item.holding.code.toUpperCase();
+
+interface Acc {
+  change: number;
+  regular: number;
+  /** 시장 등락률의 분모 (해외는 지금 환율로 원화). */
+  base: number;
+  /** 합계 비율의 분모 (해외는 직전 환율로 원화 = 기준 평가금). */
+  prev: number;
+  any: boolean;
+  candleDate: string | null;
+  items: Map<string, TodayItem>;
+}
+const newAcc = (): Acc => ({ change: 0, regular: 0, base: 0, prev: 0, any: false, candleDate: null, items: new Map() });
+
+/**
+ * 시장별 변동. nowMs 로 시장 상태를 정하고, filter 로 뺀 계좌·종류는 계산하지 않는다.
  * 고른 범위에 종목도 달러 예수금도 없으면 null.
  */
-export function todayChange(summary: PortfolioSummary, snapshot: MarketSnapshot, today: string, filter: TodayFilter = NO_FILTER): TodayChange | null {
-  const fxTo = summary.usdKrw;
-  // 오늘 발표된 환율일 때만 환율 효과 (전 영업일 환율과 비교)
-  const latest = latestUsdKrw(snapshot);
-  const fxFrom = latest !== null && latest[0] === today && fxTo !== null ? usdKrwAt(snapshot, plusDays(today, -1)) : null;
-  const fxMove = fxFrom !== null && fxTo !== null ? fxTo - fxFrom : 0;
-  const fxBase = fxFrom ?? fxTo ?? 0;
+export function todayChange(summary: PortfolioSummary, snapshot: MarketSnapshot, nowMs: number, filter: TodayFilter = NO_FILTER): TodayChange | null {
+  const calendar = snapshot.calendar ?? EMPTY_CALENDAR;
+  const states = marketStates(nowMs, calendar);
+  const fxState = states.FX;
+  const fxNow = summary.usdKrw;
 
-  let domestic = 0;
-  let foreign = 0;
-  let fx = 0;
-  let previous = 0;
-  const merged = new Map<string, TodayItem>();
-  const accounts: TodayAccount[] = [];
+  // 환율 일봉: 그날 환율 (오늘 받은 값이 그날이면 그것) ← 직전 개장일 환율
+  const latestFx = latestUsdKrw(snapshot);
+  const stored = snapshot.usdKrw.get(fxState.candleDate);
+  const fxTo = latestFx !== null && latestFx[0] === fxState.candleDate ? latestFx[1] : stored !== undefined && stored > 0 ? stored : null;
+  const fxFrom = fxTo !== null ? usdKrwAt(snapshot, prevKrOpen(fxState.candleDate, calendar)) : null;
+  const fxMove = fxFrom !== null && fxTo !== null ? fxTo - fxFrom : 0;
+  const fxBase = fxFrom ?? fxNow ?? 0;
+
+  const kr = newAcc();
+  const us = newAcc();
+  let usdCash = 0;
+  let usdHoldings = 0;
+  let anyUsdCash = false;
   for (const account of summary.accounts) {
     if (filter.hiddenAccounts.has(account.account.id)) continue;
-    if (!filter.hiddenKinds.has('USD_CASH')) {
-      fx += account.cash.usd * fxMove;
-      previous += account.cash.usd * fxBase;
+    if (!filter.hiddenKinds.has('USD_CASH') && Math.abs(account.cash.usd) > 1e-9) {
+      usdCash += account.cash.usd;
+      anyUsdCash = true;
     }
-    let accountChange: number | null = null;
-    let held = false;
     for (const v of account.holdings) {
       const quantity = v.position.quantity;
       if (quantity <= 1e-9) continue;
       const h = v.holding;
       if (filter.hiddenKinds.has(todayKindOf(h))) continue;
-      held = true;
+      const group = marketGroupOf(h);
+      const acc = group === 'KR' ? kr : us;
+      acc.any = true;
       const key = keyOf(h) ?? `id:${h.id}`;
-      const value = v.marketValueKrw ?? 0;
-      const rate = dailyChangeRate(h, snapshot);
-      const price = v.price?.price ?? null;
+      const usd = marketCurrency(h.market) === 'USD';
+      // 직접 입력 가격을 쓰는 종목(펀드 등)은 빼고, 일봉이 있는 자동 시세 종목만
+      const raw = snapshot.prices.get(key)?.candle ?? null;
+      const candle = raw !== null && raw.base > 0 && usesLatest(h, snapshot) ? raw : null;
       let change: number | null = null;
-      if (rate !== null && price !== null) {
-        const prev = price / (1 + rate);
-        if (marketCurrency(h.market) === 'USD') {
-          change = quantity * (price - prev) * (fxTo ?? 0);
-          foreign += change;
-          fx += quantity * prev * fxMove;
-          previous += quantity * prev * fxBase;
-        } else {
-          change = quantity * (price - prev);
-          domestic += change;
-          previous += quantity * prev;
-        }
-        accountChange = (accountChange ?? 0) + change;
+      if (candle !== null) {
+        const fx = usd ? fxNow ?? 0 : 1;
+        change = quantity * (candle.last - candle.base) * fx;
+        acc.change += change;
+        acc.regular += quantity * ((candle.regular ?? candle.last) - candle.base) * fx;
+        acc.base += quantity * candle.base * fx;
+        acc.prev += quantity * candle.base * (usd ? fxBase : 1);
+        if (usd) usdHoldings += quantity * candle.base;
+        acc.candleDate = acc.candleDate === null || candle.date > acc.candleDate ? candle.date : acc.candleDate;
       }
-      const old = merged.get(key);
-      merged.set(key, old === undefined
-        ? { key, holding: h, valueKrw: value, changeKrw: change, rate: change !== null ? rate : null }
-        : { ...old, valueKrw: old.valueKrw + value, changeKrw: old.changeKrw === null || change === null ? old.changeKrw ?? change : old.changeKrw + change });
+      const state = states[group];
+      const live = candle !== null && isActivePhase(state.phase) && candle.date === state.candleDate;
+      const old = acc.items.get(key);
+      acc.items.set(key, old === undefined
+        ? { key, holding: h, valueKrw: v.marketValueKrw ?? 0, changeKrw: change, rate: candle !== null ? candleRate(candle) : null, group, live }
+        : { ...old, valueKrw: old.valueKrw + (v.marketValueKrw ?? 0), changeKrw: old.changeKrw === null || change === null ? old.changeKrw ?? change : old.changeKrw + change });
     }
-    if (held) accounts.push({ account: account.account, changeKrw: accountChange });
   }
-  if (merged.size === 0 && previous <= 0) return null;
-  const total = domestic + foreign + fx;
+  if (!kr.any && !us.any && !anyUsdCash) return null;
+
+  const byValue = (a: TodayItem, b: TodayItem) => b.valueKrw - a.valueKrw;
+  const move = (group: MarketGroup, acc: Acc, split: boolean): MarketMove => {
+    const state = states[group];
+    const has = acc.candleDate !== null;
+    return {
+      state,
+      changeKrw: has ? acc.change : null,
+      rate: has && acc.base > 0 ? acc.change / acc.base : null,
+      live: has && isActivePhase(state.phase) && acc.candleDate === state.candleDate,
+      candleDate: acc.candleDate,
+      items: [...acc.items.values()].sort(byValue),
+      regularKrw: split && has ? acc.regular : null,
+      extendedKrw: split && has ? acc.change - acc.regular : null,
+      fxFrom: null,
+      fxTo: null,
+    };
+  };
+  const markets: MarketMove[] = [];
+  if (kr.any) markets.push(move('KR', kr, true));
+  if (us.any) markets.push(move('US', us, false));
+  if (us.any || anyUsdCash) {
+    // 환율 효과 = (해외 종목 수량 × 기준가 + 달러 예수금) × 환율 변동
+    markets.push({
+      state: fxState,
+      changeKrw: fxTo !== null ? (usdHoldings + usdCash) * fxMove : null,
+      rate: fxFrom !== null && fxTo !== null && fxFrom > 0 ? fxTo / fxFrom - 1 : null,
+      live: fxTo !== null && isActivePhase(fxState.phase),
+      candleDate: fxTo !== null ? fxState.candleDate : null,
+      items: [],
+      regularKrw: null,
+      extendedKrw: null,
+      fxFrom,
+      fxTo,
+    });
+  }
+  const total = markets.reduce((sum, m) => sum + (m.changeKrw ?? 0), 0);
+  const baseValue = kr.prev + us.prev + usdCash * fxBase;
   return {
     totalKrw: total,
-    rate: previous > 0 ? total / previous : null,
-    domesticKrw: domestic,
-    foreignKrw: foreign,
-    fxKrw: fx,
-    fxFrom,
-    fxTo: fxFrom !== null ? fxTo : null,
-    items: [...merged.values()].sort((a, b) => b.valueKrw - a.valueKrw),
-    accounts,
+    rate: baseValue > 0 ? total / baseValue : null,
+    markets,
+    items: [...kr.items.values(), ...us.items.values()].sort(byValue),
   };
-}
-
-/** 등락 색 단계: 0 = 보합(0.1% 미만), ±1 = 1% 미만, ±2 = 2% 미만, ±3 = 2% 이상. 시세 없음은 null. */
-export function changeLevel(rate: number | null): number | null {
-  if (rate === null) return null;
-  const a = Math.abs(rate);
-  const step = a < 0.001 ? 0 : a < 0.01 ? 1 : a < 0.02 ? 2 : 3;
-  return rate < 0 ? -step : step;
-}
-
-/** 타일로 그릴 항목: 평가금이 있는 것만, MAX_TILES 를 넘으면 작은 것들을 하나로 (item null = 기타). */
-export function todayTiles(items: readonly TodayItem[]): { item: TodayItem | null; weight: number }[] {
-  const sized = items.filter((i) => i.valueKrw > 0).sort((a, b) => b.valueKrw - a.valueKrw);
-  if (sized.length <= MAX_TILES) return sized.map((item) => ({ item, weight: item.valueKrw }));
-  const kept = sized.slice(0, MAX_TILES - 1);
-  const rest = sized.slice(MAX_TILES - 1).reduce((s, i) => s + i.valueKrw, 0);
-  return [...kept.map((item) => ({ item, weight: item.valueKrw })), { item: null, weight: rest }];
-}
-
-/** Squarified treemap: weights 를 width × height 안에 넓이 비례로 나눈다. 같은 순서로 돌려준다. */
-export function treemap(weights: readonly number[], width: number, height: number): TileRect[] {
-  const total = weights.reduce((s, w) => s + w, 0);
-  if (weights.length === 0 || total <= 0 || width <= 0 || height <= 0) return weights.map(() => ({ x: 0, y: 0, w: 0, h: 0 }));
-  const areas = weights.map((w) => (w / total) * width * height);
-  const out: TileRect[] = weights.map(() => ({ x: 0, y: 0, w: 0, h: 0 }));
-  let x = 0;
-  let y = 0;
-  let w = width;
-  let h = height;
-  let i = 0;
-  const worst = (row: number[], side: number) => {
-    const s = row.reduce((a, b) => a + b, 0);
-    return Math.max((side * side * Math.max(...row)) / (s * s), (s * s) / (side * side * Math.min(...row)));
-  };
-  while (i < areas.length) {
-    const side = Math.min(w, h);
-    const row = [areas[i]];
-    let j = i + 1;
-    while (j < areas.length && worst([...row, areas[j]], side) <= worst(row, side)) {
-      row.push(areas[j]);
-      j++;
-    }
-    const s = row.reduce((a, b) => a + b, 0);
-    if (w >= h) {
-      // 왼쪽에 세로 줄
-      const stripW = h > 0 ? s / h : 0;
-      let yy = y;
-      row.forEach((a, k) => {
-        const hh = stripW > 0 ? a / stripW : 0;
-        out[i + k] = { x, y: yy, w: stripW, h: hh };
-        yy += hh;
-      });
-      x += stripW;
-      w -= stripW;
-    } else {
-      // 위쪽에 가로 줄
-      const stripH = w > 0 ? s / w : 0;
-      let xx = x;
-      row.forEach((a, k) => {
-        const ww = stripH > 0 ? a / stripH : 0;
-        out[i + k] = { x: xx, y, w: ww, h: stripH };
-        xx += ww;
-      });
-      y += stripH;
-      h -= stripH;
-    }
-    i = j;
-  }
-  return out;
 }

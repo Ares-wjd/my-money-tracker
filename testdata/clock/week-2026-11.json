@@ -1,0 +1,49 @@
+{
+  "name": "2026년 11월 첫 주 (미국 표준시간, 11/1 서머타임 끝): 시간대별 국내·미국·환율 상태와 11/3(화) 시간표",
+  "calendar": { "krClosed": [], "krFrom": "2026-11-01", "krTo": "2026-11-30" },
+  "cases": [
+    { "now": "2026-11-02T07:30:00+09:00", "expect": {
+      "KR": { "phase": "BEFORE_OPEN", "candleDate": "2026-10-30", "chip": "개장 전", "next": "08:00 프리마켓" },
+      "US": { "phase": "BEFORE_OPEN", "candleDate": "2026-10-30", "chip": "개장 전", "next": "10:00 주간거래" },
+      "FX": { "phase": "BEFORE_OPEN", "candleDate": "2026-10-30", "chip": "개장 전", "next": "09:00 외환시장 열림" } } },
+    { "now": "2026-11-02T08:30:00+09:00", "expect": {
+      "KR": { "phase": "PRE", "candleDate": "2026-11-02", "chip": "프리마켓", "next": "09:00 정규장" },
+      "US": { "phase": "BEFORE_OPEN", "candleDate": "2026-10-30", "chip": "개장 전", "next": "10:00 주간거래" } } },
+    { "now": "2026-11-02T11:00:00+09:00", "expect": {
+      "KR": { "phase": "REGULAR", "candleDate": "2026-11-02", "chip": "정규장", "next": "15:30 애프터마켓" },
+      "US": { "phase": "DAY", "candleDate": "2026-11-02", "chip": "주간거래", "next": "18:00 프리마켓" },
+      "FX": { "phase": "FX_OPEN", "candleDate": "2026-11-02", "chip": "외환시장 열림", "next": "내일 02:00 장 마감" } } },
+    { "now": "2026-11-02T17:00:00+09:00", "expect": {
+      "KR": { "phase": "AFTER", "candleDate": "2026-11-02", "chip": "애프터마켓", "next": "20:00 장 마감" },
+      "US": { "phase": "DAY", "candleDate": "2026-11-02", "chip": "주간거래", "next": "18:00 프리마켓" } } },
+    { "now": "2026-11-02T21:00:00+09:00", "expect": {
+      "KR": { "phase": "CLOSED", "candleDate": "2026-11-02", "chip": "장 마감", "next": "내일 08:00 프리마켓" },
+      "US": { "phase": "PRE", "candleDate": "2026-11-02", "chip": "프리마켓", "next": "23:30 정규장" },
+      "FX": { "phase": "FX_OPEN", "candleDate": "2026-11-02", "chip": "외환시장 열림", "next": "내일 02:00 장 마감" } } },
+    { "now": "2026-11-03T00:30:00+09:00", "expect": {
+      "KR": { "phase": "BEFORE_OPEN", "candleDate": "2026-11-02", "chip": "개장 전", "next": "08:00 프리마켓" },
+      "US": { "phase": "REGULAR", "candleDate": "2026-11-02", "chip": "정규장", "next": "06:00 애프터마켓" },
+      "FX": { "phase": "FX_OPEN", "candleDate": "2026-11-02", "chip": "외환시장 열림", "next": "02:00 장 마감" } } },
+    { "now": "2026-11-03T07:00:00+09:00", "expect": {
+      "KR": { "phase": "BEFORE_OPEN", "candleDate": "2026-11-02", "chip": "개장 전", "next": "08:00 프리마켓" },
+      "US": { "phase": "AFTER", "candleDate": "2026-11-02", "chip": "애프터마켓", "next": "10:00 주간거래" },
+      "FX": { "phase": "BEFORE_OPEN", "candleDate": "2026-11-02", "chip": "개장 전", "next": "09:00 외환시장 열림" } } },
+    { "now": "2026-11-07T11:00:00+09:00", "expect": {
+      "KR": { "phase": "HOLIDAY", "candleDate": "2026-11-06", "chip": "휴장 · 주말", "next": "11/9(월) 08:00 프리마켓" },
+      "US": { "phase": "HOLIDAY", "candleDate": "2026-11-06", "chip": "휴장 · 주말", "next": "11/9(월) 10:00 주간거래" },
+      "FX": { "phase": "HOLIDAY", "candleDate": "2026-11-06", "chip": "휴장 · 주말", "next": "11/9(월) 09:00 외환시장 열림" } } },
+    { "now": "2026-11-09T07:30:00+09:00", "expect": {
+      "US": { "phase": "BEFORE_OPEN", "candleDate": "2026-11-06", "chip": "개장 전", "next": "10:00 주간거래" } } },
+    { "now": "2026-11-26T11:00:00+09:00", "expect": {
+      "KR": { "phase": "REGULAR", "candleDate": "2026-11-26", "chip": "정규장", "next": "15:30 애프터마켓" },
+      "US": { "phase": "HOLIDAY", "candleDate": "2026-11-25", "chip": "휴장 · 추수감사절", "next": "내일 10:00 주간거래" } } }
+  ],
+  "timeline": {
+    "date": "2026-11-03",
+    "expect": [
+      ["KR", "PRE", 480, 540], ["KR", "REGULAR", 540, 930], ["KR", "AFTER", 930, 1200],
+      ["US", "REGULAR", 0, 360], ["US", "AFTER", 360, 600], ["US", "DAY", 600, 1080], ["US", "PRE", 1080, 1410], ["US", "REGULAR", 1410, 1440],
+      ["FX", "FX_OPEN", 0, 120], ["FX", "FX_OPEN", 540, 1440]
+    ]
+  }
+}

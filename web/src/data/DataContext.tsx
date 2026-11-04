@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 import { checkAlertCount, dataCheck, type CheckIssue } from '../core/dataCheck';
 import { today } from '../core/dates';
 import { summarizeSavings, type SavingsSummary } from '../core/goals';
-import { currentPrice, dailyChangeRate, latestUsdKrw, latestUsdKrwSourceLabel, tradeUsdKrw } from '../core/market';
+import { currentPrice, dailyChangeRate, isLiveQuote, latestUsdKrw, latestUsdKrwSourceLabel, tradeUsdKrw } from '../core/market';
 import { compareRecords, krwHoldingView, summarize, type DisplayCurrency, type HoldingSort, type HoldingValuation, type KrwHoldingView, type PortfolioSummary } from '../core/portfolio';
 import { linkedAccountIds, type Holding, type InvestmentAccount, type Record } from '../model';
 import type { RecordLookup } from '../records/recordText';
@@ -28,6 +28,8 @@ export interface AppData extends UserData {
   krwView: (valuation: HoldingValuation) => KrwHoldingView | null;
   /** 오늘 수익률 (전일 종가 대비). 자동 시세를 쓰지 않거나 전일 종가가 없으면 null. */
   todayRate: (valuation: HoldingValuation) => number | null;
+  /** 그 종목 시장이 지금 움직이는 중인지 (아니면 "오늘" 수익률을 회색으로, v2.10). */
+  todayLive: (valuation: HoldingValuation) => boolean;
   /** 데이터 점검 결과 (무시한 것 포함) · 무시한 키 · 홈 알림 개수 (무시하지 않은 🔴·🟠). */
   checks: CheckIssue[];
   ignoredChecks: Set<string>;
@@ -108,6 +110,7 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       recordsOfHolding: (holdingId) => raw.records.filter((r) => r.holdingId === holdingId).sort(newestFirst),
       krwView: (valuation) => krwHoldingView(valuation, raw.records, usdKrw, (d) => tradeUsdKrw(raw.market, d, day)),
       todayRate: (valuation) => dailyChangeRate(valuation.holding, raw.market),
+      todayLive: (valuation) => isLiveQuote(valuation.holding, raw.market, Date.now()),
       checks,
       ignoredChecks,
       checkAlerts: checkAlertCount(checks, ignoredChecks),

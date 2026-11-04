@@ -7,6 +7,8 @@ import {
   MARKETS,
   RECORD_TYPES,
   type AppSettings,
+  type Candle,
+  type MarketCalendar,
   type Holding,
   type InvestmentAccount,
   type MarketSnapshot,
@@ -26,6 +28,8 @@ export const PRICE_PREFIX = 'price_';
 export const FX_DOC = 'fx_USD';
 /** 고정된 과거 환율(두 번 받아 같은 값)과 오늘 환율 (latest·latestDate). */
 export const FX_CHECKED_DOC = 'fx_USD_checked';
+/** 국내 개장일 정보 (krClosed, krFrom, krTo, v2.10). */
+export const CALENDAR_DOC = 'calendar';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -169,8 +173,11 @@ export function toMarketSnapshot(docs: readonly { id: string; data: Data }[]): M
   let checked = new Map<string, number>();
   let usdKrwLatest: [string, number] | null = null;
   let usdKrwLatestSource: string | null = null;
+  let calendar: MarketCalendar = { krClosed: new Set(), krFrom: null, krTo: null };
   for (const { id, data } of docs) {
-    if (id === FX_DOC) {
+    if (id === CALENDAR_DOC) {
+      calendar = toCalendar(data);
+    } else if (id === FX_DOC) {
       recent = dateMap(data.rates);
     } else if (id === FX_CHECKED_DOC) {
       checked = dateMap(data.rates);
@@ -184,11 +191,29 @@ export function toMarketSnapshot(docs: readonly { id: string; data: Data }[]): M
         closes: dateMap(data.closes),
         latest: latest === null ? null : { price: latest, date: date(data.latestDate) },
         prevClose: num(data.prevClose),
+        candle: toCandle(data.candle),
       });
     }
   }
   const usdKrw = new Map([...recent, ...checked]);
-  return { prices, usdKrw, usdKrwLatest, usdKrwLatestSource };
+  return { prices, usdKrw, usdKrwLatest, usdKrwLatestSource, calendar };
+}
+
+/** 시세 문서의 candle 맵 → 일봉 (날짜·기준가·현재가가 모두 있어야). */
+function toCandle(v: unknown): Candle | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const c = v as Data;
+  const day = date(c.date);
+  const base = num(c.base);
+  const last = num(c.last);
+  if (day === null || base === null || last === null) return null;
+  return { date: day, base, last, regular: num(c.regular), at: num(c.at) ?? 0 };
+}
+
+/** marketData/calendar 문서 → 국내 개장일 정보. */
+export function toCalendar(d: Data | undefined): MarketCalendar {
+  const closed = Array.isArray(d?.krClosed) ? d.krClosed.flatMap((x) => (date(x) === null ? [] : [x as string])) : [];
+  return { krClosed: new Set(closed), krFrom: date(d?.krFrom), krTo: date(d?.krTo) };
 }
 
 /** 가장 최근 "최신가" 저장일 (웹 화면의 시세 기준 표시용). */

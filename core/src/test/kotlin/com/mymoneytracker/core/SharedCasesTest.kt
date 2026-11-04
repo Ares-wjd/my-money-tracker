@@ -1,5 +1,10 @@
 package com.mymoneytracker.core
 
+import com.mymoneytracker.core.market.Candle
+import com.mymoneytracker.core.market.Holidays
+import com.mymoneytracker.core.market.MarketCalendar
+import com.mymoneytracker.core.market.MarketClock
+import com.mymoneytracker.core.market.MarketGroup
 import com.mymoneytracker.core.market.MarketSnapshot
 import com.mymoneytracker.core.market.PriceHistory
 import com.mymoneytracker.core.market.PriceLookup
@@ -24,6 +29,7 @@ import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
 import java.time.LocalDate
+import java.time.ZonedDateTime
 import java.util.TreeMap
 import kotlin.math.abs
 import kotlin.math.max
@@ -48,6 +54,13 @@ class SharedCasesTest {
     fun portfolioCases() {
         val problems = mutableListOf<String>()
         for (file in files("portfolio")) problems += checkPortfolio(file.name, JSONObject(file.readText()))
+        if (problems.isNotEmpty()) fail(problems.joinToString("\n"))
+    }
+
+    @Test
+    fun clockCases() {
+        val problems = mutableListOf<String>()
+        for (file in files("clock")) problems += checkClock(file.name, JSONObject(file.readText()))
         if (problems.isNotEmpty()) fail(problems.joinToString("\n"))
     }
 
@@ -138,8 +151,10 @@ class SharedCasesTest {
         var checked = TreeMap<LocalDate, Double>()
         var latest: Pair<LocalDate, Double>? = null
         var source: String? = null
+        var calendar = MarketCalendar()
         for ((id, d) in o.docs()) {
             when {
+                id == "calendar" -> calendar = calendar(d)
                 id == "fx_USD" -> recent = dateMap(d.optJSONObject("rates"))
                 id == "fx_USD_checked" -> {
                     checked = dateMap(d.optJSONObject("rates"))
@@ -152,10 +167,23 @@ class SharedCasesTest {
                     dateMap(d.optJSONObject("closes")),
                     d.dbl("latest")?.let { PricePoint(it, d.str("latestDate")?.let(LocalDate::parse)) },
                     d.dbl("prevClose"),
+                    d.optJSONObject("candle")?.let { cd ->
+                        val date = cd.str("date")?.let(LocalDate::parse)
+                        val base = cd.dbl("base")
+                        val last = cd.dbl("last")
+                        if (date != null && base != null && last != null) Candle(date, base, last, cd.dbl("regular"), cd.optLong("at")) else null
+                    },
                 )
             }
         }
-        return MarketSnapshot(prices, TreeMap(recent).apply { putAll(checked) }, latest, source)
+        return MarketSnapshot(prices, TreeMap(recent).apply { putAll(checked) }, latest, source, calendar)
+    }
+
+    /** marketData/calendar 문서 → 국내 개장일 정보. */
+    private fun calendar(d: JSONObject?): MarketCalendar {
+        d ?: return MarketCalendar()
+        val closed = d.optJSONArray("krClosed")?.let { a -> (0 until a.length()).map { LocalDate.parse(a.getString(it)) } }.orEmpty().toSet()
+        return MarketCalendar(closed, d.str("krFrom")?.let(LocalDate::parse), d.str("krTo")?.let(LocalDate::parse))
     }
 
     // ------------------------------------------------------------ 검사
@@ -223,7 +251,8 @@ class SharedCasesTest {
             actual.zip((0 until e.length()).map { e.getJSONObject(it) }).forEach { (s, x) -> c.num("shortSells.${s.record.id}.held", x.get("held"), s.held) }
         }
         if (expect.has("todayChange")) {
-            val t = TodayChangeCalculator.calculate(summary, snapshot, today)
+            val nowText = expect.optJSONObject("todayChange")?.str("now") ?: "${today}T12:00:00+09:00"
+            val t = TodayChangeCalculator.calculate(summary, snapshot, ZonedDateTime.parse(nowText))
             if (expect.isNull("todayChange")) {
                 if (t != null) c.problems += "$file · todayChange: 기대 null, 실제 ${t.totalKrw}"
             } else {
@@ -233,14 +262,20 @@ class SharedCasesTest {
                 } else {
                     c.num("todayChange.totalKrw", e.opt2("totalKrw"), t.totalKrw)
                     if (e.has("rate")) c.num("todayChange.rate", e.get("rate"), t.rate)
-                    if (e.has("domesticKrw")) c.num("todayChange.domesticKrw", e.get("domesticKrw"), t.domesticKrw)
-                    if (e.has("foreignKrw")) c.num("todayChange.foreignKrw", e.get("foreignKrw"), t.foreignKrw)
-                    if (e.has("fxKrw")) c.num("todayChange.fxKrw", e.get("fxKrw"), t.fxKrw)
-                    if (e.has("fxFrom")) c.num("todayChange.fxFrom", e.get("fxFrom"), t.fxFrom)
-                    if (e.has("fxTo")) c.num("todayChange.fxTo", e.get("fxTo"), t.fxTo)
-                    e.optJSONObject("accounts")?.let { ea ->
-                        c.text("todayChange.accounts 계좌", ea.keys().asSequence().toSortedSet().toString(), t.accounts.map { it.account.id }.toSortedSet().toString())
-                        for (id in ea.keys()) c.num("todayChange.accounts.$id", ea.get(id), t.accounts.firstOrNull { it.account.id == id }?.changeKrw)
+                    e.optJSONObject("markets")?.let { em ->
+                        c.text("todayChange.markets", MarketGroup.entries.filter { em.has(it.name) }.toString(), t.markets.map { it.group }.toString())
+                        for (m in t.markets) {
+                            val x = em.optJSONObject(m.group.name) ?: continue
+                            val p = "todayChange.markets.${m.group}"
+                            if (x.has("phase")) c.text("$p.phase", x.get("phase"), m.state.phase.name)
+                            if (x.has("changeKrw")) c.num("$p.changeKrw", x.get("changeKrw"), m.changeKrw)
+                            if (x.has("rate")) c.num("$p.rate", x.get("rate"), m.rate)
+                            if (x.has("live")) c.text("$p.live", x.get("live"), m.live.toString())
+                            if (x.has("regularKrw")) c.num("$p.regularKrw", x.get("regularKrw"), m.regularKrw)
+                            if (x.has("extendedKrw")) c.num("$p.extendedKrw", x.get("extendedKrw"), m.extendedKrw)
+                            if (x.has("fxFrom")) c.num("$p.fxFrom", x.get("fxFrom"), m.fxFrom)
+                            if (x.has("fxTo")) c.num("$p.fxTo", x.get("fxTo"), m.fxTo)
+                        }
                     }
                 }
             }
@@ -257,6 +292,50 @@ class SharedCasesTest {
             if (e.has("alertCount")) {
                 val ignored = e.optJSONArray("ignored")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty().toSet()
                 c.num("dataCheck.alertCount", e.get("alertCount"), DataCheck.alertCount(issues, ignored).toDouble())
+            }
+        }
+        return c.problems
+    }
+
+    private fun checkClock(file: String, case: JSONObject): List<String> {
+        val c = Checker(file)
+        val calendar = calendar(case.optJSONObject("calendar"))
+        case.optJSONArray("cases")?.let { cases ->
+            for (i in 0 until cases.length()) {
+                val one = cases.getJSONObject(i)
+                val now = ZonedDateTime.parse(one.getString("now"))
+                val states = MarketClock.states(now, calendar)
+                val ex = one.getJSONObject("expect")
+                for (key in ex.keys()) {
+                    val e = ex.getJSONObject(key)
+                    val s = states.getValue(MarketGroup.valueOf(key))
+                    val p = "${one.getString("now")} $key"
+                    if (e.has("phase")) c.text("$p.phase", e.get("phase"), s.phase.name)
+                    if (e.has("candleDate")) c.text("$p.candleDate", e.get("candleDate"), s.candleDate.toString())
+                    if (e.has("chip")) c.text("$p.chip", e.get("chip"), s.chip)
+                    if (e.has("next")) c.text("$p.next", e.get("next"), MarketClock.nextText(s, now))
+                }
+            }
+        }
+        case.optJSONObject("timeline")?.let { t ->
+            val actual = MarketClock.timeline(LocalDate.parse(t.getString("date")), calendar).map { "${it.group}/${it.phase}/${it.start}-${it.end}" }
+            val e = t.getJSONArray("expect")
+            val expected = (0 until e.length()).map { i -> e.getJSONArray(i).let { "${it.getString(0)}/${it.getString(1)}/${it.getInt(2)}-${it.getInt(3)}" } }
+            c.text("timeline", expected.toString(), actual.toString())
+        }
+        case.optJSONObject("usHolidays")?.let { years ->
+            for (year in years.keys()) {
+                val list = years.getJSONArray(year)
+                for (i in 0 until list.length()) {
+                    val pair = list.getJSONArray(i)
+                    c.text("usHoliday ${pair.getString(0)}", pair.getString(1), Holidays.us(LocalDate.parse(pair.getString(0))))
+                }
+            }
+        }
+        case.optJSONArray("usOpenDays")?.let { days ->
+            for (i in 0 until days.length()) {
+                val d = LocalDate.parse(days.getString(i))
+                c.text("usOpen $d", "true", calendar.usOpen(d).toString())
             }
         }
         return c.problems

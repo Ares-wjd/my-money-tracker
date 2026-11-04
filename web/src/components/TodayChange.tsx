@@ -1,161 +1,175 @@
-import { useEffect, useRef, useState } from 'react';
+// 시장별 변동 (v2.10, 폰 TodayChangeViews 와 같은 화면): 시장마다 지금(또는 마지막) 일봉 하나, 상태 표시, 쉬는 시장은 회색.
 import { Link } from 'react-router-dom';
 import { decimal, rate, signedWon } from '../core/format';
-import { changeLevel, todayLabel, todayTiles, treemap, topGainers, topLosers, type TodayChange, type TodayItem } from '../core/todayChange';
-import { profitClass, tickerGroup } from './ui';
+import { MARKET_GROUP_LABEL, PHASE_LABEL, dayText, kstOf, nextText, stateChip, timeline, type MarketPhase } from '../core/marketClock';
+import { isLiveChange, isStale, todayLabel, type MarketMove, type TodayChange } from '../core/todayChange';
+import type { MarketCalendar } from '../model';
+import { TickerBadge, profitClass } from './ui';
 
-/** 계좌 색: 비중 탭과 같은 범주 팔레트를 계좌 순서대로 (폰과 같은 값). */
-const accountColor = (index: number) => `var(--series-${(Math.max(index, 0) % 8) + 1})`;
-
-interface Part {
-  key: string;
-  label: string;
-  detail: string | null;
-  /** null = 시세 없음 */
-  amount: number | null;
-  color: string;
+/** 상태 표시: "● 프리마켓", "휴장 · 주말". 색은 styles.css 의 .phase-*. */
+export function MarketChip({ move }: { move: MarketMove }) {
+  const active = ['PRE', 'REGULAR', 'AFTER', 'DAY', 'FX_OPEN'].includes(move.state.phase);
+  return (
+    <span className={`phase-chip phase-${active ? move.state.phase : 'IDLE'}`}>
+      {active && <span className="phase-dot" aria-hidden="true" />}
+      {stateChip(move.state)}
+    </span>
+  );
 }
 
-/** 계좌별 + 환율 몫. accountOrder 는 전체 계좌 순서 (필터와 상관없이 같은 계좌는 같은 색). */
-function parts(change: TodayChange, accountOrder: readonly string[]): Part[] {
-  return [
-    ...change.accounts.map((a) => ({
-      key: a.account.id,
-      label: a.account.name,
-      detail: null,
-      amount: a.changeKrw,
-      color: accountColor(accountOrder.indexOf(a.account.id)),
-    })),
-    {
-      key: '__fx',
-      label: '환율',
-      detail: change.fxFrom !== null && change.fxTo !== null ? `${decimal(change.fxFrom, 2)} → ${decimal(change.fxTo, 2)}` : '오늘 환율 없음',
-      amount: change.fxKrw,
-      color: 'var(--fx-part)',
-    },
-  ];
+/** 시장 줄 아래 설명: "11/3(월) 일봉 확정 · 내일 08:00 프리마켓", 환율은 "1,402.5원 (+2.0원) · …". */
+export function marketSubText(move: MarketMove, nowMs: number): string {
+  const date = move.candleDate ?? move.state.candleDate;
+  let head: string;
+  if (move.state.group === 'FX') {
+    head = move.fxTo === null ? '환율 없음' : `${decimal(move.fxTo, 1)}원` + (move.fxFrom === null ? '' : ` (${move.fxTo - move.fxFrom > 0 ? '+' : ''}${decimal(move.fxTo - move.fxFrom, 1)}원)`);
+  } else if (move.changeKrw === null) head = '시세 없음';
+  else if (isStale(move)) head = `시세 갱신 전 · ${dayText(date)} 일봉`;
+  else if (move.state.phase === 'CLOSED') head = `${dayText(date)} 일봉 확정`;
+  else head = `${dayText(date)} 일봉`;
+  return [head, nextText(move.state, nowMs)].filter(Boolean).join(' · ');
 }
 
+const valueClass = (move: MarketMove) => (move.live ? profitClass(move.changeKrw) : 'muted');
+
+/** 지금 시각 글: "11/3(월) 21:00". */
+export function nowText(nowMs: number): string {
+  const k = kstOf(nowMs);
+  return `${dayText(k.date)} ${String(Math.floor(k.minutes / 60)).padStart(2, '0')}:${String(k.minutes % 60).padStart(2, '0')}`;
+}
+
+/** 합계와 비율 (모든 시장이 쉬면 회색). */
 export function TodayTotal({ change }: { change: TodayChange }) {
+  const cls = isLiveChange(change) ? profitClass(change.totalKrw) : 'muted';
   return (
     <div className="today-total">
-      <span className={`today-amount ${profitClass(change.totalKrw)}`}>{signedWon(change.totalKrw)}</span>
-      <span className={`today-rate ${profitClass(change.rate)}`}>{rate(change.rate)}</span>
+      <span className={`today-amount ${cls}`}>{signedWon(change.totalKrw)}</span>
+      {change.rate !== null && <span className={`today-rate ${cls}`}>{rate(change.rate)}</span>}
+      <span className="muted small today-caption">{isLiveChange(change) ? '각 시장의 최근 일봉 합계' : '모든 시장이 쉬는 중 · 최근 일봉 합계'}</span>
     </div>
   );
 }
 
-/** 계좌별 + 환율이 기여한 몫 (크기 비율 막대). */
-export function ContributionBar({ change, accountOrder }: { change: TodayChange; accountOrder: readonly string[] }) {
-  const items = parts(change, accountOrder).filter((p) => p.amount !== null && Math.abs(p.amount) >= 0.5);
-  const total = items.reduce((s, p) => s + Math.abs(p.amount!), 0);
+/** 시장 한 줄: 배지 · 이름 · 상태 · 설명 · 변동 금액·비율. */
+function MarketRow({ move, nowMs }: { move: MarketMove; nowMs: number }) {
   return (
-    <div className="today-bar" aria-hidden="true">
-      {total > 0 && items.map((p) => <span key={p.key} style={{ background: p.color, flexGrow: Math.max(Math.abs(p.amount!) / total, 0.01) }} />)}
+    <div className={move.live ? 'market-row' : 'market-row idle'}>
+      <span className={`market-badge phase-${move.live ? move.state.phase : 'IDLE'}`}>{move.state.group}</span>
+      <span className="market-main">
+        <span className="market-head">
+          <span className="market-name">{MARKET_GROUP_LABEL[move.state.group]}</span>
+          <MarketChip move={move} />
+        </span>
+        <span className="muted small">{marketSubText(move, nowMs)}</span>
+      </span>
+      <span className="market-value">
+        <span className={`strong ${valueClass(move)}`}>{move.changeKrw === null ? '-' : signedWon(move.changeKrw)}</span>
+        {move.rate !== null && <span className={`small ${valueClass(move)}`}>{rate(move.rate)}</span>}
+      </span>
     </div>
   );
 }
 
-/** 계좌마다 한 줄 + 환율 한 줄 (모두 더하면 합계). */
-export function ContributionRows({ change, accountOrder }: { change: TodayChange; accountOrder: readonly string[] }) {
+/** 홈의 시장별 변동 카드 (항상 전체 기준). */
+export function TodayCard({ change, nowMs }: { change: TodayChange; nowMs: number }) {
   return (
-    <div className="today-parts">
-      {parts(change, accountOrder).map((p) => (
-        <div key={p.key} className="today-part">
-          <span className="legend-swatch" style={{ background: p.color }} aria-hidden="true" />
-          <span className="today-part-name">{p.label}</span>
-          <span className="muted small today-part-detail">{p.detail}</span>
-          {p.amount === null ? <span className="muted small">시세 없음</span> : <b className={profitClass(p.amount)}>{signedWon(p.amount)}</b>}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Movers({ title, items }: { title: string; items: TodayItem[] }) {
-  return (
-    <div className="today-movers">
-      <span className="muted small">{title}</span>
-      {items.length === 0 && <span className="muted small">없음</span>}
-      {items.map((i) => (
-        <div key={i.key} className="today-mover">
-          <span className={`legend-swatch ticker-${tickerGroup(i.holding.market, i.holding.assetType)}`} aria-hidden="true" />
-          <span className="today-mover-name">{todayLabel(i)}</span>
-          <b className={profitClass(i.rate)}>{rate(i.rate)}</b>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** 홈의 "오늘 변동" 카드 (누르면 상세 페이지). */
-export function TodayCard({ change, basis, accountOrder }: { change: TodayChange; basis: string; accountOrder: readonly string[] }) {
-  const hasQuotes = change.items.some((i) => i.rate !== null);
-  return (
-    <Link to="/today" className="card today-card">
+    <Link to="/today" className="card today-card" aria-label="시장별 변동 자세히">
       <div className="card-head">
-        <h2>오늘 변동</h2>
-        <span className="muted small">{basis} ›</span>
+        <h2>시장별 변동</h2>
+        <span className="muted small">{nowText(nowMs)} ›</span>
       </div>
       <TodayTotal change={change} />
-      {hasQuotes && (
-        <>
-          <ContributionBar change={change} accountOrder={accountOrder} />
-          <ContributionRows change={change} accountOrder={accountOrder} />
-          <div className="today-movers-row">
-            <Movers title="많이 오른 종목" items={topGainers(change)} />
-            <Movers title="많이 내린 종목" items={topLosers(change)} />
-          </div>
-        </>
-      )}
-      <span className="muted small">현재가 ÷ 전일 종가 기준 · 직접 입력 가격(펀드 등)은 제외 · 누르면 종목별로 보기</span>
+      {change.markets.map((m) => (
+        <MarketRow key={m.state.group} move={m} nowMs={nowMs} />
+      ))}
     </Link>
   );
 }
 
-const TILE_HEIGHT = 300;
+const SEGMENT_PHASES: MarketPhase[] = ['PRE', 'REGULAR', 'AFTER', 'DAY', 'FX_OPEN'];
 
-/** 종목별 타일: 칸 크기 = 평가금 비중, 색 = 오늘 등락. */
-export function TodayTiles({ change }: { change: TodayChange }) {
-  const box = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = box.current;
-    if (el === null) return;
-    const update = () => setWidth(el.clientWidth);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  const tiles = todayTiles(change.items);
-  const rects = treemap(tiles.map((t) => t.weight), width, TILE_HEIGHT);
+/** 시장별 비중 막대 (변동 금액 크기 비율, 쉬는 시장은 회색). */
+export function ShareBar({ change }: { change: TodayChange }) {
+  const parts = change.markets.filter((m) => Math.abs(m.changeKrw ?? 0) > 0.5);
+  const total = parts.reduce((s, m) => s + Math.abs(m.changeKrw!), 0);
+  if (total <= 0) return null;
   return (
-    <div ref={box} className="today-tiles" style={{ height: TILE_HEIGHT }} role="img" aria-label="종목별 오늘 등락 타일">
-      {width > 0 &&
-        tiles.map(({ item }, i) => {
-          const r = rects[i];
-          const level = item === null ? null : changeLevel(item.rate);
-          const style = { left: r.x, top: r.y, width: r.w, height: r.h };
-          // 좁은 칸은 글자를 줄여 등락률이 잘리지 않게, 큰 칸은 이름을 2줄까지
-          const compact = r.w < 72;
-          const body = r.w >= 40 && r.h >= 30 && (
-            <>
-              <b className={r.h >= 80 && !compact ? 'two-lines' : ''}>{item === null ? '기타' : todayLabel(item)}</b>
-              {r.h >= 50 && item !== null && <span>{item.rate === null ? '시세 없음' : rate(item.rate)}</span>}
-            </>
-          );
-          const className = `today-tile${compact ? ' compact' : ''} level-${level === null ? 'none' : level < 0 ? `m${-level}` : level}`;
-          return item === null ? (
-            <div key="rest" className={className} style={style} title="기타">
-              {body}
-            </div>
-          ) : (
-            <Link key={item.key} to={`/holdings/${item.holding.id}`} className={className} style={style} title={item.holding.name}>
-              {body}
-            </Link>
-          );
-        })}
+    <div className="share-bar" aria-hidden="true">
+      {parts.map((m) => (
+        <span key={m.state.group} className={m.live ? `seg-${m.state.phase}` : 'seg-IDLE'} style={{ width: `${(Math.abs(m.changeKrw!) / total) * 100}%` }} />
+      ))}
     </div>
+  );
+}
+
+/** "지금 열린 장" 시간표: 오늘 0~24시에 시장별 구간, 지금 시각 선. */
+export function SessionTimeline({ change, nowMs, calendar }: { change: TodayChange; nowMs: number; calendar: MarketCalendar }) {
+  const now = kstOf(nowMs);
+  const segments = timeline(now.date, calendar);
+  const pct = (m: number) => `${(m / 1440) * 100}%`;
+  return (
+    <div className="timeline">
+      {change.markets.map((m) => (
+        <div key={m.state.group} className="timeline-lane">
+          <span className="timeline-label">{MARKET_GROUP_LABEL[m.state.group]}</span>
+          <span className="timeline-track">
+            {segments.filter((s) => s.group === m.state.group).map((s) => (
+              <span key={`${s.phase}-${s.start}`} className={`timeline-seg seg-${s.phase}`} style={{ left: pct(s.start), width: pct(s.end - s.start) }} title={`${PHASE_LABEL[s.phase]}`} />
+            ))}
+            <span className="timeline-now" style={{ left: pct(now.minutes) }} />
+          </span>
+        </div>
+      ))}
+      <div className="timeline-axis"><span>0시</span><span>6시</span><span>12시</span><span>18시</span><span>24시</span></div>
+      <div className="timeline-legend">
+        {SEGMENT_PHASES.map((p) => (
+          <span key={p}><span className={`legend-box seg-${p}`} />{p === 'FX_OPEN' ? '외환시장' : PHASE_LABEL[p]}</span>
+        ))}
+        <span><span className="legend-now" />지금 {nowText(nowMs).split(' ')[1]}</span>
+      </div>
+    </div>
+  );
+}
+
+/** 시장 카드 (상세): 머리줄 · 설명 · 종목 목록 (변동 금액 크기 순, 쉬는 시장은 회색). */
+export function MarketSection({ move, nowMs }: { move: MarketMove; nowMs: number }) {
+  const lines = [marketSubText(move, nowMs)];
+  if (move.regularKrw !== null && Math.abs(move.extendedKrw ?? 0) > 0.5) lines.push(`정규 ${signedWon(move.regularKrw)} · 장외 ${signedWon(move.extendedKrw!)}`);
+  if (move.state.group === 'US') lines.push('오늘 환율로 원화 환산 (환율 효과는 아래에 따로)');
+  if (move.state.group === 'FX') lines.push('해외 종목 기준가 평가금 + 달러 예수금에 대한 환율 효과 · 서울 외환시장 09:00 ~ 다음 날 02:00');
+  const items = [...move.items].sort((a, b) => Math.abs(b.changeKrw ?? -1) - Math.abs(a.changeKrw ?? -1));
+  return (
+    <section className={move.live ? 'card market-section' : 'card market-section idle'}>
+      <div className="market-row head">
+        <span className={`market-badge phase-${move.live ? move.state.phase : 'IDLE'}`}>{move.state.group}</span>
+        <span className="market-main">
+          <span className="market-head">
+            <h2 className="market-name">{MARKET_GROUP_LABEL[move.state.group]}</h2>
+            <MarketChip move={move} />
+          </span>
+        </span>
+        <span className="market-value">
+          <span className={`strong ${valueClass(move)}`}>{move.changeKrw === null ? '-' : signedWon(move.changeKrw)}</span>
+          {move.rate !== null && <span className={`small ${valueClass(move)}`}>{rate(move.rate)}</span>}
+        </span>
+      </div>
+      <p className="muted small market-lines">{lines.map((l) => <span key={l}>{l}</span>)}</p>
+      {items.map((i) => (
+        <Link key={i.key} to={`/holdings/${i.holding.id}`} className="list-row">
+          <TickerBadge code={i.holding.code} name={i.holding.name} market={i.holding.market} assetType={i.holding.assetType} />
+          <span className="list-main"><span className="list-title">{todayLabel(i)}</span></span>
+          <span className="list-end">
+            {i.changeKrw === null ? (
+              <span className="list-sub">시세 없음</span>
+            ) : (
+              <>
+                <span className={`list-value ${i.live ? profitClass(i.changeKrw) : 'muted'}`}>{signedWon(i.changeKrw)}</span>
+                <span className={`list-sub ${i.live ? profitClass(i.rate) : 'muted'}`}>{rate(i.rate)}</span>
+              </>
+            )}
+          </span>
+        </Link>
+      ))}
+    </section>
   );
 }

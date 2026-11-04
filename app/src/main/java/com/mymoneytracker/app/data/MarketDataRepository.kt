@@ -3,11 +3,17 @@ package com.mymoneytracker.app.data
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.mymoneytracker.app.data.MarketDocs.CALENDAR_DOC
 import com.mymoneytracker.app.data.MarketDocs.PERSIST_INTERVAL_MS
 import com.mymoneytracker.app.data.MarketDocs.PRICE_PREFIX
 import com.mymoneytracker.app.data.MarketDocs.parseDate
+import com.mymoneytracker.app.data.MarketDocs.readCalendar
+import com.mymoneytracker.app.data.MarketDocs.readCandle
 import com.mymoneytracker.app.data.MarketDocs.readDateMap
+import com.mymoneytracker.core.market.Candle
 import com.mymoneytracker.core.market.HistoryRanges
+import com.mymoneytracker.core.market.MarketCalendar
+import com.mymoneytracker.core.market.MarketClock
 import com.mymoneytracker.core.market.MarketKeys
 import com.mymoneytracker.core.market.MarketSnapshot
 import com.mymoneytracker.core.market.PriceHistory
@@ -23,6 +29,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
+import java.time.ZonedDateTime
 
 /**
  * 받아 온 시세·환율을 Firestore 에 캐시한다. 과거 종가와 환율은 바뀌지 않으므로 한 번 받으면 다시 받지 않는다.
@@ -42,6 +49,14 @@ class MarketDataRepository(
     private val col = db.collection("users").document(uid).collection("marketData")
     private val fx = FxSync(col, kis, exim, ::awaitLoaded)
     private val history = PriceHistorySync(col, kis, ::awaitLoaded)
+    private val candles = CandleBuilder(kis)
+
+    /** 마지막으로 읽은 저장 시세 (일봉 기준가에 쓰는 일별 종가). */
+    private var storedPrices: Map<String, PriceHistory> = emptyMap()
+
+    /** 국내 개장일 정보 (Firestore calendar 문서, 하루 한 번 한투 휴장일 조회로 갱신). */
+    private var calendar = MarketCalendar()
+    private var calendarTriedOn: LocalDate? = null
 
     /** 자주 받는 현재가는 메모리에 두고, Firestore 에는 [PERSIST_INTERVAL_MS] 마다 한 번만 저장한다 (쓰기 횟수 절약). */
     private val liveQuotes = MutableStateFlow<Map<String, LiveQuote>>(emptyMap())
@@ -65,7 +80,8 @@ class MarketDataRepository(
             val newer = latest == null || (quote.point.date ?: LocalDate.MIN) >= (latest.date ?: LocalDate.MIN)
             // 전일 종가가 없는 값(잔고 조회 가격)이면, 같은 날 저장된 전일 종가는 그대로 쓴다.
             val prevClose = quote.prevClose ?: history.prevClose.takeIf { latest?.date == quote.point.date }
-            prices[key] = if (newer) history.copy(latest = quote.point, prevClose = prevClose) else history
+            val withCandle = history.copy(candle = quote.candle ?: history.candle)
+            prices[key] = if (newer) withCandle.copy(latest = quote.point, prevClose = prevClose) else withCandle
         }
         stored.copy(prices = prices)
     }
@@ -75,22 +91,29 @@ class MarketDataRepository(
      * @param prevClose 전일 종가 (시세 조회에서 받은 값)
      * @param persist false 면 메모리에만 둔다. 잔고 조회 가격은 전일 종가가 없어 저장된 전일 종가를 덮지 않도록 이렇게 하고,
      *   곧이어 시세 조회가 전일 종가와 함께 저장한다.
+     * @param candle 시장별 변동의 일봉 (v2.10, 없으면 받은 일봉을 그대로 둔다)
      */
-    fun saveLatest(key: String, price: Double, prevClose: Double? = null, persist: Boolean = true) {
+    fun saveLatest(key: String, price: Double, prevClose: Double? = null, persist: Boolean = true, candle: Candle? = null) {
         val today = LocalDate.now()
-        liveQuotes.value = liveQuotes.value + (key to LiveQuote(PricePoint(price, today), prevClose))
+        val keepCandle = candle ?: liveQuotes.value[key]?.candle
+        liveQuotes.value = liveQuotes.value + (key to LiveQuote(PricePoint(price, today), prevClose, keepCandle))
         if (!persist) return
         val now = System.currentTimeMillis()
         if (now - (lastPersistedAt[key] ?: 0L) >= PERSIST_INTERVAL_MS) {
             lastPersistedAt[key] = now
-            col.document(PRICE_PREFIX + key).set(
-                mapOf("latest" to price, "latestDate" to today.toString(), "prevClose" to prevClose),
-                SetOptions.merge(),
-            )
+            val doc = col.document(PRICE_PREFIX + key)
+            doc.set(mapOf("latest" to price, "latestDate" to today.toString(), "prevClose" to prevClose), SetOptions.merge())
+            // 일봉은 따로 쓴다: 보안 규칙을 새로 게시하기 전에는 이 쓰기만 거절되고 현재가 저장은 그대로 된다
+            candle?.let {
+                doc.set(
+                    mapOf("candle" to mapOf("date" to it.date.toString(), "base" to it.base, "last" to it.last, "regular" to it.regular, "at" to it.at)),
+                    SetOptions.merge(),
+                )
+            }
         }
     }
 
-    private data class LiveQuote(val point: PricePoint, val prevClose: Double?)
+    private data class LiveQuote(val point: PricePoint, val prevClose: Double?, val candle: Candle? = null)
 
     private fun storedSnapshot(): Flow<MarketSnapshot> = callbackFlow {
         val registration = col.addSnapshotListener { snapshot, error ->
@@ -102,17 +125,20 @@ class MarketDataRepository(
             val prices = mutableMapOf<String, PriceHistory>()
             for (doc in snapshot.documents) {
                 if (fx.read(doc)) continue
-                if (doc.id.startsWith(PRICE_PREFIX)) {
+                if (doc.id == CALENDAR_DOC) {
+                    calendar = readCalendar(doc)
+                } else if (doc.id.startsWith(PRICE_PREFIX)) {
                     val key = doc.id.removePrefix(PRICE_PREFIX)
                     val latest = doc.getDouble("latest")?.let { price ->
                         PricePoint(price, doc.getString("latestDate")?.let(::parseDate))
                     }
-                    prices[key] = PriceHistory(readDateMap(doc, "closes"), latest, doc.getDouble("prevClose"))
+                    prices[key] = PriceHistory(readDateMap(doc, "closes"), latest, doc.getDouble("prevClose"), readCandle(doc))
                     history.read(key, doc)
                 }
             }
+            storedPrices = prices
             loaded.complete(Unit)
-            trySend(MarketSnapshot(prices, fx.union(), fx.latest, fx.latestSource))
+            trySend(MarketSnapshot(prices, fx.union(), fx.latest, fx.latestSource, calendar))
         }
         awaitClose { registration.remove() }
     }
@@ -140,16 +166,31 @@ class MarketDataRepository(
         val errors = mutableListOf<String>()
         val today = LocalDate.now()
         if (kis.hasCredentials) {
+            refreshCalendar(today)
+            val now = ZonedDateTime.now(MarketClock.KST)
+            val krState = MarketClock.kr(now, calendar)
+            val usState = MarketClock.us(now, calendar)
             holdings.filter { MarketKeys.quotable(it) }.distinctBy { MarketKeys.of(it) }.forEach { holding ->
                 try {
-                    val quote = if (holding.assetType == AssetType.GOLD) {
+                    val key = MarketKeys.of(holding) ?: return@forEach
+                    val gold = holding.assetType == AssetType.GOLD
+                    val quote = if (gold) {
                         goldQuote(holding.code)
                     } else if (holding.market == Market.KR) {
                         kis.domesticQuote(holding.code)
                     } else {
                         kis.overseasQuote(holding.market, holding.code)
                     }
-                    MarketKeys.of(holding)?.let { saveLatest(it, quote.price, quote.prevClose) }
+                    // 일봉: 이미 받은 일봉(메모리가 더 최근)과 저장된 일별 종가로
+                    val known = storedPrices[key].let { s -> (s ?: PriceHistory()).copy(candle = liveQuotes.value[key]?.candle ?: s?.candle) }
+                    val candle = runCatching {
+                        if (holding.market == Market.KR) {
+                            candles.domestic(holding, quote, known, krState, calendar, now, gold)
+                        } else {
+                            candles.overseas(holding, quote, known, usState, calendar, now)
+                        }
+                    }.getOrNull()
+                    saveLatest(key, quote.price, quote.prevClose, candle = candle)
                 } catch (e: ApiException) {
                     errors += if (e.message == KisClient.RATE_LIMIT_MESSAGE) KisClient.RATE_LIMIT_MESSAGE else "${holding.name}: ${e.message}"
                     if (e.message?.contains("App Key") == true || e.message?.contains("토큰") == true) return errors
@@ -162,6 +203,23 @@ class MarketDataRepository(
         }
         if (needsFx) errors += fx.refreshLatest(today, forceFx)
         return errors
+    }
+
+    /**
+     * 국내 개장일을 하루 한 번 한투 휴장일 조회로 갱신한다 (한투 권장: 1일 1회). 실패하면 그날은 다시 묻지 않고
+     * 요일·고정 휴일로 판단한다. 지난 60일 휴장일은 남겨 둔다 (휴장일에 마지막 개장일을 찾는 데 쓴다).
+     */
+    private suspend fun refreshCalendar(today: LocalDate) {
+        if (calendar.krFrom == today || calendarTriedOn == today) return
+        calendarTriedOn = today
+        val days = runCatching { kis.domesticOpenDays(today) }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return
+        val keepFrom = today.minusDays(60)
+        val closed = (calendar.krClosed.filter { !it.isBefore(keepFrom) && it.isBefore(today) } + days.filterValues { !it }.keys).toSortedSet()
+        val to = days.keys.max()
+        calendar = MarketCalendar(closed, today, to)
+        col.document(CALENDAR_DOC).set(
+            mapOf("krClosed" to closed.map { it.toString() }, "krFrom" to today.toString(), "krTo" to to.toString()),
+        )
     }
 
     /**

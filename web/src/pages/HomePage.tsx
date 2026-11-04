@@ -7,13 +7,14 @@ import { TodayCard } from '../components/TodayChange';
 import { Badge, Card, ListLink, Stat, Warning, profitClass } from '../components/ui';
 import { ACCOUNT_KIND_SHORT } from '../model';
 import { accountDescription } from './text';
-import { accountOrderOf, todayBasis, useTodayChange } from './todayData';
+import { useNow, useTodayChange } from './todayData';
 import { periodLine, usePeriodSeries } from './periodData';
 
 export function HomePage() {
   const data = useAppData();
   const { summary } = data;
-  const change = useTodayChange(data);
+  const nowMs = useNow();
+  const change = useTodayChange(data, nowMs);
   const period = periodLine(usePeriodSeries(data));
 
   if (data.accounts.length === 0) {
@@ -63,7 +64,7 @@ export function HomePage() {
         </Card>
       )}
 
-      {change !== null && change.items.some((i) => i.rate !== null) && <TodayCard change={change} basis={todayBasis(data.quoteDate)} accountOrder={accountOrderOf(data)} />}
+      {change !== null && <TodayCard change={change} nowMs={nowMs} />}
 
       <AssetChart data={data} />
 

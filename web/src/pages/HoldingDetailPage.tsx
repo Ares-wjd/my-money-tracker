@@ -88,8 +88,8 @@ export function HoldingDetailPage() {
             </div>
             {today !== null && (
               <div className="stat">
-                <span className="stat-label">오늘 수익률</span>
-                <span className="stat-value">{formatRate(today)}</span>
+                <span className="stat-label">{data.todayLive(v) ? '오늘 수익률' : '오늘 수익률 (장 쉬는 중)'}</span>
+                <span className={`stat-value ${data.todayLive(v) ? '' : 'muted'}`}>{formatRate(today)}</span>
               </div>
             )}
             {krw && (

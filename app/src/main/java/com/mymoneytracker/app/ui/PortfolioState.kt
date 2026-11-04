@@ -3,6 +3,7 @@ package com.mymoneytracker.app.ui
 import com.mymoneytracker.app.data.AppSettings
 import com.mymoneytracker.core.chart.ChartInterval
 import com.mymoneytracker.core.chart.ChartPoint
+import com.mymoneytracker.core.market.MarketClock
 import com.mymoneytracker.core.market.MarketSnapshot
 import com.mymoneytracker.core.market.PriceLookup
 import com.mymoneytracker.core.model.Holding
@@ -15,6 +16,7 @@ import com.mymoneytracker.core.portfolio.KrwHoldingView
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import com.mymoneytracker.core.portfolio.PortfolioSummary
 import java.time.LocalDate
+import java.time.ZonedDateTime
 
 /** 화면들이 공유하는 투자 데이터 전체. */
 data class PortfolioData(
@@ -52,6 +54,10 @@ data class PortfolioData(
 
     /** 오늘 수익률 (전일 종가 대비). 자동 시세를 쓰지 않거나 전일 종가가 없으면 null. */
     fun todayRate(valuation: HoldingValuation): Double? = PriceLookup.dailyChangeRate(valuation.holding, market)
+
+    /** 그 종목 시장이 지금 움직이는 중인지 (아니면 "오늘" 수익률을 회색으로, v2.10). */
+    fun todayLive(valuation: HoldingValuation): Boolean =
+        PriceLookup.isLive(valuation.holding, market, MarketClock.states(ZonedDateTime.now(MarketClock.KST), market.calendar))
 
     /** 원화 보기의 해외 종목 숫자 (매매일 환율로 환차익 반영). 매매일 환율이 하나라도 없으면 null. */
     fun krwView(valuation: HoldingValuation): KrwHoldingView? =

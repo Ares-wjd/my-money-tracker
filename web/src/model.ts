@@ -144,8 +144,26 @@ export interface PriceHistory {
   /** 날짜 → 종가 */
   closes: Map<string, number>;
   latest: PricePoint | null;
-  /** latest 의 전일 종가 (오늘 수익률 계산용) */
+  /** latest 의 전일 종가 (일봉이 없을 때 오늘 수익률 계산용) */
   prevClose: number | null;
+  /** 가장 최근에 받은 일봉 (시장별 변동·오늘 수익률, v2.10) */
+  candle?: Candle | null;
+}
+
+/** 일봉 하나 (core Candle): 그 시장의 거래일(미국은 현지 날짜), 기준가(전 거래일 종가), 지금 가격(장외 포함), 정규장 가격(국내), 받은 시각(ms). */
+export interface Candle {
+  date: string;
+  base: number;
+  last: number;
+  regular: number | null;
+  at: number;
+}
+
+/** 국내 개장일 정보 (core MarketCalendar): krFrom ~ krTo 는 한투 휴장일 조회로 확인한 기간, krClosed 는 휴장일. */
+export interface MarketCalendar {
+  krClosed: ReadonlySet<string>;
+  krFrom: string | null;
+  krTo: string | null;
 }
 
 /** 폰이 Firestore(marketData)에 저장해 둔 시세·환율. */
@@ -157,6 +175,8 @@ export interface MarketSnapshot {
   usdKrwLatest?: [string, number] | null;
   /** usdKrwLatest 의 출처 ('KIS' 한투 / 'EXIM' 수출입은행, 모르면 null) */
   usdKrwLatestSource?: string | null;
+  /** 국내 개장일 정보 (시장 상태 판단용, v2.10) */
+  calendar?: MarketCalendar;
 }
 
 export const savingsBalance = (account: SavingsAccount): number =>

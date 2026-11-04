@@ -18,6 +18,7 @@ import com.mymoneytracker.app.data.PortfolioRepository
 import com.mymoneytracker.app.data.SecureStore
 import com.mymoneytracker.core.chart.ChartInterval
 import com.mymoneytracker.core.chart.StoredChart
+import com.mymoneytracker.core.market.MarketClock
 import com.mymoneytracker.core.market.PriceLookup
 import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Currency
@@ -45,11 +46,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.ZonedDateTime
 
 /**
  * 로그인한 사용자 한 명의 투자 데이터·시세·그래프·한투 연결을 화면들에 공급한다.
@@ -101,9 +104,17 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     val summary: StateFlow<PortfolioSummary?> = data.map { it?.summary }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** 오늘 변동 (홈 카드, 항상 전체). */
-    val todayChange: StateFlow<TodayChange?> = data.map { current ->
-        current?.let { TodayChangeCalculator.calculate(it.summary, it.market, LocalDate.now()) }
+    /** 시장 상태가 시간에 따라 바뀌므로 1분마다 다시 계산한다. */
+    private val minuteTicker = flow {
+        while (true) {
+            emit(Unit)
+            delay(60_000)
+        }
+    }
+
+    /** 시장별 변동 (홈 카드, 항상 전체). */
+    val todayChange: StateFlow<TodayChange?> = combine(data, minuteTicker) { current, _ ->
+        current?.let { TodayChangeCalculator.calculate(it.summary, it.market, ZonedDateTime.now(MarketClock.KST)) }
     }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)

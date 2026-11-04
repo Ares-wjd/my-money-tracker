@@ -1,6 +1,7 @@
 // core 의 MarketKeys · PriceLookup · MarketSnapshot 과 같은 규칙.
-import type { Holding, Market, MarketSnapshot, PriceHistory, PricePoint } from '../model';
+import type { Candle, Holding, Market, MarketSnapshot, PriceHistory, PricePoint } from '../model';
 import { plusDays } from './dates';
+import { EMPTY_CALENDAR, isActivePhase, marketGroupOf, marketStates } from './marketClock';
 
 const MIN_DATE = '0000-00-00';
 
@@ -119,13 +120,35 @@ export function currentPrice(holding: Holding, snapshot: MarketSnapshot): PriceP
   return newer(manualPoint(holding), auto);
 }
 
-/** 오늘 수익률 = 현재가 ÷ 전일 종가 − 1. 자동 시세(최신 현재가)를 쓰는 종목만 (직접 입력 가격이거나 전일 종가가 없으면 null). */
+/** 자동 시세의 최신 현재가를 쓰는 종목인지 (직접 입력 가격이 더 최근이면 아님). */
+export function usesLatest(holding: Holding, snapshot: MarketSnapshot): boolean {
+  const history = historyOf(snapshot, holding);
+  if (!history || history.latest === null) return false;
+  const current = currentPrice(holding, snapshot);
+  return current !== null && current.price === history.latest.price && current.date === history.latest.date;
+}
+
+/** 일봉 등락률 (현재가 ÷ 기준가 − 1). */
+export const candleRate = (c: Candle): number | null => (c.base > 0 ? c.last / c.base - 1 : null);
+
+/**
+ * 오늘 수익률 = 일봉 등락률 (v2.10). 받은 일봉이 없으면 예전처럼 현재가 ÷ 전일 종가 − 1.
+ * 자동 시세(최신 현재가)를 쓰는 종목만 (직접 입력 가격이거나 기준가가 없으면 null).
+ */
 export function dailyChangeRate(holding: Holding, snapshot: MarketSnapshot): number | null {
   const history = historyOf(snapshot, holding);
-  if (!history || history.latest === null || history.prevClose === null || history.prevClose <= 0) return null;
-  const current = currentPrice(holding, snapshot);
-  if (current === null || current.price !== history.latest.price || current.date !== history.latest.date) return null;
+  if (!history || !usesLatest(holding, snapshot)) return null;
+  if (history.candle) return candleRate(history.candle);
+  if (history.latest === null || history.prevClose === null || history.prevClose <= 0) return null;
   return history.latest.price / history.prevClose - 1;
+}
+
+/** 이 종목의 일봉이 지금 움직이는 중인지 (시장이 진행 중이고 받은 일봉이 지금 일봉). 쉬는 중이면 화면에서 회색. */
+export function isLiveQuote(holding: Holding, snapshot: MarketSnapshot, nowMs: number): boolean {
+  const candle = historyOf(snapshot, holding)?.candle;
+  if (!candle) return false;
+  const state = marketStates(nowMs, snapshot.calendar ?? EMPTY_CALENDAR)[marketGroupOf(holding)];
+  return isActivePhase(state.phase) && candle.date === state.candleDate;
 }
 
 /** 과거 [date] 기준 가격: 그날 이전 종가, 없으면 그날 이전에 직접 입력한 가격, 그것도 없으면 직접 입력 가격. */

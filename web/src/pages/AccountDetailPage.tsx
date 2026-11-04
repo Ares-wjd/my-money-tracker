@@ -115,7 +115,8 @@ export function AccountDetailPage() {
         <td className="num optional">{v.price ? shown(v.price.price) : '없음'}</td>
         <td className="num strong">{v.marketValue === null ? '가격 입력 필요' : shown(v.marketValue)}</td>
         <td className={`num ${profitClass(rate)}`}>{formatRate(rate)}</td>
-        <td className={`num ${profitClass(today)}`}>{formatRate(today)}</td>
+        {/* 그 시장이 쉬는 중이면 마지막 일봉 등락률을 회색으로 */}
+        <td className={`num ${data.todayLive(v) ? profitClass(today) : 'muted'}`}>{formatRate(today)}</td>
       </tr>
     );
   };

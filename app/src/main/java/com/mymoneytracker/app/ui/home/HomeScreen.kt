@@ -241,8 +241,8 @@ private fun HomeContent(
         }
 
         // 오늘 변동 (시세가 있는 종목이 하나라도 있으면)
-        todayChange?.takeIf { it.included.isNotEmpty() }?.let { change ->
-            item { TodayChangeCard(change, refresh.lastRefreshedAt, current.summary.accounts.map { it.account.id }, onOpenToday) }
+        todayChange?.let { change ->
+            item { TodayChangeCard(change, rememberNow(), onOpenToday) }
         }
 
         item {

@@ -179,12 +179,14 @@ class KisClient(private val store: SecureStore) {
 
     suspend fun domesticPrice(code: String): Double = domesticQuote(code).price
 
-    /** 국내 현재가와 전일 종가(기준가). */
-    suspend fun domesticQuote(code: String): Quote {
+    /**
+     * 국내 현재가와 전일 종가(기준가). [venue] "J" 는 KRX (정규장), "UN" 은 통합 (KRX + NXT 프리·애프터마켓, v2.10).
+     */
+    suspend fun domesticQuote(code: String, venue: String = "J"): Quote {
         val r = call(
             "/uapi/domestic-stock/v1/quotations/inquire-price",
             "FHKST01010100",
-            mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to code),
+            mapOf("FID_COND_MRKT_DIV_CODE" to venue, "FID_INPUT_ISCD" to code),
         )
         val output = r.json.optJSONObject("output")
         val price = output?.num("stck_prpr") ?: throw ApiException("$code 현재가가 없습니다.")
@@ -237,12 +239,41 @@ class KisClient(private val store: SecureStore) {
         }
     }
 
-    /** 해외 현재가와 전일 종가(base). */
-    suspend fun overseasQuote(market: Market, symbol: String): Quote {
+    /** KRX 시간외 단일가 (16:00~18:00): 현재가와 거래량 (체결이 없으면 거래량 0). */
+    suspend fun domesticOvertime(code: String): Pair<Double, Double>? {
+        val r = call(
+            "/uapi/domestic-stock/v1/quotations/inquire-overtime-price",
+            "FHPST02300000",
+            mapOf("FID_COND_MRKT_DIV_CODE" to "J", "FID_INPUT_ISCD" to code),
+        )
+        val output = r.json.optJSONObject("output") ?: return null
+        val price = output.num("ovtm_untp_prpr")?.takeIf { it > 0 } ?: return null
+        return price to (output.num("ovtm_untp_vol") ?: 0.0)
+    }
+
+    /**
+     * 국내 개장일 ([from] 부터 한투가 주는 기간, 날짜 → 개장 여부). 한투 권장대로 하루 한 번만 부른다 (v2.10).
+     */
+    suspend fun domesticOpenDays(from: LocalDate): Map<LocalDate, Boolean> {
+        val r = call(
+            "/uapi/domestic-stock/v1/quotations/chk-holiday",
+            "CTCA0903R",
+            mapOf("BASS_DT" to from.format(YMD), "CTX_AREA_FK" to "", "CTX_AREA_NK" to ""),
+        )
+        return r.json.optJSONArray("output")?.objects().orEmpty().mapNotNull { row ->
+            val date = parseYmd(row.str("bass_dt")) ?: return@mapNotNull null
+            date to (row.str("opnd_yn").uppercase() == "Y")
+        }.toMap()
+    }
+
+    /**
+     * 해외 현재가와 전일 종가(base). [daytime] 이면 주간거래 거래소 코드 (나스닥 BAQ · 뉴욕 BAY · 아멕스 BAA, v2.10).
+     */
+    suspend fun overseasQuote(market: Market, symbol: String, daytime: Boolean = false): Quote {
         val r = call(
             "/uapi/overseas-price/v1/quotations/price",
             "HHDFS00000300",
-            mapOf("AUTH" to "", "EXCD" to quoteExchange(market), "SYMB" to symbol),
+            mapOf("AUTH" to "", "EXCD" to if (daytime) daytimeExchange(market) else quoteExchange(market), "SYMB" to symbol),
         )
         val output = r.json.optJSONObject("output")
         val price = output?.num("last")?.takeIf { it > 0 } ?: throw ApiException("$symbol 현재가가 없습니다.")
@@ -506,6 +537,13 @@ class KisClient(private val store: SecureStore) {
             Market.NYSE -> "NYS"
             Market.AMEX -> "AMS"
             else -> "NAS"
+        }
+
+        /** 미국 주간거래 시세 거래소 코드. */
+        fun daytimeExchange(market: Market): String = when (market) {
+            Market.NYSE -> "BAY"
+            Market.AMEX -> "BAA"
+            else -> "BAQ"
         }
 
         /** 계좌 조회 응답의 거래소 코드 → 시장. */

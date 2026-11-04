@@ -29,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mymoneytracker.app.ui.PortfolioData
@@ -188,7 +189,13 @@ private fun HoldingDetailContent(
                     MoneyFormat.rate(returnRateWithDividends),
                 )
                 data.todayRate(valuation)?.let { today ->
-                    LabeledValue("오늘 수익률", MoneyFormat.rate(today))
+                    // 그 시장이 쉬는 중이면 마지막 일봉 등락률 (회색)
+                    val live = data.todayLive(valuation)
+                    LabeledValue(
+                        if (live) "오늘 수익률" else "오늘 수익률 (장 쉬는 중)",
+                        MoneyFormat.rate(today),
+                        valueColor = if (live) Color.Unspecified else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 if (missingTradeFx) {
                     Text(

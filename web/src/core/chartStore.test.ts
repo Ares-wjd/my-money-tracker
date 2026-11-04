@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { pointDates, series } from './chart';
 import { assembleChart, buildChart, computeChart, firstDates, hash, holdingLine, num, planChart, planDates, recordLine, recordSigs, related, type StoredChart } from './chartStore';
 import { keyOf } from './market';
-import type { Holding, InvestmentAccount, MarketSnapshot, Record } from '../model';
+import type { Holding, InvestmentAccount, MarketSnapshot, PriceHistory, Record } from '../model';
 import { account, holding, record } from './testData';
 
 const today = '2026-10-13';
@@ -21,7 +21,7 @@ const records: Record[] = [
   record({ id: '5', accountId: 'b', type: 'BUY', date: '2026-09-11', holdingId: 'h2', quantity: 2.5, price: 500.25, currency: 'USD', createdAt: 5 }),
 ];
 const closes = (o: { [d: string]: number }) => new Map(Object.entries(o));
-const history = (o: { [d: string]: number }) => ({ closes: closes(o), latest: null, prevClose: null });
+const history = (o: { [d: string]: number }): PriceHistory => ({ closes: closes(o), latest: null, prevClose: null });
 const snapshot: MarketSnapshot = {
   prices: new Map([
     [keyOf(sam)!, history({ '2026-08-03': 70_000, '2026-09-01': 72_000, '2026-10-01': 75_000 })],

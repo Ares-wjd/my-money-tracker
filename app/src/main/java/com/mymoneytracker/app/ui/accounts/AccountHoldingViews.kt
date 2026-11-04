@@ -174,7 +174,9 @@ private fun HoldingRow(
                 if (valuation.position.quantity > 0) {
                     Text("총 ${MoneyFormat.rate(rate)}", style = MaterialTheme.typography.labelLarge, color = profitColor(rate), maxLines = 1, softWrap = false)
                     if (today != null) {
-                        Text("오늘 ${MoneyFormat.rate(today)}", style = MaterialTheme.typography.labelLarge, color = profitColor(today), maxLines = 1, softWrap = false)
+                        // 그 시장이 쉬는 중이면 마지막 일봉 등락률을 회색으로
+                        val todayColor = if (data.todayLive(valuation)) profitColor(today) else MaterialTheme.colorScheme.onSurfaceVariant
+                        Text("오늘 ${MoneyFormat.rate(today)}", style = MaterialTheme.typography.labelLarge, color = todayColor, maxLines = 1, softWrap = false)
                     }
                 }
             }

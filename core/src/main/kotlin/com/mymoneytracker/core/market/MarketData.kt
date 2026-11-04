@@ -12,9 +12,19 @@ data class PriceHistory(
     val closes: TreeMap<LocalDate, Double> = TreeMap(),
     /** 가장 최근에 받은 현재가와 그 날짜. */
     val latest: PricePoint? = null,
-    /** [latest] 의 전일 종가 (오늘 수익률 계산용). */
+    /** [latest] 의 전일 종가 (일봉이 없을 때 오늘 수익률 계산용). */
     val prevClose: Double? = null,
+    /** 가장 최근에 받은 일봉 (시장별 변동·오늘 수익률, v2.10). */
+    val candle: Candle? = null,
 )
+
+/**
+ * 일봉 하나 (v2.10): [date] 그 시장의 거래일 (미국은 현지 날짜), [base] 기준가 (전 거래일 종가), [last] 지금 가격 (장외 포함),
+ * [regular] 정규장 가격 (국내만, 정규·장외를 나눠 보기용), [at] 받은 시각 (epoch ms).
+ */
+data class Candle(val date: LocalDate, val base: Double, val last: Double, val regular: Double? = null, val at: Long = 0) {
+    val rate: Double? get() = if (base > 0) last / base - 1 else null
+}
 
 /** 앱이 받아 둔 시세·환율 전체. */
 data class MarketSnapshot(
@@ -25,6 +35,8 @@ data class MarketSnapshot(
     val usdKrwLatest: Pair<LocalDate, Double>? = null,
     /** [usdKrwLatest] 의 출처 ([FxRules.SOURCE_KIS] / [FxRules.SOURCE_EXIM], 모르면 null). */
     val usdKrwLatestSource: String? = null,
+    /** 국내 개장일 정보 (시장 상태 판단용, v2.10). */
+    val calendar: MarketCalendar = MarketCalendar(),
 ) {
     fun history(holding: Holding): PriceHistory? = MarketKeys.of(holding)?.let { prices[it] }
 
@@ -153,15 +165,23 @@ object PriceLookup {
     }
 
     /**
-     * 오늘 수익률 = 현재가 ÷ 전일 종가 − 1. 자동 시세(최신 현재가)를 쓰는 종목만 계산한다
-     * (직접 입력 가격을 쓰거나 전일 종가가 없으면 null).
+     * 오늘 수익률 = 일봉 등락률 (v2.10, 일봉 현재가 ÷ 기준가 − 1). 받은 일봉이 없으면 예전처럼 현재가 ÷ 전일 종가 − 1.
+     * 자동 시세(최신 현재가)를 쓰는 종목만 계산한다 (직접 입력 가격을 쓰거나 기준가가 없으면 null).
      */
     fun dailyChangeRate(holding: Holding, snapshot: MarketSnapshot): Double? {
         val history = snapshot.history(holding) ?: return null
-        val prev = history.prevClose?.takeIf { it > 0 } ?: return null
         val latest = history.latest ?: return null
         if (current(holding, snapshot) != latest) return null
+        history.candle?.let { return it.rate }
+        val prev = history.prevClose?.takeIf { it > 0 } ?: return null
         return latest.price / prev - 1
+    }
+
+    /** 이 종목의 일봉이 지금 움직이는 중인지 (시장이 진행 중이고 받은 일봉이 지금 일봉). 쉬는 중이면 화면에서 회색. */
+    fun isLive(holding: Holding, snapshot: MarketSnapshot, states: Map<MarketGroup, MarketState>): Boolean {
+        val state = states[MarketGroup.of(holding)] ?: return false
+        val candle = snapshot.history(holding)?.candle ?: return false
+        return state.phase.active && candle.date == state.candleDate
     }
 
     /** 과거 [date] 기준 가격: 그날 이전 종가, 없으면 그날 이전에 직접 입력한 가격, 그것도 없으면 직접 입력 가격. */
