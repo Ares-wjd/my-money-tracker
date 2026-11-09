@@ -206,15 +206,32 @@ function ImportedRecordForm({ record, onClose }: { record: Record; onClose: () =
   const { uid } = useData();
   const data = useAppData();
   const [memo, setMemo] = useState(record.memo);
+  // 체결 내역에 없는 입고(이벤트·이전 등)는 단가만 고칠 수 있다 (v2.12)
+  const inbound = record.externalId === 'KIS:in';
+  const [price, setPrice] = useState(numberText(record.price));
+  const usdHolding = record.holdingId !== null && data.lookup.holding(record.holdingId)?.market !== 'KR';
+  const parsedPrice = parseDecimal(price);
   return (
     <Modal title="한투에서 불러온 기록" onClose={onClose}>
-      <p className="muted small">한투에서 불러온 기록이라 내용은 고칠 수 없고 메모만 고칠 수 있습니다. 잘못되었다면 한투 앱의 내역을 확인하세요.</p>
+      <p className="muted small">
+        {inbound
+          ? '한투 체결 내역에 없는 입고(이벤트로 받은 주식·타사 이전 등)라 앱이 단가 0원으로 채운 기록입니다. 단가와 메모를 고칠 수 있습니다.'
+          : '한투에서 불러온 기록이라 내용은 고칠 수 없고 메모만 고칠 수 있습니다. 잘못되었다면 한투 앱의 내역을 확인하세요.'}
+      </p>
       <Row label="날짜" value={formatDate(record.date)} />
       <Row label="내용" value={recordTitle(record, data.lookup, record.accountId)} />
       {recordDetailText(record, data.lookup) && <Row label="상세" value={recordDetailText(record, data.lookup)} />}
-      <Row label="금액" value={recordAmountText(record, data.lookup, record.accountId)} />
+      {!inbound && <Row label="금액" value={recordAmountText(record, data.lookup, record.accountId)} />}
+      {inbound && (
+        <NumberField label={usdHolding ? '단가 (달러)' : '단가 (원)'} value={price} onChange={setPrice} preview={(n) => (usdHolding ? usd(n) : won(n))} />
+      )}
       <TextField label="메모" value={memo} onChange={setMemo} maxLength={100} />
-      <FormActions saveLabel="메모 저장" onSave={() => saveRecord(uid, { ...record, memo: memo.trim() })} onDone={onClose} />
+      <FormActions
+        saveLabel={inbound ? '저장' : '메모 저장'}
+        problem={inbound && (parsedPrice === null || parsedPrice < 0) ? '단가를 0 이상으로 넣어 주세요.' : null}
+        onSave={() => saveRecord(uid, { ...record, memo: memo.trim(), price: inbound ? (parsedPrice ?? record.price) : record.price })}
+        onDone={onClose}
+      />
     </Modal>
   );
 }

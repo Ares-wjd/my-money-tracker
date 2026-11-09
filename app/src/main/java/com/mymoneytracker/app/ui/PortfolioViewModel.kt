@@ -252,6 +252,9 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     /** 데이터 점검 항목 무시 / 다시 보기 (폰·PC 공유). */
     fun setCheckIgnored(key: String, ignored: Boolean) = repository.setCheckIgnored(key, ignored)
 
+    /** 데이터 점검 [매수 먼저 계산]: 그 매도의 입력 시각(같은 날 계산 순서)만 바꾼다 (v2.12). */
+    fun setRecordCreatedAt(recordId: String, createdAt: Long) = repository.setRecordCreatedAt(recordId, createdAt)
+
     /** 직접 입력한 예수금을 기록한다. 같은 날 다시 입력하면 그날 값을 덮어쓴다. */
     fun saveCashBalance(accountId: String, date: LocalDate, krw: Double?, usd: Double?, memo: String) {
         listOfNotNull(krw?.let { Currency.KRW to it }, usd?.let { Currency.USD to it }).forEach { (currency, value) ->
@@ -371,6 +374,8 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
                     if (result.createdHoldings > 0) append(" 새 종목 ${result.createdHoldings}개.")
                     if (result.initialPositions > 0) append(" 초기 보유 ${result.initialPositions}개.")
                     if (result.quantityAdjustments > 0) append(" 잔고 기준 수량 맞춤 ${result.quantityAdjustments}건.")
+                    if (result.inboundRecords > 0) append(" 체결 내역에 없는 입고 ${result.inboundRecords}건 (단가 0원, 기록에서 고칠 수 있음).")
+                    if (result.reorderedRecords > 0) append(" 주문 시각으로 순서를 바로잡은 기록 ${result.reorderedRecords}건.")
                     if (result.removedCashAdjustments > 0) {
                         append(" 예전에 자동으로 만든 예수금 조정 ${result.removedCashAdjustments}건을 지웠습니다.")
                     }

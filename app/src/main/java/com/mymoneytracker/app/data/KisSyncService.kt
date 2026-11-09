@@ -1,5 +1,6 @@
 package com.mymoneytracker.app.data
 
+import com.mymoneytracker.core.market.MarketClock
 import com.mymoneytracker.core.market.MarketKeys
 import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Holding
@@ -16,6 +17,10 @@ data class KisSyncResult(
     val createdHoldings: Int,
     val initialPositions: Int,
     val quantityAdjustments: Int,
+    /** 체결 내역에 없는 입고로 채운 기록 수 (v2.12). */
+    val inboundRecords: Int = 0,
+    /** 주문 시각으로 순서를 바로잡은 기존 기록 수 (v2.12). */
+    val reorderedRecords: Int = 0,
     /** 한투 원화 예수금 (D+2). */
     val brokerCashKrw: Double?,
     /** 한투 달러 예수금. */
@@ -103,9 +108,18 @@ class KisSyncService(
             return created.copy(id = id).also { accountHoldings += it }
         }
 
-        for (execution in executions.sortedBy { it.date }) {
+        // 같은 날 계산 순서 = 주문 시각 (v2.12). 한투는 최신순으로 주므로 받은 순서를 쓰면 매수·매도가 뒤집힐 수 있다.
+        val orderTimes = orderTimes(executions)
+        val reordered = mutableMapOf<String, Long>()
+        for ((index, execution) in executions.withIndex().sortedBy { orderTimes[it.index] }) {
             val id = "kis_${execution.date.toString().replace("-", "")}_${execution.orderNo}_${execution.code}".sanitizeId()
-            if (id in existingIds || newRecords.any { it.id == id }) continue
+            val createdAt = orderTimes[index]
+            if (id in existingIds) {
+                // 이미 저장된 한투 기록은 입력 시각만 주문 시각으로 바로잡는다
+                records.firstOrNull { it.id == id }?.takeIf { it.createdAt != createdAt }?.let { reordered[id] = createdAt }
+                continue
+            }
+            if (newRecords.any { it.id == id }) continue
             val holding = holdingFor(execution.code, execution.name, execution.market)
             newRecords += Record(
                 id = id,
@@ -117,8 +131,35 @@ class KisSyncService(
                 price = execution.price,
                 externalId = "KIS:${execution.orderNo}",
                 memo = "한투에서 불러옴",
-                createdAt = System.currentTimeMillis(),
+                createdAt = createdAt,
             )
+        }
+        reordered.forEach { (id, createdAt) -> repository.setRecordCreatedAt(id, createdAt) }
+        val current = records.map { r -> reordered[r.id]?.let { r.copy(createdAt = it) } ?: r }
+
+        // 체결 내역에 없는 입고 (이벤트·이전 등, v2.12): 보유 수량이 모자란 한투 매도 중 같은 날 뒤에 매수가 없는 것 → 그 앞에 0원 입고
+        var inbound = 0
+        val accountHoldingIds = accountHoldings.map { it.id }.toSet()
+        PortfolioCalculator.shortSells((current + newRecords).filter { it.holdingId in accountHoldingIds }).forEach { short ->
+            val sell = short.record
+            if (sell.accountId != account.id || sell.externalId?.startsWith("KIS:") != true) return@forEach
+            if (PortfolioCalculator.buyFirstOrder(current + newRecords, sell) != null) return@forEach
+            val id = "kis_in_${sell.id}".sanitizeId()
+            val shortfall = sell.quantity - short.held
+            if (id in existingIds || shortfall <= QUANTITY_EPSILON) return@forEach
+            newRecords += Record(
+                id = id,
+                accountId = account.id,
+                type = RecordType.BUY,
+                date = sell.date,
+                holdingId = sell.holdingId,
+                quantity = shortfall,
+                price = 0.0,
+                externalId = "KIS:in",
+                memo = "한투 체결 내역에 없는 입고 (이벤트·이전 등)",
+                createdAt = maxOf(1L, sell.createdAt - 1),
+            )
+            inbound++
         }
 
         // 잔고 수량 맞추기
@@ -137,7 +178,7 @@ class KisSyncService(
         for (real in domesticBalance.holdings + overseasBalance?.holdings.orEmpty()) {
             val holding = holdingFor(real.code, real.name, real.market)
             val adjustId = "kis_adj_${todayKey}_${holding.id}".sanitizeId()
-            val related = (records + newRecords).filter { it.holdingId == holding.id && it.id != adjustId }
+            val related = (current + newRecords).filter { it.holdingId == holding.id && it.id != adjustId }
             val position = PortfolioCalculator.position(holding, related)
             val missing = real.quantity - position.quantity
             if (kotlin.math.abs(missing) <= QUANTITY_EPSILON) continue
@@ -194,7 +235,7 @@ class KisSyncService(
         val balanceKeys = (domesticBalance.holdings + overseasBalance?.holdings.orEmpty())
             .map { MarketKeys.key(it.market, it.code) }.toSet()
         accountHoldings.filter { it.code.isNotBlank() && MarketKeys.key(it.market, it.code) !in balanceKeys }.forEach { holding ->
-            val quantity = PortfolioCalculator.position(holding, (records + newRecords).filter { it.holdingId == holding.id }).quantity
+            val quantity = PortfolioCalculator.position(holding, (current + newRecords).filter { it.holdingId == holding.id }).quantity
             if (quantity > QUANTITY_EPSILON && (holding.market == Market.KR || overseasBalance != null)) {
                 warnings += "${holding.name}: 한투 잔고에는 없는데 앱에는 ${quantity}주가 있습니다. 기록을 확인하세요."
             }
@@ -207,7 +248,9 @@ class KisSyncService(
         legacyCashAdjustments.forEach { repository.deleteRecord(it.id) }
 
         return KisSyncResult(
-            importedTrades = newRecords.count { it.externalId?.startsWith("KIS:") == true && it.externalId !in setOf("KIS:init", "KIS:adjust") },
+            importedTrades = newRecords.count { it.externalId?.startsWith("KIS:") == true && it.externalId !in setOf("KIS:init", "KIS:adjust", "KIS:in") },
+            inboundRecords = inbound,
+            reorderedRecords = reordered.size,
             createdHoldings = createdHoldings,
             initialPositions = initialPositions,
             quantityAdjustments = quantityAdjustments,
@@ -219,6 +262,19 @@ class KisSyncService(
                 .toMap(),
             warnings = warnings,
         )
+    }
+
+    /**
+     * 체결마다 입력 시각: 주문일 + 주문시각 (한국 시간 기준 밀리초). 주문시각이 같거나 없으면 그날 안에서 오래된 주문(한투 목록의 뒤쪽)부터 차례로.
+     */
+    private fun orderTimes(executions: List<KisExecution>): List<Long> {
+        val inDay = mutableMapOf<LocalDate, Int>()
+        val counts = executions.groupingBy { it.date }.eachCount()
+        return executions.map { e ->
+            val position = inDay.merge(e.date, 1, Int::plus)!! - 1
+            val base = e.date.atTime(e.time ?: java.time.LocalTime.MIDNIGHT).atZone(MarketClock.KST).toInstant().toEpochMilli()
+            base + (counts.getValue(e.date) - 1 - position)
+        }
     }
 
     private fun String.sanitizeId(): String = replace(Regex("[^A-Za-z0-9_\\-]"), "_").take(140)

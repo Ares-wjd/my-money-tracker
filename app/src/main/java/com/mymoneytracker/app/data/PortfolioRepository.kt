@@ -199,6 +199,11 @@ class PortfolioRepository(
             F_CREATED_AT to if (record.createdAt > 0) record.createdAt else System.currentTimeMillis(),
         )
 
+    /** 기록의 입력 시각(같은 날 계산 순서)만 바꾼다: 한투 주문 시각으로 바로잡기, 데이터 점검 [매수 먼저 계산] (v2.12). */
+    fun setRecordCreatedAt(recordId: String, createdAt: Long) {
+        recordsCol.document(recordId).update(F_CREATED_AT, createdAt).logFailure("기록 순서 저장")
+    }
+
     fun deleteRecord(recordId: String) {
         recordsCol.document(recordId).delete().logFailure("기록 삭제")
     }

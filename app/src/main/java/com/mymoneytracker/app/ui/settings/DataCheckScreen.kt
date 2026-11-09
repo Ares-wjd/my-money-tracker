@@ -36,6 +36,7 @@ import com.mymoneytracker.app.ui.common.LoadingBox
 import com.mymoneytracker.app.ui.common.SectionCard
 import com.mymoneytracker.app.ui.common.TopBarTitle
 import com.mymoneytracker.core.portfolio.DataCheck
+import com.mymoneytracker.core.portfolio.PortfolioCalculator
 
 private fun levelIcon(level: DataCheck.Level): String = when (level) {
     DataCheck.Level.ERROR -> "🔴"
@@ -56,6 +57,8 @@ fun DataCheckScreen(
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     var confirming by remember { mutableStateOf<DataCheck.Issue?>(null) }
+    // [매수 먼저 계산] 확인 중인 매도와 새 순서 (v2.12)
+    var reordering by remember { mutableStateOf<Pair<DataCheck.Issue, PortfolioCalculator.BuyFirst>?>(null) }
 
     Scaffold(
         topBar = {
@@ -99,18 +102,36 @@ fun DataCheckScreen(
                     ) {
                         items.forEachIndexed { index, issue ->
                             if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            val buyFirst = if (issue.kind == DataCheck.Kind.SHORT_SELL) {
+                                current.records.firstOrNull { it.id == issue.recordIds.firstOrNull() }
+                                    ?.let { PortfolioCalculator.buyFirstOrder(current.records, it) }
+                            } else {
+                                null
+                            }
                             IssueRow(
                                 issue = issue,
                                 ignored = issue.key in current.ignoredChecks,
                                 onOpen = { recordId -> onOpen(issue, recordId) },
                                 onIgnore = { confirming = issue },
                                 onRestore = { viewModel.setCheckIgnored(issue.key, false) },
+                                onBuyFirst = buyFirst?.let { b -> { reordering = issue to b } },
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    reordering?.let { (issue, buyFirst) ->
+        ConfirmDialog(
+            title = "매수를 먼저 계산할까요?",
+            text = "${issue.detail}\n\n같은 날 매수 ${buyFirst.buys}건을 이 매도보다 먼저 계산합니다 (이 매도의 계산 순서만 바꿉니다). " +
+                "옮겨도 수량이 모자라면 경고는 남습니다.",
+            confirmLabel = "매수 먼저 계산",
+            onConfirm = { issue.recordIds.firstOrNull()?.let { viewModel.setRecordCreatedAt(it, buyFirst.createdAt) } },
+            onDismiss = { reordering = null },
+        )
     }
 
     confirming?.let { issue ->
@@ -133,6 +154,7 @@ private fun IssueRow(
     onOpen: (recordId: String?) -> Unit,
     onIgnore: () -> Unit,
     onRestore: () -> Unit,
+    onBuyFirst: (() -> Unit)? = null,
 ) {
     val faded = Modifier.alpha(if (ignored) 0.45f else 1f)
     Column(Modifier.fillMaxWidth()) {
@@ -150,6 +172,10 @@ private fun IssueRow(
                 Text(issue.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             OutlinedButton(onClick = if (ignored) onRestore else onIgnore) { Text(if (ignored) "다시 보기" else "무시") }
+        }
+        if (onBuyFirst != null && !ignored) {
+            // 같은 날 뒤에 매수가 있는 매도: 매수를 먼저 계산하도록 순서를 바꾼다 (v2.12)
+            OutlinedButton(onClick = onBuyFirst, modifier = Modifier.padding(bottom = 6.dp)) { Text("매수 먼저 계산") }
         }
         if (issue.recordIds.size > 1) {
             Row(faded.padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {

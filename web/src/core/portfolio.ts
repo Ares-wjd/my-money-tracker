@@ -183,6 +183,19 @@ export function shortSells(records: readonly Record[]): ShortSell[] {
   return out;
 }
 
+/**
+ * 데이터 점검 [매수 먼저 계산] (v2.12, core PortfolioCalculator.buyFirstOrder 와 같은 규칙): 같은 날 sell 보다 뒤(계산 순서)에 있는
+ * 그 종목 매수가 있으면 그 마지막 매수 바로 뒤의 입력 시각과 그 매수 수. 없으면 null (버튼을 보이지 않는다).
+ */
+export function buyFirstOrder(records: readonly Record[], sell: Record): { createdAt: number; buys: number } | null {
+  if (sell.type !== 'SELL' || sell.holdingId === null) return null;
+  const later = records.filter(
+    (r) => r.type === 'BUY' && r.holdingId === sell.holdingId && r.date === sell.date && r.id !== sell.id && compareForCheck(r, sell) > 0,
+  );
+  if (later.length === 0) return null;
+  return { createdAt: Math.max(...later.map((r) => (r.createdAt > 0 ? r.createdAt : Date.now()))) + 1, buys: later.length };
+}
+
 /** target 바로 앞(계산 순서)까지의 보유 수량. target 과 같은 id 의 기록(수정 전 값)은 뺀다. 단건 매도 입력 검사용. */
 export function quantityBefore(holdingId: string, records: readonly Record[], target: Record): number {
   const ordered = [...records.filter((r) => target.id === '' || r.id !== target.id), target].sort(compareForCheck);

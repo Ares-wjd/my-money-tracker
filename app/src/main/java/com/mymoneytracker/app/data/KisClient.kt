@@ -30,6 +30,8 @@ data class KisExecution(
     val quantity: Double,
     val price: Double,
     val market: Market,
+    /** 주문 시각 (ord_tmd, 없으면 null). 같은 날 기록의 계산 순서에 쓴다 (v2.12). */
+    val time: java.time.LocalTime? = null,
 )
 
 /** 한투 잔고의 종목 한 개. */
@@ -495,7 +497,7 @@ class KisClient(private val store: SecureStore) {
                         val price = row.num("avg_prvs")?.takeIf { it > 0 } ?: amount?.div(quantity) ?: 0.0
                         result += KisExecution(
                             date, row.str("odno"), row.str("sll_buy_dvsn_cd") == "02",
-                            row.str("pdno"), row.str("prdt_name"), quantity, price, Market.KR,
+                            row.str("pdno"), row.str("prdt_name"), quantity, price, Market.KR, parseHms(row.str("ord_tmd")),
                         )
                     }
                 }
@@ -535,7 +537,7 @@ class KisClient(private val store: SecureStore) {
                         result += KisExecution(
                             date, row.str("odno"), row.str("sll_buy_dvsn_cd") == "02",
                             row.str("pdno"), row.str("prdt_name"), quantity,
-                            row.num("ft_ccld_unpr3") ?: 0.0, tradingMarket(row.str("ovrs_excg_cd")),
+                            row.num("ft_ccld_unpr3") ?: 0.0, tradingMarket(row.str("ovrs_excg_cd")), parseHms(row.str("ord_tmd")),
                         )
                     }
                 }
@@ -578,8 +580,13 @@ class KisClient(private val store: SecureStore) {
         private const val MAX_RETRIES = 4
         private const val MAX_PAGES = 20
         private val YMD: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
+        private val HMS: DateTimeFormatter = DateTimeFormatter.ofPattern("HHmmss")
 
         fun parseYmd(text: String): LocalDate? = runCatching { LocalDate.parse(text, YMD) }.getOrNull()
+
+        /** "093015" → 09:30:15 (주문시각). 6자리가 아니면 null. */
+        fun parseHms(text: String): java.time.LocalTime? =
+            text.takeIf { it.length == 6 && it.all(Char::isDigit) }?.let { runCatching { java.time.LocalTime.parse(it, HMS) }.getOrNull() }
 
         /** 시세 조회용 거래소 코드. */
         fun quoteExchange(market: Market): String = when (market) {

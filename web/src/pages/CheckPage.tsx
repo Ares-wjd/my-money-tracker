@@ -4,7 +4,8 @@ import { Modal } from '../components/form';
 import { Card } from '../components/ui';
 import { CHECK_KINDS, CHECK_LEVELS, CHECK_LEVEL_LABEL, type CheckIssue, type CheckLevel } from '../core/dataCheck';
 import { useAppData, useData } from '../data/DataContext';
-import { setCheckIgnored } from '../data/writes';
+import { setCheckIgnored, setRecordCreatedAt } from '../data/writes';
+import { buyFirstOrder } from '../core/portfolio';
 import { RecordForm } from '../forms/RecordForm';
 import type { Record } from '../model';
 
@@ -18,6 +19,23 @@ export function CheckPage() {
   const [record, setRecord] = useState<Record | null>(null);
   const [confirming, setConfirming] = useState<CheckIssue | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // [매수 먼저 계산] 확인 중인 매도와 새 순서 (v2.12)
+  const [reordering, setReordering] = useState<{ issue: CheckIssue; createdAt: number; buys: number } | null>(null);
+  const buyFirstFor = (issue: CheckIssue) => {
+    if (issue.kind !== 'SHORT_SELL') return null;
+    const sell = data.records.find((r) => r.id === issue.recordIds[0]);
+    return sell ? buyFirstOrder(data.records, sell) : null;
+  };
+  const reorder = async () => {
+    if (!reordering) return;
+    setError(null);
+    try {
+      await setRecordCreatedAt(uid, reordering.issue.recordIds[0], reordering.createdAt);
+      setReordering(null);
+    } catch (e) {
+      setError(`저장 실패: ${(e as Error).message}`);
+    }
+  };
 
   const open = (issue: CheckIssue, recordId?: string) => {
     switch (CHECK_KINDS[issue.kind].target) {
@@ -72,6 +90,7 @@ export function CheckPage() {
           <Card key={level} title={`${LEVEL_ICON[level]} ${CHECK_LEVEL_LABEL[level]} ${items.length - ignored}건` + (ignored > 0 ? ` · 무시 ${ignored}건` : '')}>
             {items.map((issue) => {
               const isIgnored = data.ignoredChecks.has(issue.key);
+              const buyFirst = isIgnored ? null : buyFirstFor(issue);
               return (
                 <div key={issue.key} className={isIgnored ? 'dc-item ignored' : 'dc-item'}>
                   <div className="dc-row">
@@ -83,6 +102,11 @@ export function CheckPage() {
                       {isIgnored ? '다시 보기' : '무시'}
                     </button>
                   </div>
+                  {buyFirst && (
+                    <div className="dc-links">
+                      <button className="dc-link" onClick={() => setReordering({ issue, ...buyFirst })}>매수 먼저 계산</button>
+                    </div>
+                  )}
                   {issue.recordIds.length > 1 && (
                     <div className="dc-links">
                       {issue.recordIds.map((id, n) => (
@@ -106,6 +130,18 @@ export function CheckPage() {
           <div className="button-row">
             <button onClick={() => { setConfirming(null); setError(null); }}>취소</button>
             <button className="danger" onClick={() => setIgnored(confirming, true)}>무시</button>
+          </div>
+        </Modal>
+      )}
+      {reordering && (
+        <Modal title="매수를 먼저 계산할까요?" onClose={() => { setReordering(null); setError(null); }}>
+          <p>{reordering.issue.detail}</p>
+          <p>같은 날 매수 {reordering.buys}건을 이 매도보다 먼저 계산합니다 (이 매도의 계산 순서만 바꿉니다).</p>
+          <p className="muted small">옮겨도 수량이 모자라면 경고는 남습니다.</p>
+          {error && <p className="error">{error}</p>}
+          <div className="button-row">
+            <button onClick={() => { setReordering(null); setError(null); }}>취소</button>
+            <button className="primary" onClick={reorder}>매수 먼저 계산</button>
           </div>
         </Modal>
       )}

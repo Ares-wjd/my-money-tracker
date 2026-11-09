@@ -445,22 +445,42 @@ private fun ImportedRecordView(
     onSave: (Record) -> Unit,
 ) {
     var memo by rememberSaveable { mutableStateOf(record.memo) }
+    // 체결 내역에 없는 입고(이벤트·이전 등)는 단가만 고칠 수 있다 (v2.12)
+    val inbound = record.externalId == "KIS:in"
+    var price by rememberSaveable { mutableStateOf(MoneyFormat.decimal(record.price, 6)) }
+    val usdHolding = data.holdings.firstOrNull { it.id == record.holdingId }?.currency == com.mymoneytracker.core.model.Currency.USD
+    val parsedPrice = price.toDoubleOrNull()
     val accountId = record.accountId
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            "한투에서 불러온 기록이라 내용은 고칠 수 없고 메모만 고칠 수 있습니다. 잘못되었다면 한투 앱의 내역을 확인하세요.",
+            if (inbound) "한투 체결 내역에 없는 입고(이벤트로 받은 주식·타사 이전 등)라 앱이 단가 0원으로 채운 기록입니다. 단가와 메모를 고칠 수 있습니다."
+            else "한투에서 불러온 기록이라 내용은 고칠 수 없고 메모만 고칠 수 있습니다. 잘못되었다면 한투 앱의 내역을 확인하세요.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         LabeledValue("날짜", formatDate(record.date))
         LabeledValue("내용", recordTitle(record, data, accountId))
         recordDetailText(record, data)?.let { LabeledValue("상세", it) }
-        LabeledValue("금액", recordAmountText(record, data, accountId))
+        if (inbound) {
+            NumberField(
+                label = if (usdHolding) "단가 (달러)" else "단가 (원)",
+                value = price,
+                onValueChange = { price = it },
+                isError = parsedPrice == null,
+                preview = { if (usdHolding) MoneyFormat.usd(it) else MoneyFormat.won(it) },
+            )
+        } else {
+            LabeledValue("금액", recordAmountText(record, data, accountId))
+        }
         TextInput("메모", memo, { memo = it }, maxLength = 100)
-        Button(onClick = { onSave(record.copy(memo = memo.trim())) }, modifier = Modifier.fillMaxWidth()) { Text("메모 저장") }
+        Button(
+            onClick = { onSave(record.copy(memo = memo.trim(), price = if (inbound) parsedPrice ?: record.price else record.price)) },
+            enabled = !inbound || parsedPrice != null,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (inbound) "저장" else "메모 저장") }
     }
 }
 

@@ -1,5 +1,5 @@
 // Firestore 쓰기. 삭제는 폰과 같이 딸린 문서(종목·기록·목표)를 한 번에 지운다.
-import { arrayRemove, arrayUnion, collection, deleteDoc, doc, setDoc, writeBatch, type DocumentReference } from 'firebase/firestore';
+import { arrayRemove, arrayUnion, collection, deleteDoc, doc, setDoc, updateDoc, writeBatch, type DocumentReference } from 'firebase/firestore';
 import { firebase } from '../firebase';
 import type { Holding, InvestmentAccount, Record, SavingsAccount, SavingsGoal, SavingsGoalGroup } from '../model';
 import type { AllocationTarget } from '../core/allocation';
@@ -100,6 +100,11 @@ export function saveManualUsdKrw(uid: string, rate: number | null) {
 }
 
 /** 데이터 점검 항목을 무시하거나(ignored) 다시 본다 (폰과 같은 settings/app 의 ignoredChecks). */
+/** 기록의 입력 시각(같은 날 계산 순서)만 바꾼다: 데이터 점검 [매수 먼저 계산] (v2.12). */
+export function setRecordCreatedAt(uid: string, recordId: string, createdAt: number) {
+  return updateDoc(ref(uid, 'records', recordId), { createdAt });
+}
+
 export function setCheckIgnored(uid: string, key: string, ignored: boolean) {
   return setDoc(doc(db(), 'users', uid, 'settings', 'app'), { ignoredChecks: ignored ? arrayUnion(key) : arrayRemove(key) }, { merge: true });
 }

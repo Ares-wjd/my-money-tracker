@@ -62,6 +62,14 @@ class PortfolioCalculatorTest {
         val held = listOf(trade("b0", RecordType.BUY, 2.0, 1, d.minusDays(1))) + sellFirst.map { it.copy(createdAt = it.createdAt + 1) }
         assertTrue(r.shortSells(held).isEmpty())
 
+        // [매수 먼저 계산]: 같은 날 뒤에 있는 매수(마지막 입력 시각 + 1) 뒤로, 옮기면 정상
+        val sellFirst2 = sellFirst + trade("b2", RecordType.BUY, 1.0, 7)
+        assertEquals(PortfolioCalculator.BuyFirst(8, 2), r.buyFirstOrder(sellFirst2, sellFirst[0]))
+        assertTrue(r.shortSells(sellFirst2.map { if (it.id == "s1") it.copy(createdAt = 8) else it }).isEmpty())
+        // 같은 날 뒤에 매수가 없거나(다른 날·다른 종목) 매도가 아니면 없음
+        assertEquals(null, r.buyFirstOrder(listOf(trade("s1", RecordType.SELL, 2.0, 5), trade("b1", RecordType.BUY, 2.0, 6, d.plusDays(1))), trade("s1", RecordType.SELL, 2.0, 5)))
+        assertEquals(null, r.buyFirstOrder(sellFirst, sellFirst[1]))
+
         // 단건 입력: 새 매도는 그날 맨 뒤 → 같은 날 매수 뒤에 들어간다
         val newSell = trade("", RecordType.SELL, 2.0, 0)
         assertEquals(2.0, r.quantityBefore("s", listOf(trade("b1", RecordType.BUY, 2.0, 5)), newSell), 1e-9)

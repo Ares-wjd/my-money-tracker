@@ -1,7 +1,7 @@
 // core PortfolioCalculatorTest · DisplayCurrencyTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
 import type { Record, RecordType } from '../model';
-import { convert, displayConversion, krwHoldingView, newlyShortSells, noRateReason, position, quantityAt, quantityBefore, shortSells, sortHoldings, summarize } from './portfolio';
+import { buyFirstOrder, convert, displayConversion, krwHoldingView, newlyShortSells, noRateReason, position, quantityAt, quantityBefore, shortSells, sortHoldings, summarize } from './portfolio';
 import { account, holding, record } from './testData';
 
 const day1 = '2026-01-02';
@@ -267,6 +267,14 @@ describe('보유 종목 정렬 (HoldingSortTest)', () => {
     // 전날 2주 보유 + 같은 날 매도 → 매수: 매도 시점 2주라 정상
     const held = [trade('b0', 'BUY', 2, 1, '2026-10-06'), ...sellFirst.map((r) => ({ ...r, createdAt: r.createdAt + 1 }))];
     expect(shortSells(held)).toEqual([]);
+
+    // [매수 먼저 계산]: 같은 날 뒤에 있는 매수(마지막 입력 시각 + 1) 뒤로, 옮기면 정상
+    const sellFirst2 = [...sellFirst, trade('b2', 'BUY', 1, 7)];
+    expect(buyFirstOrder(sellFirst2, sellFirst[0])).toEqual({ createdAt: 8, buys: 2 });
+    expect(shortSells(sellFirst2.map((r) => (r.id === 's1' ? { ...r, createdAt: 8 } : r)))).toEqual([]);
+    // 같은 날 뒤에 매수가 없거나(다른 날) 매도가 아니면 없음
+    expect(buyFirstOrder([trade('s1', 'SELL', 2, 5), trade('b1', 'BUY', 2, 6, '2026-10-08')], trade('s1', 'SELL', 2, 5))).toBeNull();
+    expect(buyFirstOrder(sellFirst, sellFirst[1])).toBeNull();
 
     // 단건 입력: 새 매도는 그날 맨 뒤 → 같은 날 매수 뒤에 들어간다
     const newSell = trade('', 'SELL', 2, 0);

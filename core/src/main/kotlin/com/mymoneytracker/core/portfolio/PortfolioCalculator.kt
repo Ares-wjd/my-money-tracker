@@ -292,6 +292,23 @@ object PortfolioCalculator {
         return result
     }
 
+    /** [매수 먼저 계산] 결과: 매도에 줄 새 입력 시각과 그 앞으로 오는 같은 날 매수 수. */
+    data class BuyFirst(val createdAt: Long, val buys: Int)
+
+    /**
+     * 데이터 점검 [매수 먼저 계산] (v2.12, 웹 buyFirstOrder 와 같은 규칙): 같은 날 [sell] 보다 뒤(계산 순서)에 있는 그 종목 매수가 있으면
+     * 그 마지막 매수 바로 뒤의 입력 시각. 없으면 null (버튼을 보이지 않는다).
+     */
+    fun buyFirstOrder(records: List<Record>, sell: Record): BuyFirst? {
+        if (sell.type != RecordType.SELL || sell.holdingId == null) return null
+        val later = records.filter {
+            it.type == RecordType.BUY && it.holdingId == sell.holdingId && it.date == sell.date && it.id != sell.id &&
+                checkOrder.compare(it, sell) > 0
+        }
+        if (later.isEmpty()) return null
+        return BuyFirst(later.maxOf { if (it.createdAt > 0) it.createdAt else System.currentTimeMillis() } + 1, later.size)
+    }
+
     /** [target] 바로 앞(계산 순서)까지의 보유 수량. [target] 과 같은 id 의 기록(수정 전 값)은 뺀다. 단건 매도 입력 검사용. */
     fun quantityBefore(holdingId: String, records: List<Record>, target: Record): Double {
         var q = 0.0
