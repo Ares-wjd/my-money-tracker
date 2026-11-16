@@ -51,7 +51,7 @@ class ApiSettings(
 
     fun clearKisCredentials() {
         listOf(
-            SecureStore.KIS_APP_KEY, SecureStore.KIS_APP_SECRET, SecureStore.KIS_TOKEN, SecureStore.KIS_TOKEN_EXPIRES_AT,
+            SecureStore.KIS_APP_KEY, SecureStore.KIS_APP_SECRET, SecureStore.KIS_TOKEN, SecureStore.KIS_TOKEN_EXPIRES_AT, SecureStore.KIS_TOKEN_ISSUED_AT,
         ).forEach { store.put(it, null) }
         _status.value = read()
     }

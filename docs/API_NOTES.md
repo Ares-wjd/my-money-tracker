@@ -61,7 +61,7 @@
 
 | 용도 | 경로 | tr_id | 주요 파라미터 → 사용하는 응답 |
 | --- | --- | --- | --- |
-| 접근 토큰 | `POST /oauth2/tokenP` | - | `grant_type=client_credentials, appkey, appsecret` → `access_token`, `expires_in` (하루 1회 발급 원칙, 기기에 캐시) |
+| 접근 토큰 | `POST /oauth2/tokenP` | - | `grant_type=client_credentials, appkey, appsecret` → `access_token`, `expires_in` (하루 1회 발급 원칙, 기기에 캐시, 매일 오전 10시 지나 처음 조회할 때 새로 발급) |
 | 국내 현재가 | `/uapi/domestic-stock/v1/quotations/inquire-price` | FHKST01010100 | `FID_COND_MRKT_DIV_CODE=J, FID_INPUT_ISCD` → `output.stck_prpr` |
 | 국내 일봉 | `/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice` | FHKST03010100 | `FID_INPUT_DATE_1/2, FID_PERIOD_DIV_CODE=D, FID_ORG_ADJ_PRC=0` → `output2[].stck_bsop_date, stck_clpr` (최대 100건) |
 | 국내 일별 시세 (최근 30일) | `/uapi/domestic-stock/v1/quotations/inquire-daily-price` | FHKST01010400 | `FID_COND_MRKT_DIV_CODE=J, FID_INPUT_ISCD, FID_PERIOD_DIV_CODE=D, FID_ORG_ADJ_PRC=0` → `output[].stck_bsop_date, stck_clpr`. KRX 금현물(M04020000, 1g당 원)의 현재가·일봉 조회가 안 될 때 대신 쓴다 |

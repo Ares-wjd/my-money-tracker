@@ -3,6 +3,7 @@ package com.mymoneytracker.app.data
 import com.mymoneytracker.app.data.HttpJson.num
 import com.mymoneytracker.app.data.HttpJson.objects
 import com.mymoneytracker.app.data.HttpJson.str
+import com.mymoneytracker.core.market.KisTokenPolicy
 import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.portfolio.BenchmarkIndex
 import kotlinx.coroutines.Dispatchers
@@ -76,11 +77,15 @@ class KisClient(private val store: SecureStore) {
     val hasCredentials: Boolean
         get() = !store.get(SecureStore.KIS_APP_KEY).isNullOrBlank() && !store.get(SecureStore.KIS_APP_SECRET).isNullOrBlank()
 
-    /** 접근 토큰. 기기에 저장해 만료 1시간 전까지 재사용한다 (토큰 발급은 하루 1회가 원칙). */
+    /**
+     * 접근 토큰. 기기에 저장해 재사용하고, 매일 오전 10시(한국 시간)가 지나 처음 조회할 때 새로 받는다 (v2.12, [KisTokenPolicy]).
+     * 토큰 발급은 하루 1회가 원칙이라 발급 시각이 당겨지지 않게 고정한다.
+     */
     private suspend fun token(): String = tokenMutex.withLock {
         val cached = store.get(SecureStore.KIS_TOKEN)
         val expiresAt = store.get(SecureStore.KIS_TOKEN_EXPIRES_AT)?.toLongOrNull() ?: 0L
-        if (!cached.isNullOrBlank() && System.currentTimeMillis() < expiresAt - 3_600_000) return@withLock cached
+        val issuedAt = store.get(SecureStore.KIS_TOKEN_ISSUED_AT)?.toLongOrNull()
+        if (!cached.isNullOrBlank() && KisTokenPolicy.reusable(issuedAt, expiresAt, System.currentTimeMillis())) return@withLock cached
 
         val (appKey, appSecret) = credentials()
         val response = withContext(Dispatchers.IO) {
@@ -101,14 +106,17 @@ class KisClient(private val store: SecureStore) {
             )
         }
         val expiresIn = json.optLong("expires_in", 86_400L)
+        val now = System.currentTimeMillis()
         store.put(SecureStore.KIS_TOKEN, token)
-        store.put(SecureStore.KIS_TOKEN_EXPIRES_AT, (System.currentTimeMillis() + expiresIn * 1000).toString())
+        store.put(SecureStore.KIS_TOKEN_EXPIRES_AT, (now + expiresIn * 1000).toString())
+        store.put(SecureStore.KIS_TOKEN_ISSUED_AT, now.toString())
         token
     }
 
     fun clearToken() {
         store.put(SecureStore.KIS_TOKEN, null)
         store.put(SecureStore.KIS_TOKEN_EXPIRES_AT, null)
+        store.put(SecureStore.KIS_TOKEN_ISSUED_AT, null)
     }
 
     private fun credentials(): Pair<String, String> {

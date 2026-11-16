@@ -72,6 +72,7 @@ class SecureStore(context: Context) {
         const val KIS_APP_SECRET = "kis_app_secret"
         const val KIS_TOKEN = "kis_token"
         const val KIS_TOKEN_EXPIRES_AT = "kis_token_expires_at"
+        const val KIS_TOKEN_ISSUED_AT = "kis_token_issued_at"
         const val KIS_SERVICE_EXPIRY = "kis_service_expiry"
         const val KIS_ACCOUNT_NO = "kis_account_no"
         const val KIS_ACCOUNT_PRODUCT = "kis_account_product"
