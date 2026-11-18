@@ -58,6 +58,7 @@ import com.mymoneytracker.app.ui.goals.SavingsAccountEditScreen
 import com.mymoneytracker.app.ui.holdings.HoldingDetailScreen
 import com.mymoneytracker.app.ui.holdings.HoldingEditScreen
 import com.mymoneytracker.app.ui.home.HomeScreen
+import com.mymoneytracker.app.ui.home.DividendScreen
 import com.mymoneytracker.app.ui.home.PeriodScreen
 import com.mymoneytracker.app.ui.home.TodayChangeScreen
 import com.mymoneytracker.app.ui.records.CashBalanceScreen
@@ -95,6 +96,7 @@ private object Routes {
     const val PERIOD = "period"
     const val DATA_CHECK = "data-check"
     const val ALERTS = "alerts"
+    const val DIVIDENDS = "dividends"
 
     fun accountDetail(id: String) = "account/$id"
     fun accountEdit(id: String? = null) = if (id == null) "account-edit" else "account-edit?accountId=$id"
@@ -248,7 +250,11 @@ fun MainScreen(
                     onOpenDataCheck = { navController.navigate(Routes.DATA_CHECK) },
                     alertsBlocked = alertSettings?.enabled == true && !alertReadiness.ready,
                     onOpenAlerts = { navController.navigate(Routes.ALERTS) },
+                    onOpenDividends = { navController.navigate(Routes.DIVIDENDS) },
                 )
+            }
+            composable(Routes.DIVIDENDS) {
+                DividendScreen(viewModel = portfolioViewModel, onBack = { navController.popBackStack() })
             }
             composable(Routes.DATA_CHECK) {
                 val data by portfolioViewModel.data.collectAsStateWithLifecycle()

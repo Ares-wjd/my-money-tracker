@@ -385,6 +385,67 @@ class KisClient(private val store: SecureStore) {
         return FxDaily(output?.num("ovrs_nmix_prpr")?.takeIf { it > 0 }, output?.num("ovrs_nmix_prdy_clpr")?.takeIf { it > 0 }, closes)
     }
 
+    /** 한투 배당 일정 한 건 (v2.13): 기준일, 지급일(모르면 null), 주당 현금배당(세전). */
+    data class DividendRow(val record: LocalDate, val pay: LocalDate?, val perShare: Double)
+
+    /** 날짜 글 → 날짜 ("20261231", "2026/12/31", "2026-12-31" 모두). */
+    private fun anyDate(text: String): LocalDate? = text.filter(Char::isDigit).takeIf { it.length == 8 }?.let(::parseYmd)
+
+    /** 국내 배당 일정 (예탁원정보(배당일정) HHKDB669102C0, 조회 전용): 기준일 · 주당 현금배당금 · 지급일. */
+    suspend fun domesticDividends(code: String, from: LocalDate, to: LocalDate): List<DividendRow> {
+        val r = call(
+            "/uapi/domestic-stock/v1/ksdinfo/dividend",
+            "HHKDB669102C0",
+            mapOf("CTS" to "", "GB1" to "0", "F_DT" to from.format(YMD), "T_DT" to to.format(YMD), "SHT_CD" to code, "HIGH_GB" to ""),
+        )
+        val rows = r.json.optJSONArray("output1")?.objects() ?: listOfNotNull(r.json.optJSONObject("output1"))
+        return rows.mapNotNull { row ->
+            val record = anyDate(row.str("record_date")) ?: return@mapNotNull null
+            val amount = row.num("per_sto_divi_amt")?.takeIf { it > 0 } ?: return@mapNotNull null
+            DividendRow(record, anyDate(row.str("divi_pay_dt")), amount)
+        }
+    }
+
+    /**
+     * 해외 배당 일정 (조회 전용): 기간별권리조회 CTRGT011R (배당, 현지기준일 · 주당 배당금) + 권리종합 HHDFS78330900 (기준일 · 지급일).
+     * 지급일은 기준일이 같은 권리종합 줄에서 찾는다 (없으면 null).
+     */
+    suspend fun overseasDividends(market: Market, symbol: String, from: LocalDate, to: LocalDate): List<DividendRow> {
+        val productType = when (market) {
+            Market.NASDAQ -> "512"
+            Market.NYSE -> "513"
+            Market.AMEX -> "529"
+            else -> ""
+        }
+        val rights = call(
+            "/uapi/overseas-price/v1/quotations/period-rights",
+            "CTRGT011R",
+            mapOf(
+                "RGHT_TYPE_CD" to "03", "INQR_DVSN_CD" to "02", "INQR_STRT_DT" to from.format(YMD), "INQR_END_DT" to to.format(YMD),
+                "PDNO" to symbol, "PRDT_TYPE_CD" to productType, "CTX_AREA_NK50" to "", "CTX_AREA_FK50" to "",
+            ),
+        ).json.optJSONArray("output")?.objects().orEmpty().mapNotNull { row ->
+            if (row.str("pdno").isNotEmpty() && !row.str("pdno").equals(symbol, ignoreCase = true)) return@mapNotNull null
+            val record = anyDate(row.str("acpl_bass_dt")) ?: anyDate(row.str("bass_dt")) ?: return@mapNotNull null
+            val amount = listOf("alct_frcr_unpr", "stkp_dvdn_frcr_amt2", "stkp_dvdn_frcr_amt3", "stkp_dvdn_frcr_amt4")
+                .firstNotNullOfOrNull { row.num(it)?.takeIf { v -> v > 0 } } ?: return@mapNotNull null
+            record to amount
+        }
+        if (rights.isEmpty()) return emptyList()
+        val payDates = runCatching {
+            call(
+                "/uapi/overseas-price/v1/quotations/rights-by-ice",
+                "HHDFS78330900",
+                mapOf("NCOD" to "US", "SYMB" to symbol, "ST_YMD" to from.format(YMD), "ED_YMD" to to.format(YMD)),
+            ).json.optJSONArray("output1")?.objects().orEmpty().mapNotNull { row ->
+                val record = anyDate(row.str("record_dt")) ?: return@mapNotNull null
+                val pay = anyDate(row.str("pay_dt")) ?: return@mapNotNull null
+                record to pay
+            }.toMap()
+        }.getOrDefault(emptyMap())
+        return rights.map { (record, amount) -> DividendRow(record, payDates[record], amount) }.distinct()
+    }
+
     // ---------------------------------------------------------------- 계좌 조회 (M5)
 
     private fun account(): Pair<String, String> {

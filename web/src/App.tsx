@@ -15,6 +15,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { TodayPage } from './pages/TodayPage';
 import { PeriodPage } from './pages/PeriodPage';
 import { CheckPage } from './pages/CheckPage';
+import { DividendPage } from './pages/DividendPage';
 import { TradeImportPage } from './pages/TradeImportPage';
 import { ThemeProvider } from './theme';
 
@@ -44,6 +45,7 @@ function Gate() {
             <Route path="today" element={<TodayPage />} />
             <Route path="period" element={<PeriodPage />} />
             <Route path="check" element={<CheckPage />} />
+            <Route path="dividends" element={<DividendPage />} />
             <Route path="allocation" element={<AllocationPage />} />
             <Route path="goals" element={<GoalsPage />} />
             <Route path="settings" element={<SettingsPage />} />

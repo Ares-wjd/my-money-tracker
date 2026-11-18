@@ -4,6 +4,8 @@ import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.mymoneytracker.app.data.MarketDocs.CALENDAR_DOC
+import com.mymoneytracker.app.data.MarketDocs.DIVIDENDS_DOC
+import com.mymoneytracker.app.data.MarketDocs.readDividends
 import com.mymoneytracker.app.data.MarketDocs.PERSIST_INTERVAL_MS
 import com.mymoneytracker.app.data.MarketDocs.PRICE_PREFIX
 import com.mymoneytracker.app.data.MarketDocs.parseDate
@@ -11,6 +13,7 @@ import com.mymoneytracker.app.data.MarketDocs.readCalendar
 import com.mymoneytracker.app.data.MarketDocs.readCandle
 import com.mymoneytracker.app.data.MarketDocs.readDateMap
 import com.mymoneytracker.core.market.Candle
+import com.mymoneytracker.core.market.DividendEvent
 import com.mymoneytracker.core.market.HistoryRanges
 import com.mymoneytracker.core.market.MarketCalendar
 import com.mymoneytracker.core.market.MarketClock
@@ -57,6 +60,10 @@ class MarketDataRepository(
     /** 국내 개장일 정보 (Firestore calendar 문서, 하루 한 번 한투 휴장일 조회로 갱신). */
     private var calendar = MarketCalendar()
     private var calendarTriedOn: LocalDate? = null
+
+    /** 한투 배당 일정 (marketData/dividends, 하루 한 번 받음, v2.13). */
+    private var dividends: Map<String, List<DividendEvent>> = emptyMap()
+    private var dividendsFetchedOn: LocalDate? = null
 
     /** 자주 받는 현재가는 메모리에 두고, Firestore 에는 [PERSIST_INTERVAL_MS] 마다 한 번만 저장한다 (쓰기 횟수 절약). */
     private val liveQuotes = MutableStateFlow<Map<String, LiveQuote>>(emptyMap())
@@ -127,6 +134,9 @@ class MarketDataRepository(
                 if (fx.read(doc)) continue
                 if (doc.id == CALENDAR_DOC) {
                     calendar = readCalendar(doc)
+                } else if (doc.id == DIVIDENDS_DOC) {
+                    dividends = readDividends(doc)
+                    dividendsFetchedOn = doc.getString("fetchedOn")?.let(::parseDate)
                 } else if (doc.id.startsWith(PRICE_PREFIX)) {
                     val key = doc.id.removePrefix(PRICE_PREFIX)
                     val latest = doc.getDouble("latest")?.let { price ->
@@ -138,7 +148,7 @@ class MarketDataRepository(
             }
             storedPrices = prices
             loaded.complete(Unit)
-            trySend(MarketSnapshot(prices, fx.union(), fx.latest, fx.latestSource, calendar))
+            trySend(MarketSnapshot(prices, fx.union(), fx.latest, fx.latestSource, calendar, dividends))
         }
         awaitClose { registration.remove() }
     }
@@ -227,6 +237,40 @@ class MarketDataRepository(
      * 받은 종가는 Firestore 에 저장되어 그래프(폰·PC 웹)가 다시 조회하지 않고 쓴다.
      */
     suspend fun ensureHistory(ranges: List<HistoryRanges.Range>): List<String> = history.ensureHistory(ranges)
+
+    /**
+     * 한투 배당 일정 (v2.13, 조회 전용): 보유 종목마다 오늘 − 30일 ~ 오늘 + 120일 배당 일정을 받아 marketData/dividends 에 통째로 저장한다.
+     * 하루 한 번만 (fetchedOn). 국내는 예탁원 배당일정, 해외는 기간별권리조회 + 권리종합(지급일).
+     */
+    suspend fun refreshDividends(holdings: List<Holding>): List<String> {
+        if (!kis.hasCredentials) return emptyList()
+        awaitLoaded()
+        val today = LocalDate.now()
+        if (dividendsFetchedOn == today) return emptyList()
+        val from = today.minusDays(30)
+        val to = today.plusDays(120)
+        val errors = mutableListOf<String>()
+        val schedule = mutableMapOf<String, List<Map<String, Any?>>>()
+        holdings.filter { MarketKeys.quotable(it) && it.assetType != AssetType.GOLD }.distinctBy { MarketKeys.of(it) }.forEach { h ->
+            val key = MarketKeys.of(h) ?: return@forEach
+            try {
+                val rows = if (h.market == Market.KR) kis.domesticDividends(h.code, from, to) else kis.overseasDividends(h.market, h.code, from, to)
+                if (rows.isNotEmpty()) {
+                    schedule[key] = rows.map {
+                        mapOf("record" to it.record.toString(), "pay" to it.pay?.toString(), "perShare" to it.perShare, "currency" to h.currency.name)
+                    }
+                }
+            } catch (e: ApiException) {
+                errors += "${h.name} 배당 일정: ${e.message}"
+            } catch (e: Exception) {
+                errors += "${h.name} 배당 일정: 네트워크 오류"
+            }
+        }
+        // 일부가 실패해도 받은 것은 저장한다 (다음 날 다시)
+        col.document(DIVIDENDS_DOC).set(mapOf("schedule" to schedule, "fetchedOn" to today.toString()))
+        dividendsFetchedOn = today
+        return errors
+    }
 
     /** 지수 비교용 지수 시세 (S&P500·나스닥·KOSPI, [from] ~ 어제 종가와 현재 지수, v2.11). */
     suspend fun ensureIndices(from: LocalDate): List<String> = history.ensureIndices(from)

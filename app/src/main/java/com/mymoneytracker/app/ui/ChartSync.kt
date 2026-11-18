@@ -182,6 +182,10 @@ class ChartSync(
                     current.records.minOfOrNull { it.date }?.let { first ->
                         found += marketRepository.ensureIndices(first.minusDays(HistoryRanges.LEAD_DAYS))
                     }
+                    // 한투 배당 일정 (v2.13, 하루 한 번): 지금 보유 종목
+                    found += marketRepository.refreshDividends(
+                        current.summary.accounts.flatMap { acc -> acc.holdings.filter { it.position.quantity > 0 }.map { it.holding } },
+                    )
                 }
                 HistoryRanges.fx(current.holdings, current.records, today)?.let { (from, _) ->
                     // 한투 원/달러 종가가 기본, 수출입은행은 한투 구간 이전 날짜만 (v2.8)

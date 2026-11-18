@@ -4,6 +4,7 @@ import { decimal, rate, signedWon, won } from '../core/format';
 import { useAppData } from '../data/DataContext';
 import { AssetChart } from '../components/AssetChart';
 import { TodayCard } from '../components/TodayChange';
+import { HomeDividendCard } from '../components/Dividend';
 import { Badge, Card, ListLink, Stat, Warning, profitClass } from '../components/ui';
 import { ACCOUNT_KIND_SHORT } from '../model';
 import { accountDescription } from './text';
@@ -65,6 +66,7 @@ export function HomePage() {
       )}
 
       {change !== null && <TodayCard change={change} nowMs={nowMs} />}
+      <HomeDividendCard data={data} />
 
       <AssetChart data={data} />
 

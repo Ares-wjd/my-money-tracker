@@ -2,6 +2,7 @@ package com.mymoneytracker.app.ui.home
 
 import androidx.compose.foundation.clickable
 import java.time.LocalDate
+import com.mymoneytracker.core.portfolio.Dividends
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -65,6 +66,7 @@ fun HomeScreen(
     onOpenDataCheck: () -> Unit = {},
     alertsBlocked: Boolean = false,
     onOpenAlerts: () -> Unit = {},
+    onOpenDividends: () -> Unit = {},
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     val todayChange by viewModel.todayChange.collectAsStateWithLifecycle()
@@ -113,6 +115,7 @@ fun HomeScreen(
                 onOpenDataCheck = onOpenDataCheck,
                 alertsBlocked = alertsBlocked,
                 onOpenAlerts = onOpenAlerts,
+                onOpenDividends = onOpenDividends,
             )
         }
     }
@@ -135,6 +138,7 @@ private fun HomeContent(
     onOpenDataCheck: () -> Unit,
     alertsBlocked: Boolean = false,
     onOpenAlerts: () -> Unit = {},
+    onOpenDividends: () -> Unit = {},
 ) {
     val summary = current.summary
     // 올해·연평균 수익률 (그래프 일별 값으로 계산, 계산 중이면 숨김)
@@ -259,6 +263,16 @@ private fun HomeContent(
         // 오늘 변동 (시세가 있는 종목이 하나라도 있으면)
         todayChange?.let { change ->
             item { TodayChangeCard(change, rememberNow(), onOpenToday) }
+        }
+
+        // 배당 (v2.13): 배당 기록이나 예정이 있을 때만, 항상 전체 계좌
+        item {
+            val today = LocalDate.now()
+            val div = remember(current) { dividendData(current, today) }
+            if (!div.isEmpty) {
+                val home = remember(div) { Dividends.home(div.received, div.planned, today) }
+                DividendCard(home, onOpenDividends)
+            }
         }
 
         item {

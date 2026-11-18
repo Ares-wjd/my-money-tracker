@@ -2,6 +2,8 @@ package com.mymoneytracker.app.data
 
 import com.google.firebase.firestore.DocumentSnapshot
 import com.mymoneytracker.core.market.Candle
+import com.mymoneytracker.core.market.DividendEvent
+import com.mymoneytracker.core.model.Currency
 import com.mymoneytracker.core.market.MarketCalendar
 import java.time.LocalDate
 import java.util.TreeMap
@@ -13,6 +15,8 @@ internal object MarketDocs {
     const val FX_CHECKED_DOC = "fx_USD_checked"
     /** 국내 개장일 정보 (krClosed, krFrom, krTo, v2.10). */
     const val CALENDAR_DOC = "calendar"
+    /** 한투 배당 일정 (schedule, fetchedOn, v2.13). */
+    const val DIVIDENDS_DOC = "dividends"
     /** 자주 받는 현재가·오늘 환율을 Firestore 에 저장하는 간격 (쓰기 횟수 절약). */
     const val PERSIST_INTERVAL_MS = 15 * 60 * 1000L
 
@@ -36,6 +40,20 @@ internal object MarketDocs {
         val base = (m["base"] as? Number)?.toDouble() ?: return null
         val last = (m["last"] as? Number)?.toDouble() ?: return null
         return Candle(date, base, last, (m["regular"] as? Number)?.toDouble(), (m["at"] as? Number)?.toLong() ?: 0L)
+    }
+
+    /** marketData/dividends 문서 → 시세 키별 한투 배당 일정. */
+    fun readDividends(doc: DocumentSnapshot): Map<String, List<DividendEvent>> {
+        val schedule = doc.get("schedule") as? Map<*, *> ?: return emptyMap()
+        return schedule.mapNotNull { (k, v) ->
+            val key = k as? String ?: return@mapNotNull null
+            key to (v as? List<*>).orEmpty().mapNotNull { item ->
+                val m = item as? Map<*, *> ?: return@mapNotNull null
+                val record = (m["record"] as? String)?.let(::parseDate) ?: return@mapNotNull null
+                val perShare = (m["perShare"] as? Number)?.toDouble() ?: return@mapNotNull null
+                DividendEvent(record, (m["pay"] as? String)?.let(::parseDate), perShare, if (m["currency"] == "USD") Currency.USD else Currency.KRW)
+            }
+        }.toMap()
     }
 
     /** marketData/calendar 문서 → 국내 개장일 정보. */

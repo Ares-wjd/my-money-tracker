@@ -26,6 +26,7 @@
   --short-row: #eaf1fd; --over-row: #fdecee; --short-tag: #1f5fd1; --over-tag: #c62436; --short-tag-ink: #ffffff; --over-tag-ink: #ffffff;
   --chart-invested: #b5770a;
   --bench-SPX: #d9822b; --bench-COMP: #c2417a; --bench-KOSPI: #6a5acd;
+  --div-received: #0f6b5c; --div-planned: #7fb5a7; --div-est-bg: #fbf3e2; --div-est-line: #b07a10; --div-last: #e8b84a; --div-est-ink: #8a5a00;
   --fx-part: #856a00;
   color-scheme: light;
 }
@@ -55,6 +56,7 @@
   --short-row: #1d2b45; --over-row: #3b1f24; --short-tag: #8fb4ff; --over-tag: #ff8a96; --short-tag-ink: #16201c; --over-tag-ink: #16201c;
   --chart-invested: #c4851c;
   --bench-SPX: #e8a15a; --bench-COMP: #e07aa6; --bench-KOSPI: #9a8ef0;
+  --div-received: #27957a; --div-planned: #5e9e8e; --div-est-bg: #3a3220; --div-est-line: #d9a441; --div-last: #d9a441; --div-est-ink: #e6b85c;
   --fx-part: #8c7000;
   color-scheme: dark;
   }
@@ -83,6 +85,7 @@
   --short-row: #1d2b45; --over-row: #3b1f24; --short-tag: #8fb4ff; --over-tag: #ff8a96; --short-tag-ink: #16201c; --over-tag-ink: #16201c;
   --chart-invested: #c4851c;
   --bench-SPX: #e8a15a; --bench-COMP: #e07aa6; --bench-KOSPI: #9a8ef0;
+  --div-received: #27957a; --div-planned: #5e9e8e; --div-est-bg: #3a3220; --div-est-line: #d9a441; --div-last: #d9a441; --div-est-ink: #e6b85c;
   --fx-part: #8c7000;
   color-scheme: dark;
 }
@@ -551,3 +554,56 @@ a.today-tile:hover { text-decoration: none; filter: brightness(0.95); }
 .timeline-legend > span { display: inline-flex; align-items: center; gap: 5px; }
 .legend-box { width: 10px; height: 10px; border-radius: 2px; }
 .legend-now { width: 2px; height: 12px; background: var(--error); }
+
+/* 배당 (v2.13) */
+.div-card { display: flex; flex-direction: column; gap: 10px; color: inherit; text-decoration: none; }
+.div-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.div-stats > div { display: flex; flex-direction: column; gap: 2px; }
+.div-amount { font-size: 22px; font-weight: 700; }
+.div-mini { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; height: 56px; }
+.div-mini-month { display: flex; align-items: flex-end; gap: 1px; height: 100%; }
+.div-mini-bar { flex: 1; border-radius: 2px 2px 0 0; min-height: 0; }
+.div-stack { display: flex; flex-direction: column; overflow: hidden; }
+.div-mini-labels { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; font-size: 10px; color: var(--muted); text-align: center; margin-top: -6px; }
+.div-received { background: var(--div-received); }
+.div-planned { background: var(--div-planned); }
+.div-last { background: var(--div-last); }
+.div-est { background: var(--div-est-bg); outline: 1.5px dashed var(--div-est-line); outline-offset: -1.5px; }
+.legend-swatch.div-received, .legend-swatch.div-planned, .legend-swatch.div-last { display: inline-block; }
+.div-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.div-nav-title { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.icon-nav { min-width: 44px; min-height: 44px; font-size: 20px; background: none; border: none; color: var(--ink); cursor: pointer; }
+.div-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
+.div-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-height: 72px; padding: 10px; border-radius: 14px; border: 2px solid transparent; background: var(--soft); color: var(--ink); text-align: left; cursor: pointer; font: inherit; }
+.div-tile[style] { background: color-mix(in srgb, var(--div-received) calc(var(--shade) * 100%), var(--card)); }
+.div-tile.planned-only { border: 1.5px dashed var(--div-est-line); }
+.div-tile.now { border: 2px solid var(--ink); }
+.div-tile strong { font-size: 15px; }
+.div-tile-sub { font-size: 11px; }
+.div-week, .div-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; text-align: center; }
+.div-week { margin-top: 8px; }
+.div-day { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 46px; padding-top: 4px; border-radius: 10px; font-size: 13px; }
+.div-day small { font-size: 10px; }
+.div-day.got { background: color-mix(in srgb, var(--div-received) 18%, transparent); font-weight: 700; }
+.div-day.confirmed { background: color-mix(in srgb, var(--div-planned) 30%, transparent); font-weight: 700; }
+.div-day.today { outline: 1.5px solid var(--ink); }
+.div-day.sun { color: var(--up); } .div-day.sat { color: var(--down); }
+.div-undated { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--div-planned) 20%, transparent); }
+.div-undated.est { background: var(--div-est-bg); border: 1.5px dashed var(--div-est-line); }
+.div-undated.est > strong:first-child { color: var(--div-est-ink); }
+.div-undated-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.div-list-title { margin: 14px 0 4px; font-size: 15px; }
+.div-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.div-row-date { width: 58px; flex: none; }
+.div-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.div-tag { font-size: 11px; font-weight: 700; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.div-tag-RECEIVED { background: var(--soft); color: var(--muted); }
+.div-tag-CONFIRMED { background: color-mix(in srgb, var(--div-planned) 25%, transparent); color: var(--ink); }
+.div-tag-ESTIMATED { background: var(--div-est-bg); color: var(--div-est-ink); border: 1px dashed var(--div-est-line); }
+.div-year-track { display: flex; }
+.div-year-track > span { display: block; height: 100%; }
+.div-yield-boxes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.div-yield-boxes > div { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 12px; background: var(--soft); }
+.div-yield-boxes strong { font-size: 18px; }
+.div-yield-boxes .mine { background: var(--accent-soft); }
+.div-cost { color: var(--green); }
