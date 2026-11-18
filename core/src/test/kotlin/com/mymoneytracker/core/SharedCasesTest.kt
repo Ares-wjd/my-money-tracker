@@ -20,6 +20,8 @@ import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.Benchmark
 import com.mymoneytracker.core.portfolio.BenchmarkIndex
 import com.mymoneytracker.core.portfolio.DataCheck
+import com.mymoneytracker.core.portfolio.Dividends
+import com.mymoneytracker.core.market.DividendEvent
 import com.mymoneytracker.core.portfolio.FlowPoint
 import com.mymoneytracker.core.portfolio.PeriodReturns
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
@@ -51,6 +53,7 @@ class SharedCasesTest {
         assertTrue("testdata/portfolio 가 비었음", files("portfolio").isNotEmpty())
         assertTrue("testdata/period 가 비었음", files("period").isNotEmpty())
         assertTrue("testdata/benchmark 가 비었음", files("benchmark").isNotEmpty())
+        assertTrue("testdata/dividends 가 비었음", files("dividends").isNotEmpty())
     }
 
     @Test
@@ -71,6 +74,13 @@ class SharedCasesTest {
     fun periodCases() {
         val problems = mutableListOf<String>()
         for (file in files("period")) problems += checkPeriod(file.name, JSONObject(file.readText()))
+        if (problems.isNotEmpty()) fail(problems.joinToString("\n"))
+    }
+
+    @Test
+    fun dividendCases() {
+        val problems = mutableListOf<String>()
+        for (file in files("dividends")) problems += checkDividends(file.name, JSONObject(file.readText()))
         if (problems.isNotEmpty()) fail(problems.joinToString("\n"))
     }
 
@@ -162,9 +172,11 @@ class SharedCasesTest {
         var latest: Pair<LocalDate, Double>? = null
         var source: String? = null
         var calendar = MarketCalendar()
+        var dividends = emptyMap<String, List<DividendEvent>>()
         for ((id, d) in o.docs()) {
             when {
                 id == "calendar" -> calendar = calendar(d)
+                id == "dividends" -> dividends = dividendSchedule(d)
                 id == "fx_USD" -> recent = dateMap(d.optJSONObject("rates"))
                 id == "fx_USD_checked" -> {
                     checked = dateMap(d.optJSONObject("rates"))
@@ -186,7 +198,20 @@ class SharedCasesTest {
                 )
             }
         }
-        return MarketSnapshot(prices, TreeMap(recent).apply { putAll(checked) }, latest, source, calendar)
+        return MarketSnapshot(prices, TreeMap(recent).apply { putAll(checked) }, latest, source, calendar, dividends)
+    }
+
+    /** marketData/dividends 문서 → 한투 배당 일정 (v2.13). */
+    private fun dividendSchedule(d: JSONObject): Map<String, List<DividendEvent>> {
+        val schedule = d.optJSONObject("schedule") ?: return emptyMap()
+        return schedule.keys().asSequence().associateWith { key ->
+            val arr = schedule.getJSONArray(key)
+            (0 until arr.length()).mapNotNull { i ->
+                val e = arr.getJSONObject(i)
+                val record = e.str("record")?.let(LocalDate::parse) ?: return@mapNotNull null
+                DividendEvent(record, e.str("pay")?.let(LocalDate::parse), e.getDouble("perShare"), enumOf(e.str("currency"), Currency.KRW))
+            }
+        }
     }
 
     /** marketData/calendar 문서 → 국내 개장일 정보. */
@@ -347,6 +372,71 @@ class SharedCasesTest {
                 val d = LocalDate.parse(days.getString(i))
                 c.text("usOpen $d", "true", calendar.usOpen(d).toString())
             }
+        }
+        return c.problems
+    }
+
+    private fun checkDividends(file: String, case: JSONObject): List<String> {
+        val c = Checker(file)
+        val today = LocalDate.parse(case.getString("today"))
+        val accounts = accounts(case.getJSONObject("accounts"))
+        val holdings = holdings(case.getJSONObject("holdings"))
+        val records = records(case.getJSONObject("records"))
+        val snapshot = market(case.optJSONObject("market"))
+        val fx = snapshot.latestUsdKrw()?.second
+        val summary = PortfolioCalculator.summarize(accounts, holdings, records, fx, priceOf = { PriceLookup.current(it, snapshot) })
+        val received = Dividends.received(holdings, records, snapshot, today, fx)
+        val planned = Dividends.planned(summary, records, snapshot, today)
+        val e = case.getJSONObject("expect")
+        e.optJSONArray("received")?.let { arr ->
+            c.text("received 개수", arr.length().toString(), received.size.toString())
+            received.zip((0 until arr.length()).map { arr.getJSONArray(it) }).forEach { (d, x) ->
+                c.text("received ${x.getString(0)} 종목", "${x.getString(0)} ${x.getString(1)}", "${d.date} ${d.holding.id}")
+                c.num("received ${x.getString(0)}", x.get(2), d.amountKrw)
+            }
+        }
+        e.optJSONArray("planned")?.let { arr ->
+            c.text("planned", (0 until arr.length()).map { val x = arr.getJSONArray(it); "${x.getString(0)} ${x.getString(1)} ${if (x.isNull(2)) null else x.getString(2)} ${x.getString(3)}" }.toString(),
+                planned.map { "${it.kind} ${it.month} ${it.date} ${it.holding.id}" }.toString())
+            planned.zip((0 until arr.length()).map { arr.getJSONArray(it) }).forEach { (d, x) -> c.num("planned ${d.month} ${d.holding.id}", x.get(4), d.amountKrw) }
+        }
+        e.optJSONObject("home")?.let { h ->
+            val home = Dividends.home(received, planned, today)
+            c.num("home.thisYear", h.get("thisYear"), home.thisYear)
+            c.num("home.lastYearSamePeriod", h.get("lastYearSamePeriod"), home.lastYearSamePeriod)
+            c.text("home.nextMonth", h.get("nextMonth"), home.nextMonth.toString())
+            c.num("home.nextMonthPlanned", h.get("nextMonthPlanned"), home.nextMonthPlanned)
+            c.num("home.lastYearNextMonth", h.get("lastYearNextMonth"), home.lastYearNextMonth)
+            val months = h.getJSONObject("months")
+            for (m in 1..12) {
+                val x = months.optJSONArray(m.toString())
+                val t = home.months[m - 1]
+                c.num("home.months.$m.received", x?.getDouble(0) ?: 0.0, t.received)
+                c.num("home.months.$m.confirmed", x?.getDouble(1) ?: 0.0, t.confirmed)
+                c.num("home.months.$m.estimated", x?.getDouble(2) ?: 0.0, t.estimated)
+                c.num("home.lastYearMonths.$m", h.getJSONObject("lastYearMonths").optDouble(m.toString(), 0.0), home.lastYearMonths[m - 1])
+            }
+        }
+        e.optJSONArray("years")?.let { arr ->
+            val years = Dividends.years(received + planned, today)
+            c.text("years", (0 until arr.length()).map { arr.getJSONArray(it).getInt(0) }.toString(), years.map { it.first }.toString())
+            years.zip((0 until arr.length()).map { arr.getJSONArray(it) }).forEach { (y, x) ->
+                c.num("years.${y.first}.received", x.get(1), y.second.received)
+                c.num("years.${y.first}.confirmed", x.get(2), y.second.confirmed)
+                c.num("years.${y.first}.estimated", x.get(3), y.second.estimated)
+            }
+        }
+        e.optJSONObject("yields")?.let { y ->
+            val report = Dividends.yields(summary, received, today)
+            val arr = y.getJSONArray("items")
+            c.text("yields 종목", (0 until arr.length()).map { arr.getJSONArray(it).getString(0) }.toString(), report.items.map { it.holding.id }.toString())
+            report.items.zip((0 until arr.length()).map { arr.getJSONArray(it) }).forEach { (d, x) ->
+                c.num("yields.${d.holding.id}.last12", x.get(1), d.last12Krw)
+                c.num("yields.${d.holding.id}.onPrice", x.get(2), d.yieldOnPrice)
+                c.num("yields.${d.holding.id}.onCost", x.get(3), d.yieldOnCost)
+            }
+            c.num("yields.totalOnPrice", y.get("totalOnPrice"), report.totalOnPrice)
+            c.num("yields.totalOnCost", y.get("totalOnCost"), report.totalOnCost)
         }
         return c.problems
     }

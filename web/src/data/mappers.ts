@@ -8,6 +8,7 @@ import {
   RECORD_TYPES,
   type AppSettings,
   type Candle,
+  type DividendEvent,
   type MarketCalendar,
   type Holding,
   type InvestmentAccount,
@@ -174,9 +175,12 @@ export function toMarketSnapshot(docs: readonly { id: string; data: Data }[]): M
   let usdKrwLatest: [string, number] | null = null;
   let usdKrwLatestSource: string | null = null;
   let calendar: MarketCalendar = { krClosed: new Set(), krFrom: null, krTo: null };
+  let dividends = new Map<string, DividendEvent[]>();
   for (const { id, data } of docs) {
     if (id === CALENDAR_DOC) {
       calendar = toCalendar(data);
+    } else if (id === DIVIDENDS_DOC) {
+      dividends = toDividendSchedule(data);
     } else if (id === FX_DOC) {
       recent = dateMap(data.rates);
     } else if (id === FX_CHECKED_DOC) {
@@ -196,7 +200,30 @@ export function toMarketSnapshot(docs: readonly { id: string; data: Data }[]): M
     }
   }
   const usdKrw = new Map([...recent, ...checked]);
-  return { prices, usdKrw, usdKrwLatest, usdKrwLatestSource, calendar };
+  return { prices, usdKrw, usdKrwLatest, usdKrwLatestSource, calendar, dividends };
+}
+
+/** 한투 배당 일정 문서 (v2.13): marketData/dividends = { schedule: { 시세 키: [{ record, pay, perShare, currency }] }, fetchedOn }. */
+export const DIVIDENDS_DOC = 'dividends';
+
+function toDividendSchedule(data: Data): Map<string, DividendEvent[]> {
+  const out = new Map<string, DividendEvent[]>();
+  const schedule = data.schedule;
+  if (typeof schedule !== 'object' || schedule === null) return out;
+  for (const [key, list] of Object.entries(schedule as Data)) {
+    if (!Array.isArray(list)) continue;
+    const events: DividendEvent[] = [];
+    for (const item of list) {
+      if (typeof item !== 'object' || item === null) continue;
+      const e = item as Data;
+      const record = date(e.record);
+      const perShare = num(e.perShare);
+      if (record === null || perShare === null) continue;
+      events.push({ record, pay: date(e.pay), perShare, currency: e.currency === 'USD' ? 'USD' : 'KRW' });
+    }
+    out.set(key, events);
+  }
+  return out;
 }
 
 /** 시세 문서의 candle 맵 → 일봉 (날짜·기준가·현재가가 모두 있어야). */

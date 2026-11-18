@@ -28,6 +28,11 @@ data class Candle(val date: LocalDate, val base: Double, val last: Double, val r
     val rate: Double? get() = if (base > 0) last / base - 1 else null
 }
 
+/**
+ * 한투 배당 일정 하나 (v2.13): [record] 기준일, [pay] 지급일 (모르면 null), [perShare] 주당 현금배당 (세전, [currency]).
+ */
+data class DividendEvent(val record: LocalDate, val pay: LocalDate?, val perShare: Double, val currency: com.mymoneytracker.core.model.Currency)
+
 /** 앱이 받아 둔 시세·환율 전체. */
 data class MarketSnapshot(
     val prices: Map<String, PriceHistory> = emptyMap(),
@@ -39,6 +44,8 @@ data class MarketSnapshot(
     val usdKrwLatestSource: String? = null,
     /** 국내 개장일 정보 (시장 상태 판단용, v2.10). */
     val calendar: MarketCalendar = MarketCalendar(),
+    /** 한투 배당 일정 (시세 키 → 일정, v2.13). */
+    val dividends: Map<String, List<DividendEvent>> = emptyMap(),
 ) {
     fun history(holding: Holding): PriceHistory? = MarketKeys.of(holding)?.let { prices[it] }
 

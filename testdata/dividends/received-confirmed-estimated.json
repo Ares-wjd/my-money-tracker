@@ -1,0 +1,66 @@
+{
+  "name": "KODEX 200 (100주 → 6/1 200주) · SCHD 10주. 받은 배당 5건(해외는 받은 날 환율), 한투 일정 2건(SCHD 12/15 지급, KODEX 기준일 12/31 지급일 모름), 기록 추정(12월 SCHD 는 확정이 있어 뺌)",
+  "today": "2026-11-16",
+  "accounts": {
+    "a": { "name": "국내", "kind": "GENERAL", "createdAt": 1 },
+    "b": { "name": "해외", "kind": "GENERAL", "createdAt": 2 }
+  },
+  "holdings": {
+    "k": { "accountId": "a", "name": "KODEX 200", "code": "069500", "market": "KR", "assetType": "ETF", "createdAt": 1 },
+    "s": { "accountId": "b", "name": "SCHD", "code": "SCHD", "market": "NYSE", "assetType": "ETF", "createdAt": 2 }
+  },
+  "records": {
+    "b1": { "accountId": "a", "type": "BUY", "date": "2025-01-02", "holdingId": "k", "quantity": 100, "price": 30000, "createdAt": 1 },
+    "b2": { "accountId": "b", "type": "BUY", "date": "2025-01-02", "holdingId": "s", "quantity": 10, "price": 25, "currency": "USD", "createdAt": 2 },
+    "d1": { "accountId": "a", "type": "DIVIDEND", "date": "2025-04-30", "holdingId": "k", "amount": 20000, "createdAt": 3 },
+    "d2": { "accountId": "a", "type": "DIVIDEND", "date": "2025-11-28", "holdingId": "k", "amount": 25000, "createdAt": 4 },
+    "d3": { "accountId": "b", "type": "DIVIDEND", "date": "2025-12-15", "holdingId": "s", "amount": 2.0, "currency": "USD", "createdAt": 5 },
+    "d4": { "accountId": "b", "type": "DIVIDEND", "date": "2026-03-20", "holdingId": "s", "amount": 2.2, "currency": "USD", "createdAt": 6 },
+    "d5": { "accountId": "a", "type": "DIVIDEND", "date": "2026-04-30", "holdingId": "k", "amount": 22000, "createdAt": 7 },
+    "b3": { "accountId": "a", "type": "BUY", "date": "2026-06-01", "holdingId": "k", "quantity": 100, "price": 33000, "createdAt": 8 }
+  },
+  "market": {
+    "price_KR_069500": { "latest": 35000, "latestDate": "2026-11-16" },
+    "price_US_SCHD": { "latest": 27, "latestDate": "2026-11-16" },
+    "fx_USD": { "rates": { "2025-12-15": 1450, "2026-03-20": 1400 } },
+    "fx_USD_checked": { "latest": 1400, "latestDate": "2026-11-16", "latestSource": "KIS" },
+    "dividends": {
+      "fetchedOn": "2026-11-16",
+      "schedule": {
+        "US_SCHD": [{ "record": "2026-12-10", "pay": "2026-12-15", "perShare": 0.27, "currency": "USD" }],
+        "KR_069500": [{ "record": "2026-12-31", "pay": null, "perShare": 300, "currency": "KRW" }]
+      }
+    }
+  },
+  "expect": {
+    "received": [
+      ["2025-04-30", "k", 20000],
+      ["2025-11-28", "k", 25000],
+      ["2025-12-15", "s", 2900],
+      ["2026-03-20", "s", 3080],
+      ["2026-04-30", "k", 22000]
+    ],
+    "planned": [
+      ["ESTIMATED", "2026-11", "2026-11-28", "k", 50000],
+      ["CONFIRMED", "2026-12", "2026-12-15", "s", 3213],
+      ["CONFIRMED", "2026-12", null, "k", 50760],
+      ["ESTIMATED", "2027-03", "2027-03-20", "s", 3080],
+      ["ESTIMATED", "2027-04", "2027-04-30", "k", 44000]
+    ],
+    "home": {
+      "thisYear": 25080,
+      "lastYearSamePeriod": 20000,
+      "nextMonth": "2026-12",
+      "nextMonthPlanned": 53973,
+      "lastYearNextMonth": 2900,
+      "months": { "3": [3080, 0, 0], "4": [22000, 0, 0], "11": [0, 0, 50000], "12": [0, 53973, 0] },
+      "lastYearMonths": { "4": 20000, "11": 25000, "12": 2900 }
+    },
+    "years": [[2025, 47900, 0, 0], [2026, 25080, 53973, 50000]],
+    "yields": {
+      "items": [["k", 47000, 0.006714285714285714, 0.007460317460317461], ["s", 5980, 0.015555555555555555, 0.0168]],
+      "totalOnPrice": 0.007167253998373543,
+      "totalOnCost": 0.007951879699248121
+    }
+  }
+}

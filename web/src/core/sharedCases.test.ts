@@ -6,6 +6,7 @@ import { toAccount, toCalendar, toHolding, toMarketSnapshot, toRecord } from '..
 import { MARKET_GROUPS, marketStates, nextText, stateChip, timeline, usHoliday, usOpen, type MarketGroup } from './marketClock';
 import { BENCHMARK_INDICES, compareText, covers, simulate, todayDiff, type BenchmarkIndex } from './benchmark';
 import { checkAlertCount, dataCheck } from './dataCheck';
+import { dividendHome, dividendYears, dividendYields, plannedDividends, receivedDividends } from './dividends';
 import { currentPrice, latestUsdKrw } from './market';
 import { cumulativeInvested, noRateReason, shortSells, summarize } from './portfolio';
 import { longTermReturn, monthlyReturns, periodSummaryText, yearToDate, yearlyReturns, type FlowPoint } from './periodReturns';
@@ -233,11 +234,82 @@ function checkBenchmark(file: string, c: Data): string[] {
   return check.problems;
 }
 
+function checkDividends(file: string, c: Data): string[] {
+  const check = new Checker(file);
+  const today = c.today as string;
+  const accounts: InvestmentAccount[] = parse(c.accounts, toAccount);
+  const holdings: Holding[] = parse(c.holdings, toHolding);
+  const records: Record[] = parse(c.records, toRecord);
+  const snapshot = toMarketSnapshot(docs(c.market).map(([id, data]) => ({ id, data })));
+  const fx = latestUsdKrw(snapshot)?.[1] ?? null;
+  const summary = summarize(accounts, holdings, records, fx, (h) => currentPrice(h, snapshot));
+  const received = receivedDividends(holdings, records, snapshot, today, fx);
+  const planned = plannedDividends(summary, records, snapshot, today);
+  const ex = c.expect as Expect;
+  if (ex.received) {
+    const rows = ex.received as [string, string, number][];
+    check.text('received 개수', String(rows.length), String(received.length));
+    received.forEach((d, i) => {
+      const x = rows[i];
+      if (!x) return;
+      check.text(`received ${x[0]} 종목`, `${x[0]} ${x[1]}`, `${d.date} ${d.holding.id}`);
+      check.num(`received ${x[0]}`, x[2], d.amountKrw);
+    });
+  }
+  if (ex.planned) {
+    const rows = ex.planned as [string, string, string | null, string, number][];
+    check.text('planned', rows.map((x) => `${x[0]} ${x[1]} ${x[2]} ${x[3]}`).join(', '), planned.map((d) => `${d.kind} ${d.month} ${d.date} ${d.holding.id}`).join(', '));
+    planned.forEach((d, i) => rows[i] && check.num(`planned ${d.month} ${d.holding.id}`, rows[i][4], d.amountKrw));
+  }
+  if (ex.home) {
+    const h = ex.home;
+    const home = dividendHome(received, planned, today);
+    for (const k of ['thisYear', 'lastYearSamePeriod', 'nextMonthPlanned', 'lastYearNextMonth'] as const) check.num(`home.${k}`, h[k], home[k]);
+    check.text('home.nextMonth', h.nextMonth, home.nextMonth);
+    for (let m = 1; m <= 12; m++) {
+      const x = (h.months[String(m)] ?? [0, 0, 0]) as number[];
+      const t = home.months[m - 1];
+      check.num(`home.months.${m}.received`, x[0], t.received);
+      check.num(`home.months.${m}.confirmed`, x[1], t.confirmed);
+      check.num(`home.months.${m}.estimated`, x[2], t.estimated);
+      check.num(`home.lastYearMonths.${m}`, h.lastYearMonths[String(m)] ?? 0, home.lastYearMonths[m - 1]);
+    }
+  }
+  if (ex.years) {
+    const rows = ex.years as [number, number, number, number][];
+    const years = dividendYears([...received, ...planned], today);
+    check.text('years', rows.map((x) => x[0]).join(','), years.map((y) => y[0]).join(','));
+    years.forEach(([y, t], i) => {
+      const x = rows[i];
+      if (!x) return;
+      check.num(`years.${y}.received`, x[1], t.received);
+      check.num(`years.${y}.confirmed`, x[2], t.confirmed);
+      check.num(`years.${y}.estimated`, x[3], t.estimated);
+    });
+  }
+  if (ex.yields) {
+    const report = dividendYields(summary, received, today);
+    const rows = ex.yields.items as [string, number, number | null, number | null][];
+    check.text('yields 종목', rows.map((x) => x[0]).join(','), report.items.map((d) => d.holding.id).join(','));
+    report.items.forEach((d, i) => {
+      const x = rows[i];
+      if (!x) return;
+      check.num(`yields.${d.holding.id}.last12`, x[1], d.last12Krw);
+      check.num(`yields.${d.holding.id}.onPrice`, x[2], d.yieldOnPrice);
+      check.num(`yields.${d.holding.id}.onCost`, x[3], d.yieldOnCost);
+    });
+    check.num('yields.totalOnPrice', ex.yields.totalOnPrice, report.totalOnPrice);
+    check.num('yields.totalOnCost', ex.yields.totalOnCost, report.totalOnCost);
+  }
+  return check.problems;
+}
+
 describe('공통 테스트 케이스 (testdata)', () => {
   it('케이스 파일이 있다', () => {
     expect(casesIn('portfolio').length).toBeGreaterThan(0);
     expect(casesIn('period').length).toBeGreaterThan(0);
     expect(casesIn('benchmark').length).toBeGreaterThan(0);
+    expect(casesIn('dividends').length).toBeGreaterThan(0);
   });
 
   it.each(casesIn('portfolio'))('계좌 계산 %s', (file, c) => {
@@ -250,6 +322,10 @@ describe('공통 테스트 케이스 (testdata)', () => {
 
   it.each(casesIn('period'))('기간 수익률 %s', (file, c) => {
     expect(checkPeriod(file, c)).toEqual([]);
+  });
+
+  it.each(casesIn('dividends'))('배당 %s', (file, c) => {
+    expect(checkDividends(file, c)).toEqual([]);
   });
 
   it.each(casesIn('benchmark'))('지수 비교 %s', (file, c) => {

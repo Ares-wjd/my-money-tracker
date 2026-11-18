@@ -52,6 +52,18 @@ core 테스트(`core/src/test/.../SharedCasesTest.kt`)와 웹 테스트(`web/src
 | `expect.mineYtd` | 내 올해 수익률 |
 | `expect.compareText` | 수익률 비교 한 줄 (SPX · COMP · KOSPI 순서로 비교) |
 
+## dividends/*.json — 배당 (v2.13)
+
+입력은 portfolio 와 같은 Firestore 문서 모양 (`market` 에 `dividends` 문서 = 한투 배당 일정 `{ schedule: { 시세 키: [{ record, pay, perShare, currency }] } }`).
+
+| 키 | 검사 |
+|---|---|
+| `expect.received` | 받은 배당 `[날짜, 종목 id, 원화]` (날짜순) |
+| `expect.planned` | 예정 배당 `[CONFIRMED/ESTIMATED, 달, 날짜(모르면 null), 종목 id, 원화]` (달 → 날짜순) |
+| `expect.home` | 홈 카드 `thisYear` · `lastYearSamePeriod` · `nextMonth` · `nextMonthPlanned` · `lastYearNextMonth` · `months`(달 → [받음, 확정, 추정]) · `lastYearMonths` |
+| `expect.years` | 연도별 `[해, 받음, 확정, 추정]` |
+| `expect.yields` | 종목별 `[종목 id, 최근 12개월 원화, 현재가 기준, 내 평단 기준]` · `totalOnPrice` · `totalOnCost` |
+
 ## 케이스 추가하기
 
 1. `portfolio/` · `period/` · `benchmark/` 등에 json 파일을 하나 더 만든다 (파일 이름 = 시나리오, 테스트가 폴더의 파일을 모두 읽는다).

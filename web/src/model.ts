@@ -177,6 +177,16 @@ export interface MarketSnapshot {
   usdKrwLatestSource?: string | null;
   /** 국내 개장일 정보 (시장 상태 판단용, v2.10) */
   calendar?: MarketCalendar;
+  /** 한투 배당 일정 (시세 키 → 일정, v2.13) */
+  dividends?: Map<string, DividendEvent[]>;
+}
+
+/** 한투 배당 일정 하나 (v2.13): 기준일, 지급일(모르면 null), 주당 현금배당(세전, currency). */
+export interface DividendEvent {
+  record: string;
+  pay: string | null;
+  perShare: number;
+  currency: Currency;
 }
 
 export const savingsBalance = (account: SavingsAccount): number =>
