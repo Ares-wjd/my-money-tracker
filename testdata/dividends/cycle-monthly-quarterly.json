@@ -1,0 +1,61 @@
+{
+  "name": "반복 주기 추정 (v2.15): 월배당 ETF (7/1 100주 → 9/15 200주, 12월은 한투 확정이 있어 뺌) · 분기배당 (12월은 1년 전 기록) · 오래 멈춘 월배당 (1년 전 기록만)",
+  "today": "2026-11-20",
+  "accounts": {
+    "a": { "name": "국내", "kind": "GENERAL", "createdAt": 1 }
+  },
+  "holdings": {
+    "t": { "accountId": "a", "name": "TIGER 미국배당다우존스타겟데일리커버드콜", "code": "0008S0", "market": "KR", "assetType": "ETF", "createdAt": 1 },
+    "q": { "accountId": "a", "name": "QDIV", "code": "000001", "market": "KR", "assetType": "STOCK", "createdAt": 2 },
+    "o": { "accountId": "a", "name": "OLDM", "code": "000002", "market": "KR", "assetType": "STOCK", "createdAt": 3 }
+  },
+  "records": {
+    "bq": { "accountId": "a", "type": "BUY", "date": "2025-11-01", "holdingId": "q", "quantity": 10, "price": 10000, "createdAt": 1 },
+    "bo": { "accountId": "a", "type": "BUY", "date": "2025-11-01", "holdingId": "o", "quantity": 10, "price": 10000, "createdAt": 2 },
+    "q1": { "accountId": "a", "type": "DIVIDEND", "date": "2025-12-01", "holdingId": "q", "amount": 2500, "createdAt": 3 },
+    "o1": { "accountId": "a", "type": "DIVIDEND", "date": "2025-12-10", "holdingId": "o", "amount": 1000, "createdAt": 4 },
+    "o2": { "accountId": "a", "type": "DIVIDEND", "date": "2026-01-10", "holdingId": "o", "amount": 1000, "createdAt": 5 },
+    "q2": { "accountId": "a", "type": "DIVIDEND", "date": "2026-05-25", "holdingId": "q", "amount": 3000, "createdAt": 6 },
+    "bt1": { "accountId": "a", "type": "BUY", "date": "2026-07-01", "holdingId": "t", "quantity": 100, "price": 10000, "createdAt": 7 },
+    "t1": { "accountId": "a", "type": "DIVIDEND", "date": "2026-08-04", "holdingId": "t", "amount": 8000, "createdAt": 8 },
+    "q3": { "accountId": "a", "type": "DIVIDEND", "date": "2026-08-25", "holdingId": "q", "amount": 3000, "createdAt": 9 },
+    "t2": { "accountId": "a", "type": "DIVIDEND", "date": "2026-09-02", "holdingId": "t", "amount": 8200, "createdAt": 10 },
+    "bt2": { "accountId": "a", "type": "BUY", "date": "2026-09-15", "holdingId": "t", "quantity": 100, "price": 10000, "createdAt": 11 },
+    "t3": { "accountId": "a", "type": "DIVIDEND", "date": "2026-10-02", "holdingId": "t", "amount": 16800, "createdAt": 12 },
+    "t4": { "accountId": "a", "type": "DIVIDEND", "date": "2026-11-04", "holdingId": "t", "amount": 17000, "createdAt": 13 }
+  },
+  "market": {
+    "price_KR_0008S0": { "latest": 10500, "latestDate": "2026-11-20" },
+    "price_KR_000001": { "latest": 11000, "latestDate": "2026-11-20" },
+    "price_KR_000002": { "latest": 9000, "latestDate": "2026-11-20" },
+    "dividends": {
+      "fetchedOn": "2026-11-20",
+      "schedule": {
+        "KR_0008S0": [{ "record": "2026-11-28", "pay": "2026-12-02", "perShare": 90, "currency": "KRW" }]
+      }
+    }
+  },
+  "expect": {
+    "planned": [
+      ["ESTIMATED", "2026-11", "2026-11-25", "q", 3000],
+      ["ESTIMATED", "2026-12", "2026-12-01", "q", 2500],
+      ["CONFIRMED", "2026-12", "2026-12-02", "t", 15228],
+      ["ESTIMATED", "2026-12", "2026-12-10", "o", 1000],
+      ["ESTIMATED", "2027-01", "2027-01-04", "t", 17000],
+      ["ESTIMATED", "2027-01", "2027-01-10", "o", 1000],
+      ["ESTIMATED", "2027-02", "2027-02-04", "t", 17000],
+      ["ESTIMATED", "2027-02", "2027-02-25", "q", 3000],
+      ["ESTIMATED", "2027-03", "2027-03-04", "t", 17000],
+      ["ESTIMATED", "2027-04", "2027-04-04", "t", 17000],
+      ["ESTIMATED", "2027-05", "2027-05-04", "t", 17000],
+      ["ESTIMATED", "2027-05", "2027-05-25", "q", 3000],
+      ["ESTIMATED", "2027-06", "2027-06-04", "t", 17000],
+      ["ESTIMATED", "2027-07", "2027-07-04", "t", 17000],
+      ["ESTIMATED", "2027-08", "2027-08-04", "t", 17000],
+      ["ESTIMATED", "2027-08", "2027-08-25", "q", 3000],
+      ["ESTIMATED", "2027-09", "2027-09-04", "t", 17000],
+      ["ESTIMATED", "2027-10", "2027-10-04", "t", 17000],
+      ["ESTIMATED", "2027-11", "2027-11-04", "t", 17000]
+    ]
+  }
+}

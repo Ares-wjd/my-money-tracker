@@ -8,6 +8,7 @@ import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.temporal.ChronoUnit
 
 /** 배당 한 건의 구분: 받음 (기록) · 확정 예정 (한투 일정) · 추정 예정 (내 기록). */
 enum class DividendKind { RECEIVED, CONFIRMED, ESTIMATED }
@@ -92,7 +93,7 @@ object Dividends {
         PortfolioCalculator.position(holding, records.filter { it.holdingId == holding.id && !it.date.isAfter(date) }).quantity
 
     /**
-     * 예정 배당: 확정 (한투 일정 × 지금 보유 수량 × (1 − 원천징수)) + 추정 (최근 12개월 기록을 1년 뒤로, 같은 종목·같은 달에 확정이 있으면 뺌).
+     * 예정 배당: 확정 (한투 일정 × 지금 보유 수량 × (1 − 원천징수)) + 추정 (반복 주기 → 최근 12개월 기록을 1년 뒤로, 같은 종목·같은 달은 앞의 것만).
      * 오늘 이후 12개월 안, 지금 보유한 종목만. 해외는 지금 환율.
      */
     fun planned(
@@ -128,14 +129,37 @@ object Dividends {
                         result += DividendItem(DividendKind.CONFIRMED, pay, month, h, account.account.id, local, local * fx)
                     }
                 }
+                val own = records.filter {
+                    it.type == RecordType.DIVIDEND && it.holdingId == h.id && it.accountId == account.account.id && !it.date.isAfter(today)
+                }.sortedBy { it.date }
+                // 반복 주기 (v2.15): 마지막 두 번의 간격으로 월·분기배당을 알아보고 마지막 주당 배당으로 이어 간다
+                val cycleMonths = mutableSetOf<YearMonth>()
+                val step = cycleStep(own, today)
+                val last = own.lastOrNull()
+                if (step != null && last != null) {
+                    val then = quantityOn(h, records, last.date)
+                    if (then > 1e-9) {
+                        val local = last.amount / then * qty
+                        var k = 1L
+                        while (true) {
+                            val day = last.date.plusMonths(step * k++)
+                            if (day.isAfter(horizon)) break
+                            if (!day.isAfter(today)) continue
+                            val month = YearMonth.from(day)
+                            if (month in confirmedMonths) continue
+                            cycleMonths += month
+                            result += DividendItem(DividendKind.ESTIMATED, day, month, h, account.account.id, local, local * fx)
+                        }
+                    }
+                }
+                // 1년 전 기록: 확정·반복 주기가 없는 달만
                 val start = today.minusDays(365)
-                for (r in records) {
-                    if (r.type != RecordType.DIVIDEND || r.holdingId != h.id || r.accountId != account.account.id) continue
-                    if (!r.date.isAfter(start) || r.date.isAfter(today)) continue
+                for (r in own) {
+                    if (!r.date.isAfter(start)) continue
                     val day = r.date.plusYears(1)
                     if (!day.isAfter(today) || day.isAfter(horizon)) continue
                     val month = YearMonth.from(day)
-                    if (month in confirmedMonths) continue
+                    if (month in confirmedMonths || month in cycleMonths) continue
                     val then = quantityOn(h, records, r.date)
                     if (then <= 1e-9) continue
                     val local = r.amount / then * qty
@@ -144,6 +168,23 @@ object Dividends {
             }
         }
         return result.sortedWith(compareBy({ it.month }, { it.date ?: it.month.atEndOfMonth() }, { it.holding.name }))
+    }
+
+    /**
+     * 반복 주기 (개월, v2.15): 날짜순 배당 기록 [own] 의 마지막 두 번 간격이 20~40일이면 1 (월배당), 80~100일이면 3 (분기배당).
+     * 마지막 기록이 (주기 + 20일)보다 오래됐으면 null.
+     */
+    fun cycleStep(own: List<Record>, today: LocalDate): Long? {
+        if (own.size < 2) return null
+        val prev = own[own.size - 2].date
+        val last = own.last().date
+        val gap = ChronoUnit.DAYS.between(prev, last)
+        val step = when (gap) {
+            in 20L..40L -> 1L
+            in 80L..100L -> 3L
+            else -> return null
+        }
+        return if (last.plusMonths(step).plusDays(20).isBefore(today)) null else step
     }
 
     /** [year] 의 1~12월 합계. */

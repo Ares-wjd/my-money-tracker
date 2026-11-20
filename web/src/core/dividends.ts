@@ -78,7 +78,21 @@ function quantityOn(holding: Holding, records: readonly Record[], date: string):
   return position(holding, records.filter((r) => r.holdingId === holding.id && r.date <= date)).quantity;
 }
 
-/** 예정 배당: 확정(한투 일정 × 지금 보유 수량 × (1 − 원천징수)) + 추정(최근 12개월 기록을 1년 뒤로, 같은 달에 확정이 있으면 뺌). */
+/**
+ * 반복 주기 (개월, v2.15): 날짜순 배당 기록 own 의 마지막 두 번 간격이 20~40일이면 1 (월배당), 80~100일이면 3 (분기배당).
+ * 마지막 기록이 (주기 + 20일)보다 오래됐으면 null.
+ */
+export function cycleStep(own: readonly Record[], today: string): number | null {
+  if (own.length < 2) return null;
+  const prev = own[own.length - 2].date;
+  const last = own[own.length - 1].date;
+  const within = (lo: number, hi: number) => plusDays(prev, lo) <= last && last <= plusDays(prev, hi);
+  const step = within(20, 40) ? 1 : within(80, 100) ? 3 : null;
+  if (step === null) return null;
+  return plusDays(plusMonths(last, step), 20) < today ? null : step;
+}
+
+/** 예정 배당: 확정(한투 일정 × 지금 보유 수량 × (1 − 원천징수)) + 추정(반복 주기 → 최근 12개월 기록을 1년 뒤로, 같은 종목·같은 달은 앞의 것만). */
 export function plannedDividends(
   summary: PortfolioSummary,
   records: readonly Record[],
@@ -110,13 +124,35 @@ export function plannedDividends(
         confirmedMonths.add(month);
         out.push({ kind: 'CONFIRMED', date: e.pay, month, holding: h, accountId: account.account.id, amountLocal: local, amountKrw: local * fx });
       }
-      for (const r of records) {
-        if (r.type !== 'DIVIDEND' || r.holdingId !== h.id || r.accountId !== account.account.id) continue;
-        if (r.date <= start || r.date > today) continue;
+      const own = records
+        .filter((r) => r.type === 'DIVIDEND' && r.holdingId === h.id && r.accountId === account.account.id && r.date <= today)
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      // 반복 주기 (v2.15): 마지막 두 번의 간격으로 월·분기배당을 알아보고 마지막 주당 배당으로 이어 간다
+      const cycleMonths = new Set<string>();
+      const step = cycleStep(own, today);
+      const last = own[own.length - 1];
+      if (step !== null && last) {
+        const then = quantityOn(h, records, last.date);
+        if (then > 1e-9) {
+          const local = (last.amount / then) * qty;
+          for (let k = 1; ; k++) {
+            const day = plusMonths(last.date, step * k);
+            if (day > horizon) break;
+            if (day <= today) continue;
+            const month = monthOf(day);
+            if (confirmedMonths.has(month)) continue;
+            cycleMonths.add(month);
+            out.push({ kind: 'ESTIMATED', date: day, month, holding: h, accountId: account.account.id, amountLocal: local, amountKrw: local * fx });
+          }
+        }
+      }
+      // 1년 전 기록: 확정·반복 주기가 없는 달만
+      for (const r of own) {
+        if (r.date <= start) continue;
         const day = plusYears(r.date, 1);
         if (day <= today || day > horizon) continue;
         const month = monthOf(day);
-        if (confirmedMonths.has(month)) continue;
+        if (confirmedMonths.has(month) || cycleMonths.has(month)) continue;
         const then = quantityOn(h, records, r.date);
         if (then <= 1e-9) continue;
         const local = (r.amount / then) * qty;
