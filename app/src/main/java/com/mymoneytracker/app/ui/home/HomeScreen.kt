@@ -265,26 +265,18 @@ private fun HomeContent(
             item { TodayChangeCard(change, rememberNow(), onOpenToday) }
         }
 
-        // 배당 (v2.13): 배당 기록이나 예정이 있을 때만, 항상 전체 계좌
-        item {
-            val today = LocalDate.now()
-            val div = remember(current) { dividendData(current, today) }
-            if (!div.isEmpty) {
-                val home = remember(div) { Dividends.home(div.received, div.planned, today) }
-                DividendCard(home, onOpenDividends)
-            }
-        }
-
         item {
             val chosen by viewModel.chartBenchmarks.collectAsStateWithLifecycle()
             val chartToday = LocalDate.now()
             val series = remember(current, stored, chart.selection.accountId) { flowSeries(current, stored, chart.selection.accountId, chartToday) }
-            val lines = remember(current, series, chart.points, chosen) { benchmarkLines(current, series, chart.points, chosen, chartToday) }
+            val rangeStart = chart.selection.range.start(chartToday)
+            val lines = remember(current, series, chart.points, chosen, rangeStart) { benchmarkLines(current, series, chart.points, chosen, chartToday, rangeStart) }
             AssetChartCard(
                 state = chart,
                 accounts = current.accounts,
                 onSelectInterval = viewModel::selectChartInterval,
                 onSelectAccount = viewModel::selectChartAccount,
+                onSelectRange = viewModel::selectChartRange,
                 benchmarks = lines,
                 chosenBenchmarks = chosen,
                 benchmarkComputing = series == null,
@@ -306,6 +298,16 @@ private fun HomeContent(
                         leading = { AccountKindBadge(account.account.kind) },
                     )
                 }
+            }
+        }
+
+        // 배당 (v2.13, 맨 아래 v2.14): 배당 기록이나 예정이 있을 때만, 항상 전체 계좌
+        item {
+            val today = LocalDate.now()
+            val div = remember(current) { dividendData(current, today) }
+            if (!div.isEmpty) {
+                val home = remember(div) { Dividends.home(div.received, div.planned, today) }
+                DividendCard(home, onOpenDividends)
             }
         }
     }

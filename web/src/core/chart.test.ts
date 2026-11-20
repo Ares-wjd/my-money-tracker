@@ -1,6 +1,7 @@
 // core ChartCalculatorTest 와 같은 케이스.
 import { describe, expect, it } from 'vitest';
-import { pointDates, series } from './chart';
+import { fitInterval, pointDates, rangeStart, series } from './chart';
+import { rateShort } from './format';
 import { plusDays } from './dates';
 import { account, holding, record } from './testData';
 
@@ -39,5 +40,29 @@ describe('자산 추이 (ChartCalculatorTest)', () => {
     expect(points[0].valueKrw).toBeCloseTo(1200, 9);
     expect(points[1].valueKrw).toBeCloseTo(1500, 9);
     expect(points[1].investedKrw).toBeCloseTo(1000, 9);
+  });
+});
+
+describe('자산 추이 기간 (ChartRangeTest)', () => {
+  it('시작일·보기 단위', () => {
+    const today = '2026-11-20';
+    expect(rangeStart('ALL', today)).toBeNull();
+    expect(rangeStart('YEARS_5', today)).toBe('2021-11-20');
+    expect(rangeStart('YEAR_1', today)).toBe('2025-11-20');
+    expect(rangeStart('THIS_YEAR', today)).toBe('2026-01-01');
+    expect(rangeStart('THIS_MONTH', today)).toBe('2026-11-01');
+    expect(fitInterval('THIS_MONTH', 'MONTH')).toBe('DAY_5');
+    expect(fitInterval('THIS_MONTH', 'DAY_1')).toBe('DAY_1');
+    expect(fitInterval('THIS_YEAR', 'YEAR')).toBe('MONTH');
+    expect(fitInterval('YEARS_5', 'DAY_1')).toBe('DAY_5');
+    expect(fitInterval('ALL', 'YEAR')).toBe('YEAR');
+  });
+
+  it('짧은 비율 (shortRate)', () => {
+    expect(rateShort(3.22)).toBe('▲322%');
+    expect(rateShort(0.2144)).toBe('▲21.4%');
+    expect(rateShort(-1)).toBe('▼100%');
+    expect(rateShort(0.0001)).toBe('0%');
+    expect(rateShort(null)).toBe('-');
   });
 });

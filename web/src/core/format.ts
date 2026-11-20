@@ -124,6 +124,16 @@ export function amountPreview(currency: Currency, value: number): string {
 }
 
 /** 수익률을 ▲/▼ 와 함께: 0.1234 → "▲12.34%", -0.05 → "▼5.00%" (색만으로 구분하지 않도록). null 이면 "-" */
+/** 짧은 비율 (v2.14, core MoneyFormat.rateShort): 100% 이상은 소수점 없이 "▲322%", 아래는 한 자리 "▲21.4%", 0 이면 "0%". */
+export function rateShort(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '-';
+  const a = Math.abs(value * 100);
+  const text = a >= 100 ? Math.round(a).toLocaleString('en-US') : (Math.round(a * 10) / 10).toFixed(1);
+  if (value > 0 && text !== '0.0') return `▲${text}%`;
+  if (value < 0 && text !== '0.0') return `▼${text}%`;
+  return '0%';
+}
+
 export function rate(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '-';
   const text = grouped2(value * 100);

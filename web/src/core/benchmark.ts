@@ -54,18 +54,29 @@ export function levelKrw(index: BenchmarkIndex, snapshot: MarketSnapshot, date: 
   return levelFn(index, snapshot, today)?.(date) ?? null;
 }
 
-/** 가상 평가금 일별 값 (series 와 같은 날짜, 투자금은 그대로). 지수 값을 모르는 날이 있으면 null. */
-export function simulate(series: readonly FlowPoint[], index: BenchmarkIndex, snapshot: MarketSnapshot, today: string): FlowPoint[] | null {
-  if (series.length === 0) return null;
+/**
+ * 가상 평가금 일별 값 (series 와 같은 날짜, 투자금은 그대로). 지수 값을 모르는 날이 있으면 null.
+ * from 이 있으면 (자산 추이 기간, v2.14) 그날부터: 첫날 내 평가금만큼 그날 지수를 산 것으로 보고 그 뒤 투자금 증감만큼 사고판다.
+ */
+export function simulate(
+  series: readonly FlowPoint[],
+  index: BenchmarkIndex,
+  snapshot: MarketSnapshot,
+  today: string,
+  from: string | null = null,
+): FlowPoint[] | null {
+  const points = from === null ? series : series.filter((p) => p.date >= from);
+  if (points.length === 0) return null;
   const level = levelFn(index, snapshot, today);
   if (!level) return null;
   let units = 0;
   let invested = 0;
   const out: FlowPoint[] = [];
-  for (const p of series) {
+  for (const [i, p] of points.entries()) {
     const l = level(p.date);
     if (l === null) return null;
-    units += (p.investedKrw - invested) / l;
+    if (from !== null && i === 0) units = p.valueKrw / l;
+    else units += (p.investedKrw - invested) / l;
     invested = p.investedKrw;
     out.push({ date: p.date, valueKrw: units * l, investedKrw: p.investedKrw });
   }

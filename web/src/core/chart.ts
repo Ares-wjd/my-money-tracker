@@ -1,6 +1,6 @@
 // core 의 ChartCalculator 와 같은 규칙.
 import type { Holding, InvestmentAccount, MarketSnapshot, Record } from '../model';
-import { plusDays } from './dates';
+import { plusDays, plusMonths } from './dates';
 import { currentPrice, latestUsdKrw, PriceEstimator, usdKrwAt } from './market';
 import { summarize } from './portfolio';
 
@@ -9,6 +9,45 @@ export const CHART_INTERVALS: readonly ChartInterval[] = ['DAY_1', 'DAY_5', 'DAY
 export const CHART_INTERVAL_LABEL: { [K in ChartInterval]: string } = { DAY_1: '1일', DAY_5: '5일', DAY_10: '10일', MONTH: '1달', YEAR: '1년' };
 /** 일 단위 보기의 간격(일). */
 const STEP_DAYS: { [K in ChartInterval]: number } = { DAY_1: 1, DAY_5: 5, DAY_10: 10, MONTH: 0, YEAR: 0 };
+
+/** 자산 추이 기간 (v2.14, core ChartRange 와 같은 규칙). */
+export type ChartRange = 'ALL' | 'YEARS_5' | 'YEAR_1' | 'THIS_YEAR' | 'THIS_MONTH';
+export const CHART_RANGES: readonly ChartRange[] = ['ALL', 'YEARS_5', 'YEAR_1', 'THIS_YEAR', 'THIS_MONTH'];
+export const CHART_RANGE_LABEL: { [K in ChartRange]: string } = { ALL: '전체', YEARS_5: '5년', YEAR_1: '1년', THIS_YEAR: '올해', THIS_MONTH: '이번 달' };
+const RANGE_INTERVALS: { [K in ChartRange]: readonly ChartInterval[] } = {
+  ALL: CHART_INTERVALS,
+  YEARS_5: ['DAY_5', 'DAY_10', 'MONTH', 'YEAR'],
+  YEAR_1: ['DAY_1', 'DAY_5', 'DAY_10', 'MONTH'],
+  THIS_YEAR: ['DAY_1', 'DAY_5', 'DAY_10', 'MONTH'],
+  THIS_MONTH: ['DAY_1', 'DAY_5'],
+};
+
+/** 기간에 고를 수 있는 보기 단위. */
+export const rangeIntervals = (range: ChartRange): readonly ChartInterval[] => RANGE_INTERVALS[range];
+
+/** 기간 시작일 (전체는 null = 첫 기록일부터). */
+export function rangeStart(range: ChartRange, today: string): string | null {
+  switch (range) {
+    case 'ALL':
+      return null;
+    case 'YEARS_5':
+      return plusMonths(today, -60);
+    case 'YEAR_1':
+      return plusMonths(today, -12);
+    case 'THIS_YEAR':
+      return `${today.slice(0, 4)}-01-01`;
+    case 'THIS_MONTH':
+      return `${today.slice(0, 7)}-01`;
+  }
+}
+
+/** interval 이 기간에 맞지 않으면 가장 가까운 단위 (같으면 짧은 쪽). */
+export function fitInterval(range: ChartRange, interval: ChartInterval): ChartInterval {
+  const allowed = RANGE_INTERVALS[range];
+  if (allowed.includes(interval)) return interval;
+  const at = CHART_INTERVALS.indexOf(interval);
+  return [...allowed].sort((a, b) => Math.abs(CHART_INTERVALS.indexOf(a) - at) - Math.abs(CHART_INTERVALS.indexOf(b) - at) || CHART_INTERVALS.indexOf(a) - CHART_INTERVALS.indexOf(b))[0];
+}
 
 export interface ChartPoint {
   date: string;

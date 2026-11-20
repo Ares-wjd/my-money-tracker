@@ -5,6 +5,7 @@ import com.mymoneytracker.app.data.ChartRepository
 import com.mymoneytracker.app.data.MarketDataRepository
 import com.mymoneytracker.core.chart.ChartCalculator
 import com.mymoneytracker.core.chart.ChartInterval
+import com.mymoneytracker.core.chart.ChartRange
 import com.mymoneytracker.core.chart.ChartStore
 import com.mymoneytracker.core.chart.StoredChart
 import com.mymoneytracker.core.market.HistoryRanges
@@ -44,7 +45,7 @@ class ChartSync(
     private val marketRepository: MarketDataRepository,
     private val prefs: DisplayPrefs,
 ) {
-    private val selection = MutableStateFlow(ChartSelection())
+    private val selection = MutableStateFlow(prefs.chartRange.value.let { ChartSelection(interval = it.fit(ChartInterval.MONTH), range = it) })
     private val loading = MutableStateFlow(false)
     private val errors = MutableStateFlow<List<String>>(emptyList())
     private var historyJob: Job? = null
@@ -73,7 +74,8 @@ class ChartSync(
         if (firsts.isEmpty()) return@combine ChartState(selection, loading = loading, errors = errors)
         if (!chartRepository.available) {
             // 저장값을 읽을 수 없으면 (보안 규칙 게시 전) 예전처럼 바로 계산
-            val dates = ChartCalculator.pointDates(selection.interval, today, firsts.values.min())
+            val start = selection.range.start(today)
+            val dates = ChartCalculator.pointDates(selection.interval, today, listOfNotNull(firsts.values.min(), start).max())
             val points = ChartCalculator.series(
                 dates, today, current.accounts, current.holdings, current.records, current.market, current.settings.manualUsdKrw, selection.accountId,
             )
@@ -83,7 +85,7 @@ class ChartSync(
             listOf(today), today, current.accounts, current.holdings, current.records, current.market,
             current.settings.manualUsdKrw, selection.accountId,
         ).single()
-        val view = ChartStore.assemble(selection.interval, today, firsts, stored.orEmpty(), todayPoint)
+        val view = ChartStore.assemble(selection.interval, today, firsts, stored.orEmpty(), todayPoint, selection.range.start(today))
         ChartState(
             selection = selection,
             points = view.points,
@@ -105,7 +107,13 @@ class ChartSync(
     }
 
     fun selectInterval(interval: ChartInterval) {
-        selection.value = selection.value.copy(interval = interval)
+        selection.value = selection.value.let { it.copy(interval = it.range.fit(interval)) }
+    }
+
+    /** 보는 기간 (v2.14): 맞지 않는 보기 단위는 가장 가까운 단위로 바꾸고, 기기에 기억한다. */
+    fun selectRange(range: ChartRange) {
+        selection.value = selection.value.copy(range = range, interval = range.fit(selection.value.interval))
+        prefs.setChartRange(range)
     }
 
     fun selectAccount(accountId: String?) {

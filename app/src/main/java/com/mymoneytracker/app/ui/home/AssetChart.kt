@@ -46,6 +46,7 @@ import com.mymoneytracker.app.ui.common.profitColor
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.chart.ChartCalculator
 import com.mymoneytracker.core.chart.ChartInterval
+import com.mymoneytracker.core.chart.ChartRange
 import com.mymoneytracker.core.chart.ChartPoint
 import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.portfolio.BenchmarkIndex
@@ -57,13 +58,16 @@ fun AssetChartCard(
     accounts: List<InvestmentAccount>,
     onSelectInterval: (ChartInterval) -> Unit,
     onSelectAccount: (String?) -> Unit,
+    onSelectRange: ((ChartRange) -> Unit)? = null,
     benchmarks: List<BenchmarkLine> = emptyList(),
     chosenBenchmarks: Set<BenchmarkIndex> = emptySet(),
     benchmarkComputing: Boolean = false,
     onToggleBenchmark: ((BenchmarkIndex) -> Unit)? = null,
 ) {
     SectionCard(title = "자산 추이") {
-        SegmentedPills(ChartInterval.entries, state.selection.interval, { it.label }, onSelectInterval)
+        // 보는 기간 (v2.14) · 그 기간에 맞는 보기 단위만
+        onSelectRange?.let { SegmentedPills(ChartRange.entries, state.selection.range, { it.label }, it) }
+        SegmentedPills(state.selection.range.intervals, state.selection.interval, { it.label }, onSelectInterval)
         if (accounts.size > 1) {
             ChipSelector(
                 "계좌",

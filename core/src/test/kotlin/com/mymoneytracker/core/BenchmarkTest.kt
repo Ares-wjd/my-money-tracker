@@ -30,6 +30,22 @@ class BenchmarkTest {
     }
 
     @Test
+    fun rebasedFromRangeStart() {
+        // 기간 첫날(3/3) 내 평가금 1,800원만큼 지수(200원)를 사고, 3/4 에 200원 입금 → 지수 100원
+        val kospi = PriceHistory(TreeMap(mapOf(d("2026-03-02") to 100.0, d("2026-03-03") to 200.0, d("2026-03-04") to 100.0)))
+        val snap = MarketSnapshot(prices = mapOf(BenchmarkIndex.KOSPI.key to kospi))
+        val series = listOf(
+            FlowPoint(d("2026-03-02"), 1000.0, 1000.0),
+            FlowPoint(d("2026-03-03"), 1800.0, 1000.0),
+            FlowPoint(d("2026-03-04"), 1900.0, 1200.0),
+        )
+        val sim = Benchmark.simulate(series, BenchmarkIndex.KOSPI, snap, d("2026-03-10"), from = d("2026-03-03"))!!
+        assertEquals(listOf(d("2026-03-03"), d("2026-03-04")), sim.map { it.date })
+        // 9좌 × 200 = 1,800 → (9 + 200/100) × 100 = 1,100
+        assertEquals(listOf(1800.0, 1100.0), sim.map { it.valueKrw })
+    }
+
+    @Test
     fun withdrawalSellsUnitsAndMissingFxGivesNull() {
         val kospi = PriceHistory(TreeMap(mapOf(d("2026-03-02") to 100.0, d("2026-03-03") to 200.0)))
         val snap = MarketSnapshot(prices = mapOf(BenchmarkIndex.KOSPI.key to kospi, BenchmarkIndex.SPX.key to kospi))

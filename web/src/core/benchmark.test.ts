@@ -12,6 +12,19 @@ describe('지수 비교 (BenchmarkTest)', () => {
     expect(compareText(0.05, [['SPX', null]])).toBeNull();
   });
 
+  it('기간 첫날에 다시 출발 (rebasedFromRangeStart)', () => {
+    const kospi: PriceHistory = { closes: new Map([['2026-03-02', 100], ['2026-03-03', 200], ['2026-03-04', 100]]), latest: null, prevClose: null };
+    const snap: MarketSnapshot = { prices: new Map([['IDX_KOSPI', kospi]]), usdKrw: new Map() };
+    const series = [
+      { date: '2026-03-02', valueKrw: 1000, investedKrw: 1000 },
+      { date: '2026-03-03', valueKrw: 1800, investedKrw: 1000 },
+      { date: '2026-03-04', valueKrw: 1900, investedKrw: 1200 },
+    ];
+    const sim = simulate(series, 'KOSPI', snap, '2026-03-10', '2026-03-03')!;
+    expect(sim.map((p) => p.date)).toEqual(['2026-03-03', '2026-03-04']);
+    expect(sim.map((p) => p.valueKrw)).toEqual([1800, 1100]);
+  });
+
   it('출금은 좌수를 팔고, 달러 지수에 환율이 없으면 null (withdrawalSellsUnitsAndMissingFxGivesNull)', () => {
     const kospi: PriceHistory = { closes: new Map([['2026-03-02', 100], ['2026-03-03', 200]]), latest: null, prevClose: null };
     const snap: MarketSnapshot = { prices: new Map([['IDX_KOSPI', kospi], ['IDX_SPX', kospi]]), usdKrw: new Map() };

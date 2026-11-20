@@ -95,16 +95,16 @@ private object DivColors {
 private fun won(v: Double) = MoneyFormat.shortWon(v)
 private fun pct(r: Double?) = r?.let { MoneyFormat.decimal(it * 100, 1) + "%" } ?: "-"
 
-/** "작년 ○ · ▲x%" (작년이 0 이면 비율 없이). */
+/** 비교 두 줄 (v2.14): "작년 ○○" 아래 줄에 짧은 비율. [planned] 이고 지금이 0원이면 "아직 예정 없음". */
 @Composable
-private fun CompareLine(label: String, before: Double, now: Double) {
-    val change = Dividends.change(now, before)
-    Row {
-        Text("$label ${won(before)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (change != null) {
-            Text(" · " + MoneyFormat.rate(change), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = profitColor(change))
-        }
+private fun CompareLine(label: String, before: Double, now: Double, planned: Boolean = false) {
+    Text("$label ${won(before)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    if (planned && now <= 0.5) {
+        Text("아직 예정 없음", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
     }
+    val change = Dividends.change(now, before) ?: return
+    Text(MoneyFormat.rateShort(change), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = profitColor(change))
 }
 
 /** 점선 테두리 (추정 표시). */
@@ -138,7 +138,7 @@ fun DividendCard(home: DividendHome, onOpen: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text("${home.nextMonth.monthValue}월 예정", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(won(home.nextMonthPlanned), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                CompareLine("작년 ${home.nextMonth.monthValue}월", home.lastYearNextMonth, home.nextMonthPlanned)
+                CompareLine("작년 ${home.nextMonth.monthValue}월", home.lastYearNextMonth, home.nextMonthPlanned, planned = true)
             }
         }
         val max = maxOf(1.0, home.months.maxOf { it.total }, home.lastYearMonths.maxOrNull() ?: 0.0)

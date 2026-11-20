@@ -54,10 +54,13 @@ fun benchmarkLines(
     points: List<ChartPoint>,
     chosen: Set<BenchmarkIndex>,
     today: LocalDate,
+    /** 자산 추이 기간 시작일 (v2.14): 있으면 그날 내 평가금으로 다시 출발. */
+    from: LocalDate? = null,
 ): List<BenchmarkLine> {
     if (series.isNullOrEmpty() || points.size < 2) return emptyList()
+    val start = from?.takeIf { it.isAfter(series.first().date) }
     return BenchmarkIndex.entries.filter { it in chosen }.mapNotNull { index ->
-        val sim = Benchmark.simulate(series, index, data.market, today) ?: return@mapNotNull null
+        val sim = Benchmark.simulate(series, index, data.market, today, start) ?: return@mapNotNull null
         BenchmarkLine(index, Benchmark.valuesAt(sim, points.map { it.date }), Benchmark.today(series, sim, index))
     }
 }

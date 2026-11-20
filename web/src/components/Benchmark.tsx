@@ -21,23 +21,26 @@ export function benchmarkLines(
   chosen: ReadonlySet<BenchmarkIndex>,
   snapshot: MarketSnapshot,
   today: string,
+  from: string | null = null,
 ): BenchmarkLine[] {
   if (!series || series.length === 0 || dates.length < 2) return [];
+  // 기간을 줄였으면 (v2.14) 기간 첫날에 내 평가금으로 다시 출발
+  const start = from !== null && from > series[0].date ? from : null;
   return BENCHMARK_INDICES.filter((i) => chosen.has(i)).flatMap((index) => {
-    const sim = simulate(series, index, snapshot, today);
+    const sim = simulate(series, index, snapshot, today, start);
     return sim ? [{ index, values: valuesAt(sim, dates), today: todayDiff(series, sim) }] : [];
   });
 }
 
 /** 기기에 기억하는 값 (브라우저 저장소를 못 쓰면 기본값). */
-function readStored(key: string): string | null {
+export function readStored(key: string): string | null {
   try {
     return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
-function writeStored(key: string, value: string) {
+export function writeStored(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
   } catch {

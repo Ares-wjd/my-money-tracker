@@ -2,6 +2,7 @@ package com.mymoneytracker.app.ui
 
 import com.mymoneytracker.app.data.AppSettings
 import com.mymoneytracker.core.chart.ChartInterval
+import com.mymoneytracker.core.chart.ChartRange
 import com.mymoneytracker.core.chart.ChartPoint
 import com.mymoneytracker.core.market.MarketClock
 import com.mymoneytracker.core.market.MarketSnapshot
@@ -95,6 +96,8 @@ data class RefreshState(
 data class ChartSelection(
     val interval: ChartInterval = ChartInterval.MONTH,
     val accountId: String? = null,
+    /** 보는 기간 (v2.14, 기기에 기억). */
+    val range: ChartRange = ChartRange.ALL,
 )
 
 /** [loading] 과거 시세를 받는 중, [computing] 일별 값을 계산하는 중 (또는 아직 계산하지 않은 날이 있음). */

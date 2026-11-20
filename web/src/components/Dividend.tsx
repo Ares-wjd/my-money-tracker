@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { dividendChange, dividendHome, plannedDividends, receivedDividends, type DividendHome, type DividendItem, type DividendKind } from '../core/dividends';
 import { today as todayOf } from '../core/dates';
-import { decimal, rate, shortWon } from '../core/format';
+import { decimal, rateShort, shortWon } from '../core/format';
 import type { AppData } from '../data/DataContext';
 import { profitClass } from './ui';
 
@@ -26,13 +26,18 @@ export function useDividends(data: AppData, ids: ReadonlySet<string> | null, day
 export const divWon = (v: number) => shortWon(v);
 export const divPct = (r: number | null) => (r === null ? '-' : `${decimal(r * 100, 1)}%`);
 
-function CompareLine({ label, before, now }: { label: string; before: number; now: number }) {
+/** 비교 두 줄 (v2.14): "작년 ○○" 아래 줄에 짧은 비율. planned 이고 지금이 0원이면 "아직 예정 없음". */
+function CompareLine({ label, before, now, planned = false }: { label: string; before: number; now: number; planned?: boolean }) {
   const change = dividendChange(now, before);
   return (
-    <span className="muted small">
-      {label} {divWon(before)}
-      {change !== null && <> · <strong className={profitClass(change)}>{rate(change)}</strong></>}
-    </span>
+    <>
+      <span className="muted small">{label} {divWon(before)}</span>
+      {planned && now <= 0.5 ? (
+        <span className="muted small">아직 예정 없음</span>
+      ) : (
+        change !== null && <strong className={`small ${profitClass(change)}`}>{rateShort(change)}</strong>
+      )}
+    </>
   );
 }
 
@@ -56,7 +61,7 @@ export function DividendCard({ home }: { home: DividendHome }) {
         <div>
           <span className="muted small">{nextMonth}월 예정</span>
           <span className="div-amount">{divWon(home.nextMonthPlanned)}</span>
-          <CompareLine label={`작년 ${nextMonth}월`} before={home.lastYearNextMonth} now={home.nextMonthPlanned} />
+          <CompareLine label={`작년 ${nextMonth}월`} before={home.lastYearNextMonth} now={home.nextMonthPlanned} planned />
         </div>
       </div>
       <div className="div-mini" aria-hidden="true">

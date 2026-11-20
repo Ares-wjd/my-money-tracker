@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { CHART_INTERVALS, CHART_INTERVAL_LABEL, pointDates, series, type ChartInterval, type ChartPoint } from '../core/chart';
+import { CHART_INTERVAL_LABEL, CHART_RANGES, CHART_RANGE_LABEL, fitInterval, pointDates, rangeIntervals, rangeStart, series, type ChartInterval, type ChartPoint, type ChartRange } from '../core/chart';
 import { assembleChart, firstDates } from '../core/chartStore';
 import { formatDate, formatShortDate, today as todayOf } from '../core/dates';
 import { shortWon, signedWon, won } from '../core/format';
@@ -7,7 +7,7 @@ import { useData, type AppData } from '../data/DataContext';
 import { profitClass, Warning } from './ui';
 import { BENCHMARK_LABEL } from '../core/benchmark';
 import { usePeriodSeries } from '../pages/periodData';
-import { BenchmarkSection, benchmarkLines, signedShort, useChartBenchmarks } from './Benchmark';
+import { BenchmarkSection, benchmarkLines, readStored, signedShort, useChartBenchmarks, writeStored } from './Benchmark';
 
 /** 축 눈금용 짧은 금액: 1.2억, 1,278만, 5,000 */
 export function compactWon(value: number): string {
@@ -40,7 +40,17 @@ const PAD = { top: 12, right: 12, bottom: 28, left: 56 };
 
 export function AssetChart({ data }: { data: AppData }) {
   const { chartComputing } = useData();
-  const [interval, setChartInterval] = useState<ChartInterval>('MONTH');
+  // 기간 (v2.14, 기기에 기억): 기간에 맞는 보기 단위만, 지금 단위는 가장 가까운 것으로
+  const [range, setRangeState] = useState<ChartRange>(() => {
+    const stored = readStored('chartRange');
+    return (CHART_RANGES as readonly string[]).includes(stored ?? '') ? (stored as ChartRange) : 'ALL';
+  });
+  const [interval, setChartInterval] = useState<ChartInterval>(() => fitInterval(range, 'MONTH'));
+  const chooseRange = (next: ChartRange) => {
+    setRangeState(next);
+    setChartInterval((iv) => fitInterval(next, iv));
+    writeStored('chartRange', next);
+  };
   const [accountId, setAccountId] = useState<string | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [showTable, setShowTable] = useState(false);
@@ -56,6 +66,7 @@ export function AssetChart({ data }: { data: AppData }) {
   }, [box]);
 
   const today = todayOf();
+  const from = rangeStart(range, today);
   // 저장된 일별 값 + 현재가로 바로 계산한 오늘 값 (모든 보기 단위가 전체 기간)
   const { points, pending } = useMemo(() => {
     const firsts = firstDates(data.accounts.filter((a) => accountId === null || a.id === accountId), data.records);
@@ -63,23 +74,24 @@ export function AssetChart({ data }: { data: AppData }) {
     const { manualUsdKrw } = data.settings;
     if (data.charts === null) {
       // 저장값을 읽을 수 없으면 (보안 규칙 게시 전) 바로 계산
-      const dates = pointDates(interval, today, [...firsts.values()].sort()[0]);
+      const first = [...firsts.values()].sort()[0];
+      const dates = pointDates(interval, today, from !== null && from > first ? from : first);
       return { points: series(dates, today, data.accounts, data.holdings, data.records, data.market, manualUsdKrw, accountId), pending: false };
     }
     const todayPoint = series([today], today, data.accounts, data.holdings, data.records, data.market, manualUsdKrw, accountId)[0];
-    return assembleChart(interval, today, firsts, data.charts, todayPoint);
-  }, [data, interval, accountId, today]);
+    return assembleChart(interval, today, firsts, data.charts, todayPoint, from);
+  }, [data, interval, accountId, today, from]);
   const computing = chartComputing || pending;
   // 지수 비교 (v2.11): 고른 계좌의 일별 평가금·투자금으로 가상 투자
   const [chosen, toggleBenchmark] = useChartBenchmarks();
   const accountIds = useMemo(() => (accountId === null ? null : new Set([accountId])), [accountId]);
   const flow = usePeriodSeries(data, accountIds);
   const lines = useMemo(
-    () => benchmarkLines(flow, points.map((p) => p.date), chosen, data.market, today),
-    [flow, points, chosen, data.market, today],
+    () => benchmarkLines(flow, points.map((p) => p.date), chosen, data.market, today, from),
+    [flow, points, chosen, data.market, today, from],
   );
 
-  useEffect(() => setSelected(null), [interval, accountId]);
+  useEffect(() => setSelected(null), [interval, accountId, range]);
 
   const index = selected ?? points.length - 1;
   const point = points[index];
@@ -126,8 +138,15 @@ export function AssetChart({ data }: { data: AppData }) {
         <button className="text-button" onClick={() => setShowTable(!showTable)}>{showTable ? '그래프로 보기' : '표로 보기'}</button>
       </div>
       <div className="chart-filters">
+        <div className="segmented" role="radiogroup" aria-label="기간">
+          {CHART_RANGES.map((r) => (
+            <button key={r} role="radio" aria-checked={range === r} className={range === r ? 'on' : ''} onClick={() => chooseRange(r)}>
+              {CHART_RANGE_LABEL[r]}
+            </button>
+          ))}
+        </div>
         <div className="segmented" role="radiogroup" aria-label="보기 단위">
-          {CHART_INTERVALS.map((iv) => (
+          {rangeIntervals(range).map((iv) => (
             <button key={iv} role="radio" aria-checked={interval === iv} className={interval === iv ? 'on' : ''} onClick={() => setChartInterval(iv)}>
               {CHART_INTERVAL_LABEL[iv]}
             </button>

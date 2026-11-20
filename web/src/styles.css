@@ -200,7 +200,7 @@ a.list-row:hover .list-title { text-decoration: underline; }
 .badge-dark { background: var(--ink); color: var(--card); }
 
 .toggle-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.segmented { align-self: flex-start; display: inline-flex; gap: 4px; background: var(--soft); border-radius: 12px; padding: 3px; }
+.segmented { align-self: flex-start; display: inline-flex; gap: 4px; background: var(--soft); border-radius: 12px; padding: 3px; max-width: 100%; overflow-x: auto; }
 .segmented button { border: none; background: transparent; padding: 6px 16px; border-radius: 9px; color: var(--muted); font-weight: 600; }
 .segmented button.on { background: var(--ink); color: var(--card); }
 

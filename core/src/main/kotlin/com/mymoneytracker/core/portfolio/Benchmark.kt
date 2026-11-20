@@ -34,14 +34,18 @@ object Benchmark {
         return fx?.takeIf { it > 0 }?.let { price * it }
     }
 
-    /** 가상 평가금 일별 값 ([series] 와 같은 날짜, 투자금은 그대로). 지수 값을 모르는 날이 있으면 null. */
-    fun simulate(series: List<FlowPoint>, index: BenchmarkIndex, snapshot: MarketSnapshot, today: LocalDate): List<FlowPoint>? {
-        if (series.isEmpty()) return null
+    /**
+     * 가상 평가금 일별 값 ([series] 와 같은 날짜, 투자금은 그대로). 지수 값을 모르는 날이 있으면 null.
+     * [from] 이 있으면 (자산 추이 기간, v2.14) 그날부터: 첫날 내 평가금만큼 그날 지수를 산 것으로 보고 그 뒤 투자금 증감만큼 사고판다.
+     */
+    fun simulate(series: List<FlowPoint>, index: BenchmarkIndex, snapshot: MarketSnapshot, today: LocalDate, from: LocalDate? = null): List<FlowPoint>? {
+        val points = if (from == null) series else series.filter { !it.date.isBefore(from) }
+        if (points.isEmpty()) return null
         var units = 0.0
         var invested = 0.0
-        return series.map { p ->
+        return points.mapIndexed { i, p ->
             val level = levelKrw(index, snapshot, p.date, today) ?: return null
-            units += (p.investedKrw - invested) / level
+            if (from != null && i == 0) units = p.valueKrw / level else units += (p.investedKrw - invested) / level
             invested = p.investedKrw
             FlowPoint(p.date, units * level, p.investedKrw)
         }

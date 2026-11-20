@@ -66,8 +66,6 @@ export function HomePage() {
       )}
 
       {change !== null && <TodayCard change={change} nowMs={nowMs} />}
-      <HomeDividendCard data={data} />
-
       <AssetChart data={data} />
 
       <Card title="계좌">
@@ -84,6 +82,9 @@ export function HomePage() {
           />
         ))}
       </Card>
+
+      {/* 배당 (v2.13, 맨 아래 v2.14) */}
+      <HomeDividendCard data={data} />
     </div>
   );
 }

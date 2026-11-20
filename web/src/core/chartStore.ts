@@ -281,9 +281,12 @@ export function assembleChart(
   firsts: Map<string, string>,
   stored: Map<string, StoredChart>,
   todayPoint: ChartPoint,
+  /** 기간 시작일 (v2.14, null 이면 첫 기록일부터) */
+  from: string | null = null,
 ): ChartView {
   if (firsts.size === 0) return { points: [todayPoint], pending: false };
-  const first = [...firsts.values()].sort()[0];
+  const firstRecord = [...firsts.values()].sort()[0];
+  const first = from !== null && from > firstRecord ? from : firstRecord;
   let pending = false;
   const points: ChartPoint[] = [];
   for (const date of pointDates(interval, today, first)) {

@@ -24,6 +24,40 @@ enum class ChartInterval(val label: String, val stepDays: Long) {
     YEAR("1년", 0),
 }
 
+/**
+ * 자산 추이 기간 (v2.14, 웹 chartRange 와 같은 규칙): 그 기간의 점만 보여 주고, 기간마다 맞는 보기 단위만 고른다.
+ */
+enum class ChartRange(val label: String) {
+    ALL("전체"),
+    YEARS_5("5년"),
+    YEAR_1("1년"),
+    THIS_YEAR("올해"),
+    THIS_MONTH("이번 달"),
+    ;
+
+    /** 기간 시작일 (전체는 null = 첫 기록일부터). */
+    fun start(today: LocalDate): LocalDate? = when (this) {
+        ALL -> null
+        YEARS_5 -> today.minusYears(5)
+        YEAR_1 -> today.minusYears(1)
+        THIS_YEAR -> today.withDayOfYear(1)
+        THIS_MONTH -> today.withDayOfMonth(1)
+    }
+
+    /** 이 기간에 고를 수 있는 보기 단위. */
+    val intervals: List<ChartInterval>
+        get() = when (this) {
+            ALL -> ChartInterval.entries
+            YEARS_5 -> listOf(ChartInterval.DAY_5, ChartInterval.DAY_10, ChartInterval.MONTH, ChartInterval.YEAR)
+            YEAR_1, THIS_YEAR -> listOf(ChartInterval.DAY_1, ChartInterval.DAY_5, ChartInterval.DAY_10, ChartInterval.MONTH)
+            THIS_MONTH -> listOf(ChartInterval.DAY_1, ChartInterval.DAY_5)
+        }
+
+    /** [interval] 이 이 기간에 맞지 않으면 가장 가까운 단위 (같으면 짧은 쪽). */
+    fun fit(interval: ChartInterval): ChartInterval =
+        if (interval in intervals) interval else intervals.minWith(compareBy({ kotlin.math.abs(it.ordinal - interval.ordinal) }, { it.ordinal }))
+}
+
 data class ChartPoint(
     val date: LocalDate,
     val valueKrw: Double,

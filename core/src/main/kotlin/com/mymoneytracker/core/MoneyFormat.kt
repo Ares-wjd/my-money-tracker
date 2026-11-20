@@ -95,6 +95,18 @@ object MoneyFormat {
     }
 
     /** 수익률을 ▲/▼ 와 함께: 0.1234 -> "▲12.34%", -0.05 -> "▼5.00%" (색만으로 구분하지 않도록). null 이면 "-" */
+    /** 짧은 비율 (v2.14, 좁은 곳): 100% 이상은 소수점 없이 "▲322%", 아래는 한 자리 "▲21.4%", 0 이면 "0%". */
+    fun rateShort(rate: Double?): String {
+        if (rate == null || rate.isNaN() || rate.isInfinite()) return "-"
+        val a = abs(rate * 100)
+        val text = if (a >= 100) DecimalFormat("#,##0", symbols).format(a) else DecimalFormat("0.0", symbols).format(a)
+        return when {
+            rate > 0 && text != "0.0" -> "▲$text%"
+            rate < 0 && text != "0.0" -> "▼$text%"
+            else -> "0%"
+        }
+    }
+
     fun rate(rate: Double?): String {
         if (rate == null || rate.isNaN() || rate.isInfinite()) return "-"
         val text = DecimalFormat("#,##0.00", symbols).format(abs(rate * 100))

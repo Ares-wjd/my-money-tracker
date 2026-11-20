@@ -17,6 +17,7 @@ import com.mymoneytracker.app.data.MarketDataRepository
 import com.mymoneytracker.app.data.PortfolioRepository
 import com.mymoneytracker.app.data.SecureStore
 import com.mymoneytracker.core.chart.ChartInterval
+import com.mymoneytracker.core.chart.ChartRange
 import com.mymoneytracker.core.chart.StoredChart
 import com.mymoneytracker.core.market.MarketClock
 import com.mymoneytracker.core.market.PriceLookup
@@ -178,6 +179,7 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
 
     fun selectChartInterval(interval: ChartInterval) = charts.selectInterval(interval)
     fun selectChartAccount(accountId: String?) = charts.selectAccount(accountId)
+    fun selectChartRange(range: ChartRange) = charts.selectRange(range)
 
     /** 설정의 [그래프 전체 다시 계산]: 모든 계좌의 일별 값을 처음부터 다시 계산한다. */
     fun recomputeCharts() = charts.recomputeAll()

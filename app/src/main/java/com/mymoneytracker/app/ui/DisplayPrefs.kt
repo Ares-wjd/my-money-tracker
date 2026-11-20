@@ -1,6 +1,7 @@
 package com.mymoneytracker.app.ui
 
 import android.content.Context
+import com.mymoneytracker.core.chart.ChartRange
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.BenchmarkIndex
 import com.mymoneytracker.core.portfolio.DisplayCurrency
@@ -97,6 +98,15 @@ class DisplayPrefs(context: Context) {
             .apply()
     }
 
+    /** 자산 추이 보는 기간 (v2.14, 기본 전체). */
+    private val _chartRange = MutableStateFlow(ChartRange.entries.firstOrNull { it.name == prefs.getString(KEY_CHART_RANGE, null) } ?: ChartRange.ALL)
+    val chartRange: StateFlow<ChartRange> = _chartRange.asStateFlow()
+
+    fun setChartRange(range: ChartRange) {
+        _chartRange.value = range
+        prefs.edit().putString(KEY_CHART_RANGE, range.name).apply()
+    }
+
     /** 홈 그래프에 겹쳐 볼 지수 (v2.11, 기본 없음). */
     private val _chartBenchmarks = MutableStateFlow(
         prefs.getString(KEY_CHART_BENCHMARKS, null).orEmpty().split(",").mapNotNull { n -> BenchmarkIndex.entries.firstOrNull { it.name == n } }.toSet(),
@@ -140,6 +150,7 @@ class DisplayPrefs(context: Context) {
         const val KEY_TODAY_HIDDEN_ACCOUNTS = "today_hidden_accounts"
         const val KEY_TODAY_HIDDEN_KINDS = "today_hidden_kinds"
         const val KEY_CHART_BENCHMARKS = "chart_benchmarks"
+        const val KEY_CHART_RANGE = "chart_range"
         const val KEY_PERIOD_BENCHMARK = "period_benchmark"
         const val KEY_FX_DAY = "fx_backfill_day"
         const val KEY_FX_CALLS = "fx_backfill_calls"

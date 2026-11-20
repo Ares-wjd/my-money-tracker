@@ -238,8 +238,11 @@ object ChartStore {
         firstDates: Map<String, LocalDate>,
         stored: Map<String, StoredChart>,
         todayPoint: ChartPoint,
+        /** 기간 시작일 (v2.14, null 이면 첫 기록일부터). */
+        from: LocalDate? = null,
     ): ChartView {
-        val first = firstDates.values.minOrNull() ?: return ChartView(listOf(todayPoint), false)
+        val firstRecord = firstDates.values.minOrNull() ?: return ChartView(listOf(todayPoint), false)
+        val first = if (from != null && from.isAfter(firstRecord)) from else firstRecord
         var pending = false
         val points = ChartCalculator.pointDates(interval, today, first).mapNotNull { date ->
             if (!date.isBefore(today)) return@mapNotNull todayPoint
