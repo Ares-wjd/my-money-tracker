@@ -211,6 +211,17 @@ private fun KisCard(status: ApiStatus, viewModel: PortfolioViewModel) {
             TextButton(onClick = { viewModel.testKis() }, enabled = status.hasKis) { Text("연결 테스트") }
             TextButton(onClick = { viewModel.clearKisCredentials() }, enabled = status.hasKis) { Text("키 삭제") }
         }
+        // 접근 토큰 (v2.16): 오전 9시까지 기다리는 중일 때만 "지금 새로 받기"
+        val token by viewModel.kisTokenState.collectAsStateWithLifecycle()
+        LaunchedEffect(Unit) { viewModel.checkKisTokenState() }
+        if (token.waiting) {
+            Text(
+                "접근 토큰: 오전 9시까지 대기 중" + if (token.invalid) " (한투가 토큰 무효라고 답함)" else " (9시 전에 만료됨)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = { viewModel.renewKisTokenNow() }) { Text("접근 토큰 지금 새로 받기") }
+        }
         DateField("KIS 서비스 만료일 (신청현황 화면의 만료일)", LocalDate.ofEpochDay(expiryDay), { expiryDay = it.toEpochDay() })
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(

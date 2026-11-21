@@ -243,7 +243,8 @@ class MarketDataRepository(
      * 하루 한 번만 (fetchedOn). 국내는 예탁원 배당일정, 해외는 기간별권리조회 + 권리종합(지급일).
      */
     suspend fun refreshDividends(holdings: List<Holding>): List<String> {
-        if (!kis.hasCredentials) return emptyList()
+        // 오전 9시까지 토큰을 기다리는 중이면 건너뛴다 (빈 일정으로 덮어쓰지 않게, v2.16)
+        if (!kis.hasCredentials || kis.waitingForToken()) return emptyList()
         awaitLoaded()
         val today = LocalDate.now()
         if (dividendsFetchedOn == today) return emptyList()

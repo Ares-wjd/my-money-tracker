@@ -3,6 +3,7 @@ package com.mymoneytracker.app.ui
 import com.mymoneytracker.app.data.ApiException
 import com.mymoneytracker.app.data.EximClient
 import com.mymoneytracker.app.data.KisClient
+import com.mymoneytracker.app.data.KisTokenState
 import com.mymoneytracker.app.data.SecureStore
 import com.mymoneytracker.core.MoneyFormat
 import kotlinx.coroutines.CoroutineScope
@@ -50,10 +51,40 @@ class ApiSettings(
     }
 
     fun clearKisCredentials() {
-        listOf(
-            SecureStore.KIS_APP_KEY, SecureStore.KIS_APP_SECRET, SecureStore.KIS_TOKEN, SecureStore.KIS_TOKEN_EXPIRES_AT, SecureStore.KIS_TOKEN_ISSUED_AT,
-        ).forEach { store.put(it, null) }
+        listOf(SecureStore.KIS_APP_KEY, SecureStore.KIS_APP_SECRET).forEach { store.put(it, null) }
+        kis.clearToken()
         _status.value = read()
+    }
+
+    // ---------------------------------------------------------------- 접근 토큰 (v2.16)
+
+    /** 접근 토큰 상태: 오전 9시까지 대기 중인지, 무효 응답 뒤 물어봐야 하는지. */
+    val tokenState: StateFlow<KisTokenState> = KisClient.tokenState
+
+    /** 오전 9시가 지났는지 등을 다시 확인한다 (설정 화면을 열 때). */
+    fun checkTokenState() {
+        kis.publishTokenState()
+    }
+
+    /** 무효 응답 뒤 "오전 9시까지 대기". */
+    fun chooseTokenWait() {
+        kis.chooseTokenWait()
+        showMessage("오전 9시에 접근 토큰을 새로 받습니다. 그 전에 받으려면 설정 > 한투 연결에서 [지금 새로 받기].")
+    }
+
+    /** "지금 새로 받기": 기다리지 않고 바로 새 토큰을 받는다. 받으면 [onRenewed]. */
+    fun renewTokenNow(onRenewed: () -> Unit) {
+        scope.launch {
+            try {
+                kis.renewTokenNow()
+                showMessage("한투 접근 토큰을 새로 받았습니다.")
+                onRenewed()
+            } catch (e: ApiException) {
+                showMessage(e.message)
+            } catch (e: Exception) {
+                showMessage("한투 접근 토큰 받기 실패: 인터넷 연결을 확인하세요.")
+            }
+        }
     }
 
     fun saveEximKey(key: String) {

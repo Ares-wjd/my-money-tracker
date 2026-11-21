@@ -1,6 +1,7 @@
 package com.mymoneytracker.app.ui
 
 import android.util.Log
+import com.mymoneytracker.app.data.KisClient
 import com.mymoneytracker.app.data.ChartRepository
 import com.mymoneytracker.app.data.MarketDataRepository
 import com.mymoneytracker.core.chart.ChartCalculator
@@ -203,7 +204,7 @@ class ChartSync(
                     found += fxErrors
                 }
             }.onFailure { found += "과거 시세를 받지 못했습니다." }
-            errors.value = found.distinct()
+            errors.value = found.filterNot(KisClient::isWaitMessage).distinct()
             loading.value = false
             // 받은 시세로 그래프 일별 값을 다시 계산
             trigger.tryEmit(Unit)

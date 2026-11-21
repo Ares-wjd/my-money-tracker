@@ -7,7 +7,7 @@ import java.net.URL
 import java.net.URLEncoder
 
 /** 외부 API 호출 결과. 오류 메시지는 사용자에게 그대로 보여줄 수 있는 문장이다. */
-class ApiException(message: String) : Exception(message)
+open class ApiException(message: String) : Exception(message)
 
 data class HttpResponse(val code: Int, val body: String, val headers: Map<String, String>)
 

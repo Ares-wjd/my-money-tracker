@@ -333,8 +333,11 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
             }
             errors += runCatching { marketRepository.refreshLatest(held, needsFx, forceFx = !silent) }
                 .getOrElse { listOf("시세 새로고침 실패") }
-            _refresh.value = RefreshState(running = false, lastRefreshedAt = System.currentTimeMillis(), errors = errors.distinct())
+            // 오전 9시까지 토큰을 기다리는 안내는 오류가 아니다 (홈에 회색 안내로 따로, v2.16)
+            val shown = errors.filterNot(KisClient::isWaitMessage).distinct()
+            _refresh.value = RefreshState(running = false, lastRefreshedAt = System.currentTimeMillis(), errors = shown)
             if (!silent && errors.isEmpty()) _message.value = "시세와 환율을 새로 받았습니다."
+            if (!silent && errors.any(KisClient::isWaitMessage)) _message.value = KisClient.WAIT_MESSAGE
             // 새로고침 뒤 과거 시세도 확인 (30분에 한 번, 이미 받은 기간은 건너뜀)
             charts.syncHistory()
         }
@@ -348,6 +351,12 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
     fun saveEximKey(key: String) = api.saveEximKey(key)
     fun clearEximKey() = api.clearEximKey()
     fun testKis() = api.testKis()
+
+    /** 한투 접근 토큰 상태 (v2.16): 오전 9시까지 대기 중 · 무효 응답 뒤 물어볼지. */
+    val kisTokenState = api.tokenState
+    fun checkKisTokenState() = api.checkTokenState()
+    fun chooseKisTokenWait() = api.chooseTokenWait()
+    fun renewKisTokenNow() = api.renewTokenNow { refreshQuotes(silent = true) }
     fun testExim() = api.testExim()
 
     // ---------------------------------------------------------------- 한투 계좌 연결 (M5)

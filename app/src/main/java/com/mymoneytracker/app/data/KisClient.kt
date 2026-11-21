@@ -4,16 +4,31 @@ import com.mymoneytracker.app.data.HttpJson.num
 import com.mymoneytracker.app.data.HttpJson.objects
 import com.mymoneytracker.app.data.HttpJson.str
 import com.mymoneytracker.core.market.KisTokenPolicy
+import com.mymoneytracker.core.market.TokenAction
 import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.portfolio.BenchmarkIndex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+
+/** 9시까지 기다리는 동안 한투 조회를 쉴 때 (v2.16). 오류가 아니라 안내로 보여 준다. */
+class KisTokenWaitException : ApiException(KisClient.WAIT_MESSAGE)
+
+/**
+ * 접근 토큰 상태 (v2.16). [waiting] 오전 9시까지 대기 중, [invalid] 한투가 토큰 무효라고 답함, [waitChosen] 무효 뒤 대기를 골랐음.
+ */
+data class KisTokenState(val waiting: Boolean = false, val invalid: Boolean = false, val waitChosen: Boolean = false) {
+    /** 무효인데 아직 새로 받을지 기다릴지 고르지 않음 → 팝업으로 묻는다. */
+    val askUser: Boolean get() = invalid && !waitChosen
+}
 
 /** 종가 한 개. */
 data class DailyClose(val date: LocalDate, val close: Double)
@@ -77,15 +92,48 @@ class KisClient(private val store: SecureStore) {
     val hasCredentials: Boolean
         get() = !store.get(SecureStore.KIS_APP_KEY).isNullOrBlank() && !store.get(SecureStore.KIS_APP_SECRET).isNullOrBlank()
 
+    init {
+        publishTokenState()
+    }
+
+    private fun tokenAction(now: Long = System.currentTimeMillis()): TokenAction = KisTokenPolicy.decide(
+        hasToken = !store.get(SecureStore.KIS_TOKEN).isNullOrBlank(),
+        issuedAt = store.get(SecureStore.KIS_TOKEN_ISSUED_AT)?.toLongOrNull(),
+        expiresAt = store.get(SecureStore.KIS_TOKEN_EXPIRES_AT)?.toLongOrNull() ?: 0L,
+        invalidAt = store.get(SecureStore.KIS_TOKEN_INVALID_AT)?.toLongOrNull(),
+        now = now,
+    )
+
+    /** 지금 토큰 상태를 다시 읽어 [tokenState] 에 알린다 (오전 9시가 지났는지 등). */
+    fun publishTokenState(): KisTokenState {
+        val waiting = hasCredentials && tokenAction() == TokenAction.WAIT
+        val state = KisTokenState(
+            waiting = waiting,
+            // 무효 뒤 오전 9시가 지났으면 다음 조회에서 새로 받으므로 더 묻지 않는다
+            invalid = waiting && store.get(SecureStore.KIS_TOKEN_INVALID_AT) != null,
+            waitChosen = store.get(SecureStore.KIS_TOKEN_WAIT_CHOSEN) != null,
+        )
+        tokenStateFlow.value = state
+        return state
+    }
+
+    /** 오전 9시까지 기다리는 중인지 (이때는 한투 조회를 건너뛴다). */
+    fun waitingForToken(): Boolean = hasCredentials && tokenAction() == TokenAction.WAIT
+
     /**
-     * 접근 토큰. 기기에 저장해 재사용하고, 매일 오전 10시(한국 시간)가 지나 처음 조회할 때 새로 받는다 (v2.12, [KisTokenPolicy]).
-     * 토큰 발급은 하루 1회가 원칙이라 발급 시각이 당겨지지 않게 고정한다.
+     * 접근 토큰. 기기에 저장해 재사용하고, 매일 오전 9시(한국 시간)가 지나 처음 조회할 때 새로 받는다 (v2.16, [KisTokenPolicy]).
+     * 토큰 발급은 하루 1회가 원칙이라 발급 시각이 당겨지지 않게 고정한다. 9시 전에 만료되거나 무효가 되면 9시까지 기다린다.
      */
     private suspend fun token(): String = tokenMutex.withLock {
         val cached = store.get(SecureStore.KIS_TOKEN)
-        val expiresAt = store.get(SecureStore.KIS_TOKEN_EXPIRES_AT)?.toLongOrNull() ?: 0L
-        val issuedAt = store.get(SecureStore.KIS_TOKEN_ISSUED_AT)?.toLongOrNull()
-        if (!cached.isNullOrBlank() && KisTokenPolicy.reusable(issuedAt, expiresAt, System.currentTimeMillis())) return@withLock cached
+        when (tokenAction()) {
+            TokenAction.REUSE -> return@withLock cached!!
+            TokenAction.WAIT -> {
+                publishTokenState()
+                throw KisTokenWaitException()
+            }
+            TokenAction.ISSUE -> Unit
+        }
 
         val (appKey, appSecret) = credentials()
         val response = withContext(Dispatchers.IO) {
@@ -110,13 +158,38 @@ class KisClient(private val store: SecureStore) {
         store.put(SecureStore.KIS_TOKEN, token)
         store.put(SecureStore.KIS_TOKEN_EXPIRES_AT, (now + expiresIn * 1000).toString())
         store.put(SecureStore.KIS_TOKEN_ISSUED_AT, now.toString())
+        store.put(SecureStore.KIS_TOKEN_INVALID_AT, null)
+        store.put(SecureStore.KIS_TOKEN_WAIT_CHOSEN, null)
+        publishTokenState()
         token
     }
 
+    /** 저장된 토큰과 무효·대기 표시를 모두 지운다 (키를 바꿨을 때). 다음 조회에서 바로 새로 받는다. */
     fun clearToken() {
-        store.put(SecureStore.KIS_TOKEN, null)
-        store.put(SecureStore.KIS_TOKEN_EXPIRES_AT, null)
-        store.put(SecureStore.KIS_TOKEN_ISSUED_AT, null)
+        listOf(
+            SecureStore.KIS_TOKEN, SecureStore.KIS_TOKEN_EXPIRES_AT, SecureStore.KIS_TOKEN_ISSUED_AT,
+            SecureStore.KIS_TOKEN_INVALID_AT, SecureStore.KIS_TOKEN_WAIT_CHOSEN,
+        ).forEach { store.put(it, null) }
+        publishTokenState()
+    }
+
+    /** 한투가 토큰 무효라고 답했을 때: 무효 시각을 남기고 사용자에게 묻는다 (고르기 전에는 대기). */
+    private fun markTokenInvalid() {
+        store.put(SecureStore.KIS_TOKEN_INVALID_AT, System.currentTimeMillis().toString())
+        store.put(SecureStore.KIS_TOKEN_WAIT_CHOSEN, null)
+        publishTokenState()
+    }
+
+    /** 무효 뒤 "오전 9시까지 대기"를 골랐을 때. */
+    fun chooseTokenWait() {
+        if (store.get(SecureStore.KIS_TOKEN_INVALID_AT) != null) store.put(SecureStore.KIS_TOKEN_WAIT_CHOSEN, "1")
+        publishTokenState()
+    }
+
+    /** "지금 새로 받기": 기다리지 않고 바로 새 토큰을 받는다. */
+    suspend fun renewTokenNow() {
+        clearToken()
+        token()
     }
 
     private fun credentials(): Pair<String, String> {
@@ -178,7 +251,7 @@ class KisClient(private val store: SecureStore) {
                 attempt++
                 continue // 다음 호출은 멈춤 시간과 늘어난 간격만큼 기다린다
             }
-            if (msgCode == "EGW00123") clearToken() // 토큰 만료
+            if (msgCode == "EGW00123") markTokenInvalid() // 토큰 무효: 새로 받을지 기다릴지 묻는다 (v2.16)
             val message = json.optString("msg1").ifBlank { "알 수 없는 오류" }
             throw ApiException(
                 if (limited) RATE_LIMIT_MESSAGE else "한투 API 오류: $message",
@@ -642,6 +715,16 @@ class KisClient(private val store: SecureStore) {
 
         /** 한도 오류 문구 (일시적인 문제라 설정을 고칠 필요가 없다는 뜻이 드러나게). */
         const val RATE_LIMIT_MESSAGE = "한투 API 호출이 몰려 잠시 후 다시 받습니다 (초당 호출 한도)."
+
+        /** 9시까지 기다리는 동안의 안내 (v2.16). */
+        const val WAIT_MESSAGE = "한투 접근 토큰은 오전 9시에 새로 받아요 (그때까지 한투 조회 쉼)"
+
+        /** [WAIT_MESSAGE] 가 들어 있는 안내인지 (오류 목록에서 빼고 회색 안내로 보여 준다). */
+        fun isWaitMessage(text: String): Boolean = WAIT_MESSAGE in text
+
+        /** 접근 토큰 상태 (앱 전체에서 하나: 화면과 백그라운드 작업이 같은 기기 저장소를 쓴다). */
+        private val tokenStateFlow = MutableStateFlow(KisTokenState())
+        val tokenState: StateFlow<KisTokenState> = tokenStateFlow.asStateFlow()
         private const val RATE_LIMIT_PAUSE_MS = 1_000L
         private const val MAX_CALL_INTERVAL_MS = 1_000L
         private const val SPEED_UP_AFTER = 20

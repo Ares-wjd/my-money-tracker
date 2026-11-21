@@ -73,6 +73,10 @@ class SecureStore(context: Context) {
         const val KIS_TOKEN = "kis_token"
         const val KIS_TOKEN_EXPIRES_AT = "kis_token_expires_at"
         const val KIS_TOKEN_ISSUED_AT = "kis_token_issued_at"
+        /** 한투가 토큰 무효라고 답한 시각 (v2.16). */
+        const val KIS_TOKEN_INVALID_AT = "kis_token_invalid_at"
+        /** 무효 뒤 사용자가 "오전 9시까지 대기"를 골랐는지 (v2.16). */
+        const val KIS_TOKEN_WAIT_CHOSEN = "kis_token_wait_chosen"
         const val KIS_SERVICE_EXPIRY = "kis_service_expiry"
         const val KIS_ACCOUNT_NO = "kis_account_no"
         const val KIS_ACCOUNT_PRODUCT = "kis_account_product"

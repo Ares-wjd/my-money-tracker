@@ -182,6 +182,7 @@ fun MainScreen(
     // 앱으로 돌아올 때마다 필수 설정을 다시 확인 (꺼졌으면 홈에 안내)
     LifecycleResumeEffect(Unit) {
         alertViewModel.refresh()
+        portfolioViewModel.checkKisTokenState()
         onPauseOrDispose { }
     }
     // 알림을 눌러 열었으면 그 화면으로
@@ -208,6 +209,23 @@ fun MainScreen(
 
     if (showUpdateDialog || updateState is UpdateState.Failed) {
         UpdateDialog(updateState, updateViewModel)
+    }
+
+    // 한투가 토큰 무효라고 답하면 새로 받을지 9시까지 기다릴지 묻는다 (v2.16). 고르기 전에는 대기.
+    val kisToken by portfolioViewModel.kisTokenState.collectAsStateWithLifecycle()
+    if (kisToken.askUser && !(showUpdateDialog || updateState is UpdateState.Failed)) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { },
+            title = { Text("한투 접근 토큰이 무효가 됐어요") },
+            text = {
+                Text(
+                    "지금 새로 받거나, 오전 9시에 받을 때까지 기다릴 수 있어요. 기다리는 동안에는 한투 시세·잔고 조회를 쉽니다. " +
+                        "기다리다가도 설정 > 한국투자증권 Open API 에서 바로 받을 수 있어요.",
+                )
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { portfolioViewModel.renewKisTokenNow() }) { Text("지금 새로 받기") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { portfolioViewModel.chooseKisTokenWait() }) { Text("오전 9시까지 대기") } },
+        )
     }
 
     Scaffold(

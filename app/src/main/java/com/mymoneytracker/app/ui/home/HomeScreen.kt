@@ -140,6 +140,7 @@ private fun HomeContent(
     onOpenAlerts: () -> Unit = {},
     onOpenDividends: () -> Unit = {},
 ) {
+    val kisToken by viewModel.kisTokenState.collectAsStateWithLifecycle()
     val summary = current.summary
     // 올해·연평균 수익률 (그래프 일별 값으로 계산, 계산 중이면 숨김)
     val stored by viewModel.storedCharts.collectAsStateWithLifecycle()
@@ -239,6 +240,18 @@ private fun HomeContent(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+            }
+        }
+
+        // 오전 9시까지 토큰을 기다리는 중 (v2.16): 오류가 아니라 회색 안내
+        if (kisToken.waiting) {
+            item {
+                Text(
+                    KisClient.WAIT_MESSAGE,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
             }
         }
 
