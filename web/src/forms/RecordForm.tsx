@@ -6,7 +6,8 @@ import { amount as formatAmount, amountPreview, decimal, manwon, parseDecimal, u
 import { NO_COST, buildRecord, costBreakdown, costPartsLocked, effectiveCost, inputFromRecord, recordProblem, type RecordInput } from '../core/recordForm';
 import { computeExchange, exchangeAutoField, touchExchange, type ExchangeField } from '../core/exchangeInput';
 import { useAppData, useData } from '../data/DataContext';
-import { deleteRecord, saveRecord } from '../data/writes';
+import { deleteRecord, saveRecord, saveRecordShowing } from '../data/writes';
+import { hiddenCount, holdingChoices, noHoldingMessage } from '../core/holdingChoices';
 import { CURRENCIES, CURRENCY_LABEL, RECORD_TYPE_LABEL, marketCurrency, type Currency, type Record, type RecordType } from '../model';
 import { recordAmountText, recordDetailText, recordTitle } from '../records/recordText';
 import { newlyShortSells, type ShortSell } from '../core/portfolio';
@@ -52,7 +53,9 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
   // 환전: 입력한 순서 (최근 두 칸으로 나머지 한 칸을 자동 계산). 기존 기록은 원화·달러를 입력한 것으로 본다 → 환율이 자동
   const [exchangeEdited, setExchangeEdited] = useState<ExchangeField[]>(existing?.type === 'EXCHANGE' ? ['KRW', 'USD'] : []);
 
-  const holdings = data.holdings.filter((h) => h.accountId === accountId);
+  // 고를 수 있는 종목 (v2.17): 매수·배당은 숨긴 종목 빼고, 매도는 지금 보유한 종목만. 고치는 기록의 종목은 남긴다.
+  const holdings = holdingChoices(recordType, accountId, data.holdings, data.records, existing?.holdingId ?? presetHoldingId ?? null);
+  const noHolding = noHoldingMessage(recordType, holdings, hiddenCount(accountId, data.holdings));
   const holding = holdings.find((h) => h.id === holdingId);
   const holdingCurrency: Currency = holding ? marketCurrency(holding.market) : 'KRW';
   const exAuto = recordType === 'EXCHANGE' ? exchangeAutoField(exchangeEdited) : null;
@@ -68,7 +71,7 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
     quantity: parseDecimal(quantityText), price: parseDecimal(priceText),
     cost: { total: parseDecimal(costText), fee: parseDecimal(feeText), tax: parseDecimal(taxText) },
   };
-  const problem = recordProblem(input, holdings, data.records, existing?.id ?? null);
+  const problem = recordProblem(input, holdings, data.records, existing?.id ?? null, noHolding);
   // 이렇게 저장·삭제하면 다른 매도가 보유 수량이 모자라 계산되지 않게 되는지 (확인 창으로 알림)
   const breakText = (list: ShortSell[]) =>
     list.length === 0 ? null : `이렇게 하면 아래 매도가 보유 수량이 모자라 계산되지 않습니다.\n${list.map((s) => '· ' + shortSellLabel(s, data.lookup.holding(s.record.holdingId ?? ''))).join('\n')}`;
@@ -190,7 +193,7 @@ function EditableRecordForm({ accountId, type, existing, presetHoldingId, onClos
       <TextField label="메모 (선택)" value={memo} onChange={setMemo} maxLength={100} />
       <FormActions
         problem={problem}
-        onSave={() => saveRecord(uid, buildRecord(input, accountId, existing))}
+        onSave={() => saveRecordShowing(uid, buildRecord(input, accountId, existing), data.holdings)}
         onDone={onClose}
         onDelete={existing ? () => deleteRecord(uid, existing.id) : undefined}
         deleteLabel="기록 삭제"

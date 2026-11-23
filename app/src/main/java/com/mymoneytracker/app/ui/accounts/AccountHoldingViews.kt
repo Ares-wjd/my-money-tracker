@@ -88,13 +88,16 @@ internal fun HoldingsToolbar(
     }
 }
 
-/** 보유 종목 목록. 0주 종목(다 판 종목)은 맨 아래 "매도 완료 종목" 안에 접어 둔다. [rate] 는 보기에 따른 총 수익률. */
+/** 보유 종목 목록. 0주 종목(다 판 종목)은 맨 아래 "매도 완료 종목", 숨긴 종목은 "숨긴 종목" 안에 접어 둔다. [rate] 는 보기에 따른 총 수익률. */
 @Composable
 internal fun HoldingsCard(
     holdings: List<HoldingValuation>,
     soldOut: List<HoldingValuation>,
     showSoldOut: Boolean,
     onToggleSoldOut: () -> Unit,
+    hidden: List<HoldingValuation> = emptyList(),
+    showHidden: Boolean = false,
+    onToggleHidden: () -> Unit = {},
     data: PortfolioData,
     summary: AccountSummary,
     displayCurrency: DisplayCurrency,
@@ -113,6 +116,19 @@ internal fun HoldingsCard(
             }
             if (showSoldOut) {
                 soldOut.forEach { valuation ->
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    HoldingRow(valuation, data, summary, displayCurrency, rate(valuation)) { onOpenHolding(valuation.holding.id) }
+                }
+            }
+        }
+        // 숨긴 종목 (v2.17): 눌러서 종목 화면의 [다시 보이기]
+        if (hidden.isNotEmpty()) {
+            if (holdings.isNotEmpty() || soldOut.isNotEmpty()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            TextButton(onClick = onToggleHidden) {
+                Text("숨긴 종목 (${hidden.size}) " + if (showHidden) "▴" else "▾")
+            }
+            if (showHidden) {
+                hidden.forEach { valuation ->
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     HoldingRow(valuation, data, summary, displayCurrency, rate(valuation)) { onOpenHolding(valuation.holding.id) }
                 }

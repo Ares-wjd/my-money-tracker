@@ -42,6 +42,7 @@ export function AccountDetailPage() {
   const [visible, setVisible] = useState(PAGE);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [showSoldOut, setShowSoldOut] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   // 기록 유형 필터 (기본은 전부 보임, 이 브라우저에 계좌마다 기억)
   const [hiddenByAccount, setHiddenByAccount] = useState<{ [id: string]: Set<RecordType> }>({});
   // 이 계좌의 올해·연평균 수익률 (그래프 일별 값으로 계산, 계산 중이면 빈 글)
@@ -83,9 +84,10 @@ export function AccountDetailPage() {
   // 총 수익률은 보기를 따른다 (원화 보기: 매매일 환율이 모두 있으면 환차익 반영 원화 수익률)
   const totalRate = (v: HoldingValuation) => (displayCurrency === 'KRW' ? data.krwView(v)?.returnRate : null) ?? v.returnRate;
   const sorted = sortHoldings(summary.holdings, holdingSort, totalRate, data.todayRate);
-  // 0주 종목(다 판 종목)은 맨 아래 "매도 완료 종목" 안에 접어 둔다
+  // 0주 종목(다 판 종목)은 맨 아래 "매도 완료 종목", 숨긴 종목(v2.17)은 그 아래 "숨긴 종목" 안에 접어 둔다
   const holdings = sorted.filter((v) => v.position.quantity > 0);
-  const soldOut = sorted.filter((v) => v.position.quantity <= 0);
+  const soldOut = sorted.filter((v) => v.position.quantity <= 0 && !v.holding.hidden);
+  const hiddenHoldings = sorted.filter((v) => v.position.quantity <= 0 && v.holding.hidden);
   const hasUsd = holdings.some((h) => marketCurrency(h.holding.market) === 'USD');
   const showUsdCash = summary.cash.usd !== 0 || hasUsd;
 
@@ -236,6 +238,16 @@ export function AccountDetailPage() {
                   </tr>
                 )}
                 {showSoldOut && soldOut.map(row)}
+                {hiddenHoldings.length > 0 && (
+                  <tr className="sold-out-toggle">
+                    <td colSpan={7}>
+                      <button className="text-button" aria-expanded={showHidden} onClick={() => setShowHidden(!showHidden)}>
+                        숨긴 종목 ({hiddenHoldings.length}) {showHidden ? '▴' : '▾'}
+                      </button>
+                    </td>
+                  </tr>
+                )}
+                {showHidden && hiddenHoldings.map(row)}
               </tbody>
             </table>
           </div>

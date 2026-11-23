@@ -55,8 +55,10 @@ export function recordProblem(
   holdings: readonly Holding[],
   allRecords: readonly Record[],
   editingId: string | null,
+  noHolding: string | null = null,
 ): string | null {
   const { type, amount, krw, rate, quantity, price } = input;
+  const missing = () => noHolding ?? (holdings.length === 0 ? '먼저 계좌 화면에서 종목을 추가하세요.' : '종목을 고르세요.');
   const holding = holdings.find((h) => h.id === input.holdingId);
   switch (type) {
     case 'DEPOSIT':
@@ -72,7 +74,7 @@ export function recordProblem(
       return null;
     case 'BUY':
     case 'SELL': {
-      if (!holding) return holdings.length === 0 ? '먼저 계좌 화면에서 종목을 추가하세요.' : '종목을 고르세요.';
+      if (!holding) return missing();
       if (quantity === null || quantity <= 0) return '수량을 입력하세요.';
       if (price === null || price < 0) return '단가를 입력하세요.';
       if (type === 'SELL') {
@@ -85,7 +87,7 @@ export function recordProblem(
       return null;
     }
     case 'DIVIDEND':
-      if (!holding) return holdings.length === 0 ? '먼저 계좌 화면에서 종목을 추가하세요.' : '종목을 고르세요.';
+      if (!holding) return missing();
       if (amount === null || amount <= 0) return '배당금을 입력하세요.';
       return null;
     case 'CASH_ADJUST':

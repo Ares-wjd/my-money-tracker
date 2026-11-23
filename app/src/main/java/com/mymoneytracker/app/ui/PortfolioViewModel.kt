@@ -28,6 +28,7 @@ import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.model.Market
 import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
+import com.mymoneytracker.core.portfolio.HoldingChoices
 import com.mymoneytracker.core.portfolio.BenchmarkIndex
 import com.mymoneytracker.core.portfolio.AllocationTarget
 import com.mymoneytracker.core.portfolio.DataCheck
@@ -215,6 +216,10 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
 
     fun saveRecord(record: Record) {
         repository.saveRecord(record)
+        // 숨긴 종목을 다시 사면 다시 보이게 한다 (v2.17)
+        if (record.type == RecordType.BUY) {
+            data.value?.holdings?.firstOrNull { it.id == record.holdingId && it.hidden }?.let { repository.saveHolding(it.copy(hidden = false)) }
+        }
         charts.syncHistorySoon()
     }
 
@@ -234,9 +239,23 @@ class PortfolioViewModel(application: Application, uid: String) : AndroidViewMod
         // 새 종목 기록은 holdingId 에 키를 넣어 두고, 저장할 때 새 종목 id 로 바꾼다
         val records = TradeImport.build(analysis.rows, accountId) { key -> key }.map { it.second }
         repository.importTrades(newHoldings.filterKeys { key -> records.any { it.holdingId == key } }, records)
+        // 숨긴 종목을 다시 사면 다시 보이게 한다 (v2.17)
+        val bought = records.filter { it.type == RecordType.BUY }.mapNotNull { it.holdingId }.toSet()
+        data.value?.holdings?.filter { it.hidden && it.id in bought }?.forEach { repository.saveHolding(it.copy(hidden = false)) }
         _message.value = "${records.size}건을 저장했습니다."
         charts.syncHistorySoon()
         return records.size
+    }
+
+    /** 종목 숨기기 / 다시 보이기 (v2.17). 숨기기는 지금 0주일 때만. */
+    fun setHoldingHidden(holding: Holding, hidden: Boolean) {
+        val records = data.value?.records ?: return
+        if (hidden && !HoldingChoices.canHide(holding, records)) {
+            _message.value = "다 판 뒤에 숨길 수 있어요."
+            return
+        }
+        repository.saveHolding(holding.copy(hidden = hidden))
+        _message.value = if (hidden) "${holding.name} 종목을 숨겼습니다. 계좌 화면 맨 아래 \"숨긴 종목\"에서 다시 보이게 할 수 있어요." else "${holding.name} 종목을 다시 보이게 했습니다."
     }
 
     /** 표로 일괄 입력 저장 (입출금·배당): 기록을 한꺼번에 저장한다. */

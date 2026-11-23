@@ -70,6 +70,8 @@ data class Holding(
     val manualPrice: Double? = null,
     val manualPriceDate: LocalDate? = null,
     val createdAt: Long = 0L,
+    /** 숨긴 종목 (v2.17): 고르는 목록·계좌 화면에서만 빠지고 계산에는 그대로 들어간다. */
+    val hidden: Boolean = false,
 ) {
     val currency: Currency get() = market.currency
 }

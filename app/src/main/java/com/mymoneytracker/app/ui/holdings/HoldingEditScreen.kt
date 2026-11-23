@@ -186,6 +186,7 @@ private fun HoldingForm(
                     manualPrice = initial?.manualPrice,
                     manualPriceDate = initial?.manualPriceDate,
                     createdAt = initial?.createdAt ?: 0L,
+                    hidden = initial?.hidden ?: false,
                 )
                 val initialBuy = if (initial == null && hasInitial && quantity != null && average != null) {
                     Record(

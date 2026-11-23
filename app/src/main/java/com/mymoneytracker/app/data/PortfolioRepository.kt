@@ -143,7 +143,7 @@ class PortfolioRepository(
             "manualPrice" to holding.manualPrice,
             "manualPriceDate" to holding.manualPriceDate?.toString(),
             F_CREATED_AT to if (holding.createdAt > 0) holding.createdAt else System.currentTimeMillis(),
-        )
+        ) + if (holding.hidden) mapOf("hidden" to true) else emptyMap() // 숨김 (v2.17): 보이면 필드를 두지 않는다
 
     /** 종목과 그 종목의 매매·배당 기록을 함께 삭제한다. */
     fun deleteHolding(holdingId: String, records: List<Record>) {
@@ -262,6 +262,7 @@ class PortfolioRepository(
             manualPrice = getDouble("manualPrice"),
             manualPriceDate = getString("manualPriceDate")?.let(::parseDate),
             createdAt = getLong(F_CREATED_AT) ?: 0L,
+            hidden = getBoolean("hidden") == true,
         )
     }
 

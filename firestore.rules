@@ -70,7 +70,7 @@ service cloud.firestore {
       match /holdings/{id} {
         allow read, delete: if isOwner(uid);
         allow create, update: if isOwner(uid)
-          && onlyKeys(['accountId', 'name', 'code', 'market', 'assetType', 'manualPrice', 'manualPriceDate', 'createdAt'])
+          && onlyKeys(['accountId', 'name', 'code', 'market', 'assetType', 'manualPrice', 'manualPriceDate', 'createdAt', 'hidden'])
           && str(data().accountId, 100)
           && str(data().name, 200)
           && str(data().code, 40)
@@ -78,6 +78,7 @@ service cloud.firestore {
           && data().assetType in ['STOCK', 'ETF', 'FUND', 'BOND', 'GOLD']
           && optNum(data().get('manualPrice', null))
           && optDate(data().get('manualPriceDate', null))
+          && optBool(data().get('hidden', null))
           && num(data().createdAt);
       }
 

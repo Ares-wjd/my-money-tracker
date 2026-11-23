@@ -21,6 +21,8 @@ export function holdingDoc(h: Holding) {
     manualPrice: h.manualPrice,
     manualPriceDate: h.manualPriceDate,
     createdAt: createdAt(h.createdAt),
+    // 숨김 (v2.17): 보이면 필드를 두지 않는다
+    ...(h.hidden ? { hidden: true } : {}),
   };
 }
 

@@ -54,6 +54,8 @@ export interface Holding {
   manualPrice: number | null;
   manualPriceDate: string | null;
   createdAt: number;
+  /** 숨긴 종목 (v2.17): 고르는 목록·계좌 화면에서만 빠지고 계산에는 그대로 들어간다. */
+  hidden?: boolean;
 }
 
 /** 계좌의 모든 기록. 유형별로 쓰는 필드는 core 의 Record 설명과 같다. */

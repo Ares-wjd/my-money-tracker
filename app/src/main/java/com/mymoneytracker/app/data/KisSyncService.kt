@@ -120,7 +120,15 @@ class KisSyncService(
                 continue
             }
             if (newRecords.any { it.id == id }) continue
-            val holding = holdingFor(execution.code, execution.name, execution.market)
+            val holding = holdingFor(execution.code, execution.name, execution.market).let { h ->
+                // 숨긴 종목을 다시 사면 다시 보이게 한다 (v2.17)
+                if (execution.isBuy && h.hidden) {
+                    val shown = h.copy(hidden = false)
+                    repository.saveHolding(shown)
+                    accountHoldings.replaceAll { if (it.id == shown.id) shown else it }
+                    shown
+                } else h
+            }
             newRecords += Record(
                 id = id,
                 accountId = account.id,

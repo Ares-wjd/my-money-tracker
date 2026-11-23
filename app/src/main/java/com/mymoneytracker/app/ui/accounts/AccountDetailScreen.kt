@@ -233,10 +233,12 @@ private fun AccountDetailContent(
     fun totalRate(v: HoldingValuation): Double? =
         (if (displayCurrency == DisplayCurrency.KRW) data.krwView(v)?.returnRate else null) ?: v.returnRate
     val sorted = HoldingSorter.sort(summary.holdings, holdingSort, ::totalRate) { data.todayRate(it) }
-    // 0주 종목(다 판 종목)은 맨 아래 "매도 완료 종목" 안에 접어 둔다
+    // 0주 종목(다 판 종목)은 맨 아래 "매도 완료 종목", 숨긴 종목(v2.17)은 그 아래 "숨긴 종목" 안에 접어 둔다
     val holdings = sorted.filter { it.position.quantity > 0 }
-    val soldOut = sorted.filter { it.position.quantity <= 0 }
+    val soldOut = sorted.filter { it.position.quantity <= 0 && !it.holding.hidden }
+    val hiddenHoldings = sorted.filter { it.position.quantity <= 0 && it.holding.hidden }
     var showSoldOut by rememberSaveable(accountId) { mutableStateOf(false) }
+    var showHidden by rememberSaveable(accountId) { mutableStateOf(false) }
     var showLegend by rememberSaveable { mutableStateOf(false) }
     val hasUsd = sorted.any { it.holding.currency == Currency.USD }
 
@@ -309,6 +311,9 @@ private fun AccountDetailContent(
                     soldOut = soldOut,
                     showSoldOut = showSoldOut,
                     onToggleSoldOut = { showSoldOut = !showSoldOut },
+                    hidden = hiddenHoldings,
+                    showHidden = showHidden,
+                    onToggleHidden = { showHidden = !showHidden },
                     data = data,
                     summary = summary,
                     displayCurrency = displayCurrency,

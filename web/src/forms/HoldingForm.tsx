@@ -47,6 +47,7 @@ export function HoldingForm({ accountId, existing, onClose, onDeleted }: { accou
       assetType,
       manualPrice: existing?.manualPrice ?? null,
       manualPriceDate: existing?.manualPriceDate ?? null,
+      hidden: existing?.hidden ?? false,
       createdAt: existing?.createdAt ?? 0,
     });
     if (!existing && hasInitial && quantity !== null && average !== null) {

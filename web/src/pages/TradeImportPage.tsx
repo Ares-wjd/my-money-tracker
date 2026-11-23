@@ -167,7 +167,8 @@ export function TradeImportPage() {
           manualPrice: null, manualPriceDate: null, createdAt: 0,
         });
       }
-      await importTrades(uid, newHoldings, records);
+      const bought = new Set(records.filter((r) => r.type === 'BUY').map((r) => r.holdingId));
+      await importTrades(uid, newHoldings, records, data.holdings.filter((h) => h.hidden && bought.has(h.id)));
       navigate(`/accounts/${accountId}`);
     } catch {
       setSaveError('저장하지 못했습니다. 잠시 후 다시 시도하세요.');

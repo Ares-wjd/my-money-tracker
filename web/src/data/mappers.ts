@@ -66,6 +66,7 @@ export function toHolding(id: string, d: Data): Holding | null {
     manualPrice: num(d.manualPrice),
     manualPriceDate: date(d.manualPriceDate),
     createdAt: num(d.createdAt) ?? 0,
+    ...(d.hidden === true ? { hidden: true } : {}),
   };
 }
 

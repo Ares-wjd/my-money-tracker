@@ -25,6 +25,14 @@ async function save(uid: string, name: string, id: string, data: object): Promis
 export const saveAccount = (uid: string, a: InvestmentAccount) => save(uid, 'accounts', a.id, accountDoc(a));
 export const saveHolding = (uid: string, h: Holding) => save(uid, 'holdings', h.id, holdingDoc(h));
 export const saveRecord = (uid: string, r: Record) => save(uid, 'records', r.id, recordDoc(r));
+
+/** 기록 저장 + 숨긴 종목을 다시 사면 다시 보이게 (v2.17). */
+export async function saveRecordShowing(uid: string, r: Record, holdings: readonly Holding[]) {
+  const id = await saveRecord(uid, r);
+  const h = r.type === 'BUY' ? holdings.find((x) => x.id === r.holdingId && x.hidden) : undefined;
+  if (h) await saveHolding(uid, { ...h, hidden: false });
+  return id;
+}
 export const saveSavingsAccount = (uid: string, a: SavingsAccount) => save(uid, 'savingsAccounts', a.id, savingsAccountDoc(a));
 export const saveSavingsGoal = (uid: string, g: SavingsGoal) => save(uid, 'savingsGoals', g.id, savingsGoalDoc(g));
 
@@ -39,9 +47,11 @@ export const deleteChart = (uid: string, accountId: string) => deleteDoc(doc(col
  * 표로 일괄 입력: 새 종목과 매매 기록을 한꺼번에 저장한다. records 의 holdingId 가 newHoldings 의 키면 새 종목 id 로 바꾼다.
  * 한 번에 쓸 수 있는 개수(500) 아래로 나눠 저장한다.
  */
-export async function importTrades(uid: string, newHoldings: ReadonlyMap<string, Holding>, records: readonly Record[]) {
+export async function importTrades(uid: string, newHoldings: ReadonlyMap<string, Holding>, records: readonly Record[], reveal: readonly Holding[] = []) {
   const ids = new Map<string, string>();
   const writes: [DocumentReference, object][] = [];
+  // 숨긴 종목을 다시 사면 다시 보이게 한다 (v2.17)
+  for (const h of reveal) writes.push([ref(uid, 'holdings', h.id), holdingDoc({ ...h, hidden: false })]);
   for (const [key, h] of newHoldings) {
     const r = ref(uid, 'holdings', '');
     ids.set(key, r.id);

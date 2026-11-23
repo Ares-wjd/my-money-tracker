@@ -50,6 +50,7 @@ import com.mymoneytracker.core.model.Record
 import com.mymoneytracker.core.model.RecordType
 import com.mymoneytracker.core.portfolio.ExchangeField
 import com.mymoneytracker.core.portfolio.ExchangeInput
+import com.mymoneytracker.core.portfolio.HoldingChoices
 import com.mymoneytracker.core.portfolio.PortfolioCalculator
 import java.time.LocalDate
 
@@ -176,7 +177,15 @@ private fun RecordForm(
     val quantity = MoneyFormat.parseDecimal(quantityText)
     val price = MoneyFormat.parseDecimal(priceText)
     val cost = CostInput(MoneyFormat.parseDecimal(costText), MoneyFormat.parseDecimal(feeText), MoneyFormat.parseDecimal(taxText))
-    val holdings = data.holdingsOf(accountId)
+    // 고를 수 있는 종목 (v2.17): 매수·배당은 숨긴 종목 빼고, 매도는 지금 보유한 종목만. 고치는 기록의 종목은 남긴다.
+    val holdings = HoldingChoices.forRecord(type, accountId, data.holdings, data.records, initial?.holdingId ?: presetHoldingId)
+    val hiddenCount = HoldingChoices.hiddenCount(accountId, data.holdings)
+    val noHolding = when {
+        holdings.isNotEmpty() -> "종목을 고르세요."
+        type == RecordType.SELL -> "지금 보유한 종목이 없습니다."
+        hiddenCount > 0 -> "숨긴 종목 (${hiddenCount})은 계좌 화면에서 다시 보이게 할 수 있어요."
+        else -> "먼저 계좌 화면에서 종목을 추가하세요."
+    }
     val holding = holdingId?.let { data.holding(it) }
     val holdingCurrency = holding?.currency ?: Currency.KRW
 
@@ -194,7 +203,7 @@ private fun RecordForm(
             else -> null
         }
         RecordType.BUY, RecordType.SELL -> when {
-            holding == null -> if (holdings.isEmpty()) "먼저 계좌 화면에서 종목을 추가하세요." else "종목을 고르세요."
+            holding == null -> noHolding
             quantity == null || quantity <= 0 -> "수량을 입력하세요."
             price == null || price < 0 -> "단가를 입력하세요."
             type == RecordType.SELL && quantity > sellHeld(data.records, initial, accountId, holding.id, date, quantity) + 1e-9 ->
@@ -202,7 +211,7 @@ private fun RecordForm(
             else -> null
         }
         RecordType.DIVIDEND -> when {
-            holding == null -> if (holdings.isEmpty()) "먼저 계좌 화면에서 종목을 추가하세요." else "종목을 고르세요."
+            holding == null -> noHolding
             amount == null || amount <= 0 -> "배당금을 입력하세요."
             else -> null
         }

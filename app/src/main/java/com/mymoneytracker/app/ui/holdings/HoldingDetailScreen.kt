@@ -47,6 +47,7 @@ import com.mymoneytracker.app.ui.common.profitColor
 import com.mymoneytracker.app.ui.records.recordAmountText
 import com.mymoneytracker.app.ui.records.recordDetailText
 import com.mymoneytracker.app.ui.records.recordTitle
+import com.mymoneytracker.core.portfolio.HoldingChoices
 import com.mymoneytracker.core.MoneyFormat
 import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Currency
@@ -103,6 +104,8 @@ fun HoldingDetailScreen(
                 onEditPrice = { editPrice = true },
                 onAddRecord = onAddRecord,
                 onOpenRecord = onOpenRecord,
+                canHide = HoldingChoices.canHide(holding, current.records),
+                onSetHidden = { viewModel.setHoldingHidden(holding, it) },
             )
             if (editPrice) {
                 PriceDialog(
@@ -129,6 +132,8 @@ private fun HoldingDetailContent(
     onEditPrice: () -> Unit,
     onAddRecord: (RecordType) -> Unit,
     onOpenRecord: (String) -> Unit,
+    canHide: Boolean = false,
+    onSetHidden: (Boolean) -> Unit = {},
 ) {
     val holding = valuation.holding
     val position = valuation.position
@@ -241,6 +246,22 @@ private fun HoldingDetailContent(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+        // 종목 숨기기 (v2.17): 0주일 때만 숨길 수 있다
+        item {
+            if (holding.hidden) {
+                Text(
+                    "숨긴 종목입니다. 기록 입력의 종목 목록과 계좌 화면에 나오지 않아요 (계산에는 그대로 들어갑니다).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = { onSetHidden(false) }) { Text("다시 보이기") }
+            } else {
+                TextButton(onClick = { onSetHidden(true) }, enabled = canHide) { Text("이 종목 숨기기") }
+                if (!canHide) {
+                    Text("다 판 뒤에 숨길 수 있어요.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         item { Text("기록", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }

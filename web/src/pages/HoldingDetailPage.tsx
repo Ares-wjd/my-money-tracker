@@ -9,13 +9,15 @@ import { ASSET_TYPE_LABEL, MARKET_LABEL, marketCurrency, type Record, type Recor
 import { HoldingForm, PriceForm } from '../forms/HoldingForm';
 import { RecordForm } from '../forms/RecordForm';
 import { RecordRow } from '../records/RecordList';
+import { canHide } from '../core/holdingChoices';
+import { saveHolding } from '../data/writes';
 
 type Dialog = { kind: 'holding' } | { kind: 'price' } | { kind: 'record'; type: RecordType; existing: Record | null } | null;
 
 export function HoldingDetailPage() {
   const { holdingId = '' } = useParams();
   const data = useAppData();
-  const { displayCurrency, setDisplayCurrency } = useData();
+  const { displayCurrency, setDisplayCurrency, uid } = useData();
   const [dialog, setDialog] = useState<Dialog>(null);
   const navigate = useNavigate();
   const holding = data.holdings.find((h) => h.id === holdingId);
@@ -36,6 +38,7 @@ export function HoldingDetailPage() {
     return converted === null ? '환율 필요' : signedAmount(c.currency, converted);
   };
   const p = v.position;
+  const hideable = canHide(holding, data.records);
   // 원화 보기의 해외 종목: 매매일 환율이 모두 있으면 환차익 반영, 없으면 오늘 환율로 단순 환산
   const krw = displayCurrency === 'KRW' ? data.krwView(v) : null;
   const missingTradeFx = displayCurrency === 'KRW' && currency === 'USD' && data.usdKrw !== null && krw === null;
@@ -120,6 +123,18 @@ export function HoldingDetailPage() {
           />
           <Row label="수수료·세금 합계" value={krw ? won(krw.feesAndTaxesKrw) : shown(p.feesAndTaxes)} />
           {missingTradeFx && <p className="warning">매매일 환율이 아직 없어 오늘 환율로 단순 환산했습니다. 폰 앱을 열면 환율을 받아 와 반영됩니다.</p>}
+          {/* 종목 숨기기 (v2.17): 0주일 때만 */}
+          {holding.hidden ? (
+            <>
+              <p className="muted small">숨긴 종목입니다. 기록 입력의 종목 목록과 계좌 화면에 나오지 않아요 (계산에는 그대로 들어갑니다).</p>
+              <button className="align-start" onClick={() => saveHolding(uid, { ...holding, hidden: false })}>다시 보이기</button>
+            </>
+          ) : (
+            <>
+              <button className="text-button align-start" disabled={!hideable} onClick={() => saveHolding(uid, { ...holding, hidden: true })}>이 종목 숨기기</button>
+              {!hideable && <p className="muted small">다 판 뒤에 숨길 수 있어요.</p>}
+            </>
+          )}
         </Card>
       </div>
 
