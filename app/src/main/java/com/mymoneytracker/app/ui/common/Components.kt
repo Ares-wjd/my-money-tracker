@@ -1,7 +1,6 @@
 package com.mymoneytracker.app.ui.common
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +25,7 @@ import com.mymoneytracker.app.ui.theme.LocalMoneyColors
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.mymoneytracker.app.ui.theme.LocalDarkTheme
 
 // 여러 화면이 같이 쓰는 작은 도구: 날짜 형식, 수익 색, 로딩, 빈 화면 안내, 경고 글, 추가 버튼 색, 위 막대 제목, 삭제 버튼, 확인창.
 // 카드는 Cards.kt, 배지·색은 Badges.kt, 입력창·선택기는 Inputs.kt.
@@ -82,14 +82,12 @@ fun WarningText(text: String, modifier: Modifier = Modifier) {
     Text(text, modifier = modifier, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
 }
 
-/** 추가 버튼(FAB) 색: 밝은 모드는 진한 잉크색, 다크 모드는 진녹색 (다크 모드에서 흰 버튼이 튀지 않도록). */
+/** 추가 버튼(FAB) 색 (v2.18): 포인트색 바탕. */
 @Composable
-fun fabContainerColor(): Color =
-    if (isSystemInDarkTheme()) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.inverseSurface
+fun fabContainerColor(): Color = MaterialTheme.colorScheme.primary
 
 @Composable
-fun fabContentColor(): Color =
-    if (isSystemInDarkTheme()) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.inverseOnSurface
+fun fabContentColor(): Color = MaterialTheme.colorScheme.onPrimary
 
 /** 위 막대 제목: 한 줄, 넘치면 말줄임. */
 @Composable

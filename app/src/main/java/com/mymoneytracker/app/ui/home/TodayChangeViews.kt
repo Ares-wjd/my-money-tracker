@@ -2,7 +2,6 @@ package com.mymoneytracker.app.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -61,6 +60,7 @@ import com.mymoneytracker.core.portfolio.TodayFilter
 import kotlinx.coroutines.delay
 import java.time.ZonedDateTime
 import kotlin.math.abs
+import com.mymoneytracker.app.ui.theme.LocalDarkTheme
 
 // 시장별 변동 (v2.10): 홈 카드와 상세 화면. 시장마다 지금(또는 마지막) 일봉 하나, 상태 표시, 쉬는 시장은 회색.
 
@@ -79,10 +79,10 @@ fun rememberNow(): ZonedDateTime {
 /** 상태 표시 색 (바탕, 글자, 점 — 쉬는 중이면 점 없음). 웹 styles.css 의 .phase-* 와 같은 값. */
 @Composable
 private fun phaseColors(phase: MarketPhase): Triple<Color, Color, Color?> {
-    val dark = isSystemInDarkTheme()
+    val dark = LocalDarkTheme.current
     return when (phase) {
         MarketPhase.PRE -> if (dark) Triple(Color(0xFF1E2E47), Color(0xFF9CC1F5), Color(0xFF6FA3EC)) else Triple(Color(0xFFE8F0FB), Color(0xFF1F4F9E), Color(0xFF3B78D8))
-        MarketPhase.REGULAR -> if (dark) Triple(Color(0xFF5CC9A7), Color(0xFF00382B), Color(0xFF00382B)) else Triple(Color(0xFF0F6B5C), Color.White, Color.White)
+        MarketPhase.REGULAR -> if (dark) Triple(Color(0xFF52CDAE), Color(0xFF08231C), Color(0xFF08231C)) else Triple(Color(0xFF0E7565), Color.White, Color.White)
         MarketPhase.AFTER -> if (dark) Triple(Color(0xFF2E2547), Color(0xFFC9B5F2), Color(0xFFA98BE0)) else Triple(Color(0xFFF1EBFB), Color(0xFF5B3A99), Color(0xFF8A63D2))
         MarketPhase.DAY -> if (dark) Triple(Color(0xFF3D2B14), Color(0xFFF2C38A), Color(0xFFE08A1E)) else Triple(Color(0xFFFDF0E1), Color(0xFF8A4B00), Color(0xFFE08A1E))
         MarketPhase.FX_OPEN -> if (dark) Triple(Color(0xFF16332A), Color(0xFF8FD6B9), Color(0xFF1BAF7A)) else Triple(Color(0xFFE6F2EE), Color(0xFF0B5548), Color(0xFF1BAF7A))
@@ -94,7 +94,7 @@ private fun phaseColors(phase: MarketPhase): Triple<Color, Color, Color?> {
 @Composable
 private fun segmentColor(phase: MarketPhase): Color = when (phase) {
     MarketPhase.PRE -> Color(0xFF7AA7E6)
-    MarketPhase.REGULAR -> if (isSystemInDarkTheme()) Color(0xFF5CC9A7) else Color(0xFF0F6B5C)
+    MarketPhase.REGULAR -> if (LocalDarkTheme.current) Color(0xFF52CDAE) else Color(0xFF0E7565)
     MarketPhase.AFTER -> Color(0xFFA98BE0)
     MarketPhase.DAY -> Color(0xFFF0A855)
     else -> Color(0xFF8FCBB4)

@@ -1,7 +1,6 @@
 package com.mymoneytracker.app.ui.home
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -39,6 +38,7 @@ import com.mymoneytracker.core.portfolio.BenchmarkIndex
 import com.mymoneytracker.core.portfolio.FlowPoint
 import com.mymoneytracker.core.portfolio.PeriodReturns
 import java.time.LocalDate
+import com.mymoneytracker.app.ui.theme.LocalDarkTheme
 
 /** 그래프에 겹쳐 그릴 지수 선 하나: 그래프 점마다 가상 평가금, 오늘 기준 값과 차이 (v2.11, 웹 BenchmarkLine 과 같은 내용). */
 data class BenchmarkLine(val index: BenchmarkIndex, val values: List<Double?>, val today: Benchmark.Today?)
@@ -68,7 +68,7 @@ fun benchmarkLines(
 /** 지수 색 (웹과 같은 값): S&P500 주황, 나스닥 자주, KOSPI 보라. 다크 모드는 밝게. */
 @Composable
 fun benchmarkColor(index: BenchmarkIndex): Color {
-    val dark = isSystemInDarkTheme()
+    val dark = LocalDarkTheme.current
     return when (index) {
         BenchmarkIndex.SPX -> if (dark) Color(0xFFE8A15A) else Color(0xFFD9822B)
         BenchmarkIndex.COMP -> if (dark) Color(0xFFE07AA6) else Color(0xFFC2417A)

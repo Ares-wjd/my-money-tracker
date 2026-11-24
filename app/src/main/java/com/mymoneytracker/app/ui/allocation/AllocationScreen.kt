@@ -4,7 +4,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -84,6 +83,7 @@ import java.time.LocalDate
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.hypot
+import com.mymoneytracker.app.ui.theme.LocalDarkTheme
 
 private enum class Ring(val label: String) { CURRENT("실제"), TARGET("목표"), COMPARE("비교") }
 
@@ -95,7 +95,7 @@ private const val OTHER_KEY = "__other"
 @Composable
 private fun seriesColor(index: Int): Color = when {
     index < MAX_COLORS -> paletteColor(index)
-    else -> if (isSystemInDarkTheme()) Color(0xFF5E6B65) else Color(0xFF9AA5A0)
+    else -> if (LocalDarkTheme.current) Color(0xFF5E6B65) else Color(0xFF9AA5A0)
 }
 
 /** 9~16번째 종목은 빗금 무늬로 구분. */
@@ -356,7 +356,7 @@ private data class DiffColors(val row: Color, val tag: Color, val tagInk: Color)
 
 @Composable
 private fun diffColors(over: Boolean): DiffColors {
-    val dark = isSystemInDarkTheme()
+    val dark = LocalDarkTheme.current
     return when {
         over && !dark -> DiffColors(Color(0xFFFDECEE), Color(0xFFC62436), Color.White)
         over -> DiffColors(Color(0xFF3B1F24), Color(0xFFFF8A96), Color(0xFF16201C))

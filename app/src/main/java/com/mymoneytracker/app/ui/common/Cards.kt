@@ -1,8 +1,8 @@
 package com.mymoneytracker.app.ui.common
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +30,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mymoneytracker.app.ui.theme.LocalMoneyColors
+import com.mymoneytracker.app.ui.theme.SerifKr
+import com.mymoneytracker.app.ui.theme.LocalDarkTheme
 
 // 여러 화면이 같이 쓰는 카드·정보 표시: 흰 카드·강조 카드, 수익 알약, 정보 칸, "라벨 … 값" 줄, 목록 한 줄, 진행 막대.
 
@@ -45,6 +47,7 @@ fun SectionCard(
     content: @Composable () -> Unit,
 ) {
     val money = LocalMoneyColors.current
+    // 스톤 테마 (v2.18): 카드는 얇은 테두리, 요약 카드(highlighted)는 같은 바탕에 진한 테두리
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -53,10 +56,11 @@ fun SectionCard(
         } else {
             appCardColors()
         },
+        border = if (highlighted) BorderStroke(1.5.dp, money.heroBorder) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (title != null) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(title, style = cardTitleStyle())
             }
             androidx.compose.runtime.CompositionLocalProvider(LocalOnHero provides highlighted) { content() }
         }
@@ -69,21 +73,19 @@ fun appCardColors() = CardDefaults.cardColors(
     contentColor = MaterialTheme.colorScheme.onSurface,
 )
 
-/** 진한 강조 카드 (목표 탭의 "이번 달 넣을 금액" 등). */
+/** 카드 제목 (v2.18): Noto Serif KR. */
+@Composable
+fun cardTitleStyle(): TextStyle = MaterialTheme.typography.titleMedium.copy(fontFamily = SerifKr, fontWeight = FontWeight.Bold)
+
+/** 요약 카드 (목표 탭의 "이번 달 넣을 금액" 등). 스톤 테마 (v2.18)에서는 요약 카드와 같은 진한 테두리 카드. */
 @Composable
 fun InkCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val money = LocalMoneyColors.current
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
-        // 다크 모드에서 inverseSurface 는 밝은 색이라 튄다 → 다크 모드는 진녹색 강조 카드와 같게
-        colors = if (isSystemInDarkTheme()) {
-            CardDefaults.cardColors(containerColor = LocalMoneyColors.current.heroContainer, contentColor = LocalMoneyColors.current.onHero)
-        } else {
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.inverseSurface,
-                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-            )
-        },
+        colors = CardDefaults.cardColors(containerColor = money.heroContainer, contentColor = money.onHero),
+        border = BorderStroke(1.5.dp, money.heroBorder),
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
     }
@@ -95,7 +97,7 @@ fun ProfitPill(text: String, value: Double?) {
     Text(
         text,
         modifier = Modifier
-            .background(MaterialTheme.colorScheme.surfaceContainerLowest, RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(50))
             .padding(horizontal = 10.dp, vertical = 4.dp),
         color = profitColor(value),
         style = MaterialTheme.typography.labelLarge,
@@ -113,7 +115,7 @@ fun StatTile(
     /** 칸이 좁아 다 안 들어갈 때 보여줄 짧은 값 (예: "329.1만원"). */
     shortValue: String? = null,
 ) {
-    val labelColor = if (onHero) LocalMoneyColors.current.onHero.copy(alpha = 0.92f) else MaterialTheme.colorScheme.onSurfaceVariant
+    val labelColor = if (onHero) LocalMoneyColors.current.heroLabel else MaterialTheme.colorScheme.onSurfaceVariant
     Column(
         modifier = modifier
             .then(
@@ -196,7 +198,7 @@ fun LabeledValue(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val labelColor = if (LocalOnHero.current) LocalMoneyColors.current.onHero.copy(alpha = 0.92f) else MaterialTheme.colorScheme.onSurfaceVariant
+        val labelColor = if (LocalOnHero.current) LocalMoneyColors.current.heroLabel else MaterialTheme.colorScheme.onSurfaceVariant
         Text(label, style = MaterialTheme.typography.bodyMedium, color = labelColor)
         Text(
             value,

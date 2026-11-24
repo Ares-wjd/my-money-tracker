@@ -4,7 +4,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -72,6 +71,7 @@ import com.mymoneytracker.core.portfolio.TodayFilter
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
+import com.mymoneytracker.app.ui.theme.LocalDarkTheme
 
 /** 배당 화면·홈 카드가 쓰는 계산 결과 (v2.13). */
 data class DividendData(val received: List<DividendItem>, val planned: List<DividendItem>) {
@@ -85,11 +85,11 @@ fun dividendData(data: PortfolioData, today: LocalDate, ids: Set<String>? = null
 
 /** 배당 색 (웹과 같음): 받음 진녹색 · 확정 연녹색 · 추정 노란 바탕 + 점선 · 작년 같은 달 노랑. */
 private object DivColors {
-    @Composable fun received() = if (isSystemInDarkTheme()) Color(0xFF27957A) else Color(0xFF0F6B5C)
-    @Composable fun confirmed() = if (isSystemInDarkTheme()) Color(0xFF5E9E8E) else Color(0xFF7FB5A7)
-    @Composable fun estimatedBg() = if (isSystemInDarkTheme()) Color(0xFF3A3220) else Color(0xFFFBF3E2)
-    @Composable fun estimatedLine() = if (isSystemInDarkTheme()) Color(0xFFD9A441) else Color(0xFFB07A10)
-    @Composable fun lastYear() = if (isSystemInDarkTheme()) Color(0xFFD9A441) else Color(0xFFE8B84A)
+    @Composable fun received() = if (LocalDarkTheme.current) Color(0xFF52CDAE) else Color(0xFF0E7565)
+    @Composable fun confirmed() = if (LocalDarkTheme.current) Color(0xFF2F7D69) else Color(0xFF8FC7B8)
+    @Composable fun estimatedBg() = if (LocalDarkTheme.current) Color(0xFF3A3220) else Color(0xFFFBF3E2)
+    @Composable fun estimatedLine() = if (LocalDarkTheme.current) Color(0xFFD9A441) else Color(0xFFB07A10)
+    @Composable fun lastYear() = if (LocalDarkTheme.current) Color(0xFFB8913F) else Color(0xFFD9B867)
 }
 
 private fun won(v: Double) = MoneyFormat.shortWon(v)

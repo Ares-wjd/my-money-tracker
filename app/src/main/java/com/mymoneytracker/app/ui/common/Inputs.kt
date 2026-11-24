@@ -69,7 +69,7 @@ fun <T> SegmentedPills(
                     .weight(1f)
                     .heightIn(min = 36.dp)
                     .background(
-                        if (isSelected) MaterialTheme.colorScheme.inverseSurface else MaterialTheme.colorScheme.surfaceContainer,
+                        if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
                         MaterialTheme.shapes.small,
                     )
                     .clickable(role = Role.RadioButton) { onSelect(option) },
@@ -78,14 +78,14 @@ fun <T> SegmentedPills(
                 Text(
                     label(option),
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (isSelected) MaterialTheme.colorScheme.inverseOnSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
     }
 }
 
-/** 선택 칩: 선택되면 진녹색 바탕 + ✓ (선택 여부가 바로 보이도록). */
+/** 선택 칩: 선택되면 연한 포인트 바탕 + 포인트 테두리 + ✓ (v2.18, 선택 여부가 바로 보이도록). */
 @Composable
 fun AppFilterChip(selected: Boolean, label: String, onClick: () -> Unit) {
     FilterChip(
@@ -97,10 +97,18 @@ fun AppFilterChip(selected: Boolean, label: String, onClick: () -> Unit) {
         } else {
             null
         },
+        shape = MaterialTheme.shapes.small,
         colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.primary,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = selected,
+            borderColor = MaterialTheme.colorScheme.outlineVariant,
+            selectedBorderColor = MaterialTheme.colorScheme.primary,
+            selectedBorderWidth = 1.dp,
         ),
     )
 }

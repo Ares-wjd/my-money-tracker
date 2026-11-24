@@ -62,6 +62,7 @@ import com.mymoneytracker.core.portfolio.PeriodReturns
 import com.mymoneytracker.core.portfolio.TodayFilter
 import java.time.LocalDate
 import kotlin.math.abs
+import com.mymoneytracker.app.ui.theme.LocalDarkTheme
 
 /** "올해 ▲8.20% (+234.0만원) · 연평균 ▲11.40%" ([ids] 계좌, null 이면 전체). 그래프 일별 값을 계산 중이거나 기록이 없으면 빈 글. */
 fun periodLine(data: PortfolioData, stored: Map<String, StoredChart>?, ids: Set<String>?): String {
@@ -299,7 +300,7 @@ private fun YtdCompareCard(ytd: PeriodResult?, indices: List<Pair<BenchmarkIndex
 }
 
 @Composable
-private fun chartMineColor(): Color = if (androidx.compose.foundation.isSystemInDarkTheme()) Color(0xFF27957A) else Color(0xFF007A5E)
+private fun chartMineColor(): Color = MaterialTheme.colorScheme.primary
 
 /** 월별 막대 하나: 가운데 선 위는 수익(빨강), 아래는 손실(파랑). [dot] 고른 지수의 점 (같은 금액 눈금). 누르면 그 달을 고른다. */
 @Composable

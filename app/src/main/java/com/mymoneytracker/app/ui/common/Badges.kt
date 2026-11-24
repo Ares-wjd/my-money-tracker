@@ -2,7 +2,6 @@ package com.mymoneytracker.app.ui.common
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -20,6 +19,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -29,6 +30,8 @@ import com.mymoneytracker.app.ui.theme.Brand
 import com.mymoneytracker.core.model.AccountKind
 import com.mymoneytracker.core.model.AssetType
 import com.mymoneytracker.core.model.Market
+import com.mymoneytracker.app.ui.theme.LocalDarkTheme
+import com.mymoneytracker.app.ui.theme.LocalMoneyColors
 
 // 티커 배지·색 구분·범례, 계좌 종류 배지, 범주 팔레트, 앱 로고.
 
@@ -82,13 +85,13 @@ fun paletteColor(index: Int): Color {
     val light = listOf(0xFF2A78D6, 0xFFEB6834, 0xFF1BAF7A, 0xFFEDA100, 0xFFE87BA4, 0xFF008300, 0xFF6250D6, 0xFFE34948)
     val dark = listOf(0xFF3987E5, 0xFFD95926, 0xFF199E70, 0xFFC98500, 0xFFD55181, 0xFF008300, 0xFF9085E9, 0xFFE66767)
     val i = index.coerceAtLeast(0) % light.size
-    return Color(if (isSystemInDarkTheme()) dark[i] else light[i])
+    return Color(if (LocalDarkTheme.current) dark[i] else light[i])
 }
 
 /** 배지 바탕색 (흰 글자 대비 4.5:1 이상, 색각 이상 구분 검사 통과). 다크 모드는 다크 바탕에 맞춘 값. */
 @Composable
 fun tickerColor(group: TickerGroup): Color {
-    val dark = isSystemInDarkTheme()
+    val dark = LocalDarkTheme.current
     return when (group) {
         TickerGroup.KR_STOCK -> if (dark) Color(0xFF18805F) else Color(0xFF0B7A5E)
         TickerGroup.US_STOCK -> if (dark) Color(0xFF6A5FD9) else Color(0xFF5A4FCF)
@@ -102,7 +105,15 @@ fun tickerColor(group: TickerGroup): Color {
 @Composable
 fun TickerBadge(code: String, name: String, market: Market, assetType: AssetType) {
     val text = if (assetType == AssetType.GOLD) "금현물" else code.ifBlank { name.take(2) }.take(6)
-    LabelBadge(text, tickerColor(tickerGroup(market, assetType)), Color.White, width = TICKER_BADGE_WIDTH)
+    // 스톤 테마 (v2.18): 종류 색을 옅게 깐 바탕 + 종류 색 글자 (국내 주식은 포인트색과 같은 계열)
+    val color = tickerColor(tickerGroup(market, assetType))
+    val dark = LocalDarkTheme.current
+    LabelBadge(
+        text,
+        color.copy(alpha = if (dark) 0.28f else 0.12f).compositeOver(MaterialTheme.colorScheme.surfaceContainerLowest),
+        if (dark) lerp(color, Color.White, 0.45f) else color,
+        width = TICKER_BADGE_WIDTH,
+    )
 }
 
 /** 티커 색 범례. [groups] 에 있는 것만 보여준다. */
@@ -118,37 +129,44 @@ fun TickerLegend(groups: Set<TickerGroup>) {
     }
 }
 
-/** 계좌 종류 배지. */
+/** 계좌 종류 배지 (v2.18): 연한 포인트 바탕 + 진녹 글자, 기타는 회색. */
 @Composable
 fun AccountKindBadge(kind: AccountKind) {
-    val dark = isSystemInDarkTheme()
-    val (text, container, content) = when (kind) {
-        AccountKind.GENERAL -> Triple("위탁", if (dark) Color(0xFF173B33) else Color(0xFFE6F2EE), if (dark) Color(0xFF7FD9BC) else Color(0xFF0F6B5C))
-        AccountKind.ISA -> Triple("ISA", if (dark) Color(0xFF1C2B4A) else Color(0xFFE8EEFB), if (dark) Color(0xFF9CBBFF) else Color(0xFF1F5FD1))
-        AccountKind.PENSION -> Triple("연금", if (dark) Color(0xFF3A2C10) else Color(0xFFFDF3E1), if (dark) Color(0xFFF2C46B) else Color(0xFF8A5A08))
-        AccountKind.IRP -> Triple("IRP", if (dark) Color(0xFF3A2C10) else Color(0xFFFDF3E1), if (dark) Color(0xFFF2C46B) else Color(0xFF8A5A08))
-        AccountKind.DC -> Triple("DC", if (dark) Color(0xFF3A2C10) else Color(0xFFFDF3E1), if (dark) Color(0xFFF2C46B) else Color(0xFF8A5A08))
-        AccountKind.GOLD -> Triple("금", if (dark) Color(0xFF36300F) else Color(0xFFFAF3D6), if (dark) Color(0xFFE6C850) else Color(0xFF6E5800))
-        AccountKind.OTHER -> Triple("기타", MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.colorScheme.onSurfaceVariant)
+    val text = when (kind) {
+        AccountKind.GENERAL -> "위탁"
+        AccountKind.ISA -> "ISA"
+        AccountKind.PENSION -> "연금"
+        AccountKind.IRP -> "IRP"
+        AccountKind.DC -> "DC"
+        AccountKind.GOLD -> "금"
+        AccountKind.OTHER -> "기타"
     }
-    LabelBadge(text, container, content)
+    if (kind == AccountKind.OTHER) {
+        LabelBadge(text, MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        LabelBadge(text, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+    }
 }
 
 /** 앱 로고 (B · 계단 막대). */
 @Composable
 fun AppLogo(size: Dp, modifier: Modifier = Modifier) {
+    // 스톤 테마 (v2.18): 포인트색 바탕에 막대, 금색 점
+    val bg = MaterialTheme.colorScheme.primary
+    val barColor = MaterialTheme.colorScheme.onPrimary
+    val dot = LocalMoneyColors.current.gold
     Canvas(modifier.size(size)) {
         val k = this.size.width / 108f
-        drawRoundRect(Brand.Ink, cornerRadius = CornerRadius(28f * k))
+        drawRoundRect(bg, cornerRadius = CornerRadius(28f * k))
         fun bar(x: Float, y: Float, h: Float, color: Color) = drawRoundRect(
             color,
             topLeft = Offset(x * k, y * k),
             size = Size(14f * k, h * k),
             cornerRadius = CornerRadius(5f * k),
         )
-        bar(27f, 58f, 24f, Color.White)
-        bar(47f, 44f, 38f, Color.White)
-        bar(67f, 28f, 54f, Brand.Mint)
-        drawCircle(Brand.Gold, radius = 5f * k, center = Offset(74f * k, 18f * k))
+        bar(27f, 58f, 24f, barColor)
+        bar(47f, 44f, 38f, barColor)
+        bar(67f, 28f, 54f, barColor)
+        drawCircle(if (dot == Color.Unspecified) Brand.Gold else dot, radius = 5f * k, center = Offset(74f * k, 18f * k))
     }
 }

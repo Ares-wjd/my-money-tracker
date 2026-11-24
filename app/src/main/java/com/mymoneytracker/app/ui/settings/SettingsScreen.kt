@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import com.mymoneytracker.app.ui.theme.LocalDarkTheme
+import com.mymoneytracker.app.ui.common.SegmentedPills
+import com.mymoneytracker.app.ui.theme.ThemeMode
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -77,6 +80,17 @@ fun SettingsScreen(
             modifier = Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // 화면 모드 (v2.18): 고르면 이 기기에 기억, 고르기 전에는 폰 설정
+            SectionCard(title = "화면") {
+                val dark = LocalDarkTheme.current
+                SegmentedPills(listOf(false, true), dark, { if (it) "어둡게" else "밝게" }, { ThemeMode.choose(it) })
+                Text(
+                    "고르기 전에는 폰 설정을 따릅니다. 고르면 이 기기에 기억합니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             SectionCard(title = "계정") {
                 Text(user.displayName.orEmpty(), style = MaterialTheme.typography.bodyLarge)
                 Text(user.email.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

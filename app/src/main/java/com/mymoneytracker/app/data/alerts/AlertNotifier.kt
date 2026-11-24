@@ -61,7 +61,7 @@ object AlertNotifier {
             .setStyle(NotificationCompat.BigTextStyle().bigText(alert.body))
             .setContentIntent(pending)
             .setAutoCancel(true)
-            .setColor(0xFF0F6B5C.toInt())
+            .setColor(0xFF0E7565.toInt())
             .build()
         return try {
             NotificationManagerCompat.from(context).notify(requestCode, notification)

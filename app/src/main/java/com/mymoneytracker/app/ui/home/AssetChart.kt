@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -50,6 +49,8 @@ import com.mymoneytracker.core.chart.ChartRange
 import com.mymoneytracker.core.chart.ChartPoint
 import com.mymoneytracker.core.model.InvestmentAccount
 import com.mymoneytracker.core.portfolio.BenchmarkIndex
+import com.mymoneytracker.app.ui.theme.LocalDarkTheme
+import com.mymoneytracker.app.ui.theme.LocalMoneyColors
 
 /** 자산 추이 그래프: 평가금(진녹색 실선)과 투자금(황색 점선). 그래프를 누르거나 끌면 그 날짜의 값을 보여준다. */
 @Composable
@@ -111,10 +112,10 @@ fun AssetChartCard(
 
 /** 그래프 색 (웹과 같은 값, 색각 이상 구분 검사 통과): 평가금 진녹색, 투자금 황색. */
 @Composable
-private fun chartValueColor(): Color = if (isSystemInDarkTheme()) Color(0xFF27957A) else Color(0xFF007A5E)
+private fun chartValueColor(): Color = MaterialTheme.colorScheme.primary
 
 @Composable
-private fun chartInvestedColor(): Color = if (isSystemInDarkTheme()) Color(0xFFC4851C) else Color(0xFFB5770A)
+private fun chartInvestedColor(): Color = LocalMoneyColors.current.gold
 
 /** 범례: 그래프와 같은 선 모양(실선/점선)으로 보여준다. */
 @Composable

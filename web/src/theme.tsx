@@ -1,9 +1,18 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
-/** 화면 모드: 자동(PC 설정), 밝게, 어둡게. 브라우저에 기억한다. */
+/** 화면 모드 (v2.18): 밝게 / 어둡게 중 고른다 (브라우저에 기억). 고르기 전(auto)에는 PC 설정을 따른다. */
 export type ThemeMode = 'auto' | 'light' | 'dark';
-export const THEME_MODES: readonly ThemeMode[] = ['auto', 'light', 'dark'];
+export const THEME_MODES: readonly ('light' | 'dark')[] = ['light', 'dark'];
 export const THEME_LABEL: { [K in ThemeMode]: string } = { auto: '자동', light: '밝게', dark: '어둡게' };
+
+/** 고르기 전이면 PC 설정에 따른 지금 모드. */
+function systemDark(): boolean {
+  try {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  } catch {
+    return false;
+  }
+}
 
 const KEY = 'theme';
 
@@ -44,13 +53,14 @@ export function useTheme() {
   return value;
 }
 
-/** 자동 / 밝게 / 어둡게 선택 버튼. */
+/** 밝게 / 어둡게 선택 버튼 (고르기 전에는 PC 설정에 맞는 쪽이 켜져 보인다). */
 export function ThemeSwitch() {
   const { mode, setMode } = useTheme();
+  const shown = mode === 'auto' ? (systemDark() ? 'dark' : 'light') : mode;
   return (
     <div className="segmented theme-switch" role="radiogroup" aria-label="화면 모드">
       {THEME_MODES.map((m) => (
-        <button key={m} role="radio" aria-checked={mode === m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
+        <button key={m} role="radio" aria-checked={shown === m} className={shown === m ? 'on' : ''} onClick={() => setMode(m)}>
           {THEME_LABEL[m]}
         </button>
       ))}
